@@ -1,0 +1,35 @@
+{
+  "name": "patchpilot",
+  "version": "1.0.0",
+  "description": "PatchPilot - Windows/Chromebook Security SaaS",
+  "main": "src/server.js",
+  "scripts": {
+    "start": "node src/server.js",
+    "dev": "nodemon src/server.js",
+    "migrate": "node -e \"require('./src/database').runMigrations()\"",
+    "audit": "npm audit --audit-level=high"
+  },
+  "dependencies": {
+    "@anthropic-ai/sdk": "^0.20.0",
+    "bcryptjs": "^2.4.3",
+    "cors": "^2.8.5",
+    "dotenv": "^16.4.5",
+    "express": "^4.19.2",
+    "express-rate-limit": "^7.2.0",
+    "helmet": "^7.1.0",
+    "jsonwebtoken": "^9.0.2",
+    "knex": "^3.1.0",
+    "morgan": "^1.10.0",
+    "node-cron": "^3.0.3",
+    "pg": "^8.11.5",
+    "qrcode": "^1.5.3",
+    "resend": "^3.2.0",
+    "speakeasy": "^2.0.0",
+    "stripe": "^15.6.0",
+    "uuid": "^9.0.1",
+    "zod": "^3.22.4"
+  },
+  "devDependencies": {
+    "nodemon": "^3.1.0"
+  }
+}

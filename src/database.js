@@ -10,7 +10,7 @@ const db = knex({
   },
   pool: { min: 2, max: 10 },
   migrations: {
-    directory: path.join(__dirname, '../migrations'),
+    directory: path.join(__dirname, '../Migrations'),
     tableName: 'knex_migrations',
   },
 });

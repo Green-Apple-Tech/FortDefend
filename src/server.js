@@ -12,9 +12,12 @@ const app = express();
 app.use(helmet());
 
 // ─── CORS ───────────────────────────────────────────────────────────────────
-const allowedOrigins = process.env.NODE_ENV === 'production'
-  ? [process.env.APP_URL].filter(Boolean)
-  : ['http://localhost:5173', 'http://localhost:3000'];
+const allowedOrigins = [
+  process.env.APP_URL,
+  'http://localhost:3000',
+  'http://localhost:5173',
+  'https://fortdefend-production.up.railway.app',
+].filter(Boolean);
 
 app.use(cors({
   origin: (origin, callback) => {

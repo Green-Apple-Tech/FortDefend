@@ -73,13 +73,12 @@ app.get('/health', (req, res) => {
 });
 
 // ─── Routes ──────────────────────────────────────────────────────────────────
-app.use('/api/auth',         require('./routes/auth'));
-app.use('/api/devices',      require('./routes/devices'));
-app.use('/api/agents',       require('./routes/agents'));
-app.use('/api/integrations', require('./routes/integrations'));
-app.use('/api/billing',      require('./routes/billing'));
-app.use('/api/webhooks',     require('./routes/webhooks'));
-app.use('/api/reports',      require('./routes/reports'));
+// app.use('/api/devices',      require('./routes/devices'));
+// app.use('/api/agents',       require('./routes/agents'));
+// app.use('/api/integrations', require('./routes/integrations'));
+// app.use('/api/billing',      require('./routes/billing'));
+// app.use('/api/webhooks',     require('./routes/webhooks'));
+// app.use('/api/reports',      require('./routes/reports'));
 
 // ─── 404 handler ─────────────────────────────────────────────────────────────
 app.use((req, res) => {

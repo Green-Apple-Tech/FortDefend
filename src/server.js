@@ -75,13 +75,15 @@ app.get('/health', (req, res) => {
 // ─── Routes ──────────────────────────────────────────────────────────────────
 app.use('/api/auth',         require('./routes/auth'));
 app.use('/api/orgs',         require('./routes/orgs'));
+app.use('/api/api-keys',     require('./routes/api-keys'));
+app.use('/api/v1/devices',   require('./routes/v1/devices'));
+app.use('/api/v1/alerts',    require('./routes/v1/alerts'));
 // app.use('/api/devices',      require('./routes/devices'));
 // app.use('/api/agents',       require('./routes/agents'));
 // app.use('/api/integrations', require('./routes/integrations'));
 // app.use('/api/billing',      require('./routes/billing'));
 // app.use('/api/webhooks',     require('./routes/webhooks'));
 // app.use('/api/reports',      require('./routes/reports'));
-
 // ─── 404 handler ─────────────────────────────────────────────────────────────
 app.use((req, res) => {
   res.status(404).json({ error: 'Not found' });

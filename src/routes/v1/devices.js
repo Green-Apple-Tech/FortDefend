@@ -9,8 +9,8 @@ router.get('/', apiKeyAuth, async (req, res) => {
     let query = db('devices')
       .where('org_id', req.org.id)
       .select('id', 'name', 'serial', 'os', 'os_version', 'status',
-              'last_seen', 'compliance_status', 'security_score',
-              'disk_free_gb', 'disk_total_gb', 'ram_total_gb', 'created_at')
+              'last_seen', 'compliance_state', 'security_score',
+              'disk_free_gb', 'ram_total_gb', 'cpu_usage_pct', 'created_at')
       .limit(Math.min(parseInt(limit), 500))
       .offset(parseInt(offset))
       .orderBy('last_seen', 'desc');

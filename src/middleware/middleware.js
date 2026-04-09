@@ -1,5 +1,5 @@
 const jwt = require('jsonwebtoken');
-const db = require('../database');
+const db = require('./database');
 
 // ─── requireAuth ──────────────────────────────────────────────────────────────
 // Verifies the access token and attaches user to req

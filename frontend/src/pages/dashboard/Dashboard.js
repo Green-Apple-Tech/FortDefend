@@ -77,14 +77,23 @@ export default function Dashboard() {
     );
   }
 
+  const quickActions = [
+    { label: 'Add Device', href: '/devices' },
+    { label: 'View Alerts', href: '/alerts' },
+    { label: 'Run Script', href: '/scripts' },
+    { label: 'Generate Report', href: '/reports' },
+    { label: 'Manage Policies', href: '/policies' },
+    { label: 'API Keys', href: '/api-keys' },
+  ];
+
   return (
     <div className="p-8">
       <div className="mb-8">
         <h1 className={`text-2xl font-bold ${darkMode ? 'text-white' : 'text-gray-900'}`}>
-          Good morning 👋
+          Good morning
         </h1>
         <p className={`mt-1 ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>
-          Here's what's happening with {org?.name || 'your fleet'} today.
+          Here is what is happening with {org?.name || 'your fleet'} today.
         </p>
       </div>
 
@@ -100,8 +109,7 @@ export default function Dashboard() {
           <h2 className={`text-base font-semibold mb-4 ${darkMode ? 'text-white' : 'text-gray-900'}`}>Recent Alerts</h2>
           {recentAlerts.length === 0 ? (
             <div className="text-center py-8">
-              <div className="text-4xl mb-2">✅</div>
-              <p className={`text-sm ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>No alerts — your fleet looks healthy!</p>
+              <p className={`text-sm ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>No alerts - your fleet looks healthy!</p>
             </div>
           ) : (
             <div className="space-y-3">
@@ -122,6 +130,17 @@ export default function Dashboard() {
         <div className={`rounded-xl border p-6 ${darkMode ? 'bg-gray-800 border-gray-700' : 'bg-white border-gray-200'}`}>
           <h2 className={`text-base font-semibold mb-4 ${darkMode ? 'text-white' : 'text-gray-900'}`}>Quick Actions</h2>
           <div className="grid grid-cols-2 gap-3">
-            {[
-              { label: 'Add Device', icon: '💻', href: '/devices' },
-              { label: 'View Alerts', icon: '🔔', href: '/ale
+            {quickActions.map(action => (
+              <a key={action.label} href={action.href}
+                className={`flex items-center gap-2 p-3 rounded-lg border text-sm font-medium transition-colors ${
+                  darkMode ? 'border-gray-600 text-gray-300 hover:bg-gray-700' : 'border-gray-200 text-gray-700 hover:bg-gray-50'
+                }`}>
+                {action.label}
+              </a>
+            ))}
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}

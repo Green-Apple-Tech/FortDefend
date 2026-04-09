@@ -73,6 +73,8 @@ app.get('/health', (req, res) => {
 });
 
 // ─── Routes ──────────────────────────────────────────────────────────────────
+app.use('/api/auth',         require('./routes/auth'));
+app.use('/api/orgs',         require('./routes/orgs'));
 // app.use('/api/devices',      require('./routes/devices'));
 // app.use('/api/agents',       require('./routes/agents'));
 // app.use('/api/integrations', require('./routes/integrations'));

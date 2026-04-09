@@ -16,8 +16,12 @@ api.interceptors.request.use((config) => {
 api.interceptors.response.use(
   (response) => response,
   async (error) => {
-    if (error.response?.status === 401) {
+    const url = error.config?.url || '';
+    const isAuthEndpoint = url.includes('/api/auth/') || url.includes('/api/orgs/me');
+    if (error.response?.status === 401 && isAuthEndpoint) {
       localStorage.removeItem('accessToken');
+      localStorage.removeItem('user');
+      localStorage.removeItem('org');
       window.location.href = '/login';
     }
     return Promise.reject(error);

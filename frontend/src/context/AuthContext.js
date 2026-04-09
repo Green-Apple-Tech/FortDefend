@@ -10,11 +10,7 @@ export function AuthProvider({ children }) {
 
   useEffect(() => {
     const token = localStorage.getItem('accessToken');
-    if (token) {
-      fetchUser();
-    } else {
-      setLoading(false);
-    }
+    if (token) { fetchUser(); } else { setLoading(false); }
   }, []);
 
   async function fetchUser() {
@@ -31,5 +27,29 @@ export function AuthProvider({ children }) {
   }
 
   async function login(email, password) {
-    const res = awa
-eof
+    const res = await api.post('/api/auth/login', { email, password });
+    if (res.data.accessToken) {
+      localStorage.setItem('accessToken', res.data.accessToken);
+      await fetchUser();
+    }
+    return res.data;
+  }
+
+  async function logout() {
+    await api.post('/api/auth/logout');
+    localStorage.removeItem('accessToken');
+    setUser(null);
+    setOrg(null);
+    window.location.href = '/login';
+  }
+
+  return (
+    <AuthContext.Provider value={{ user, org, loading, login, logout, fetchUser }}>
+      {children}
+    </AuthContext.Provider>
+  );
+}
+
+export function useAuth() {
+  return useContext(AuthContext);
+}

@@ -10,7 +10,7 @@ const { z } = require('zod');
 const { Resend } = require('resend');
 const crypto = require('crypto');
 
-const db = require('./database');
+const db = require('../database');
 const resend = new Resend(process.env.RESEND_API_KEY);
 
 // ─── Encryption helpers (AES-256-GCM) ───────────────────────────────────────

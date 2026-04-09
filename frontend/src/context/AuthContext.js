@@ -10,17 +10,33 @@ export function AuthProvider({ children }) {
 
   useEffect(() => {
     const token = localStorage.getItem('accessToken');
-    if (token) { fetchUser(); } else { setLoading(false); }
+    const savedUser = localStorage.getItem('user');
+    const savedOrg = localStorage.getItem('org');
+    if (token && savedUser) {
+      setUser(JSON.parse(savedUser));
+      if (savedOrg) setOrg(JSON.parse(savedOrg));
+      fetchUser();
+    } else {
+      setLoading(false);
+    }
   }, []);
 
   async function fetchUser() {
     try {
-      const res = await api.get('/api/orgs/me/profile');
-      setUser(res.data.user);
-      const orgRes = await api.get('/api/orgs/me');
+      const [userRes, orgRes] = await Promise.all([
+        api.get('/api/orgs/me/profile'),
+        api.get('/api/orgs/me'),
+      ]);
+      setUser(userRes.data.user);
       setOrg(orgRes.data);
+      localStorage.setItem('user', JSON.stringify(userRes.data.user));
+      localStorage.setItem('org', JSON.stringify(orgRes.data));
     } catch {
       localStorage.removeItem('accessToken');
+      localStorage.removeItem('user');
+      localStorage.removeItem('org');
+      setUser(null);
+      setOrg(null);
     } finally {
       setLoading(false);
     }
@@ -36,8 +52,10 @@ export function AuthProvider({ children }) {
   }
 
   async function logout() {
-    await api.post('/api/auth/logout');
+    try { await api.post('/api/auth/logout'); } catch {}
     localStorage.removeItem('accessToken');
+    localStorage.removeItem('user');
+    localStorage.removeItem('org');
     setUser(null);
     setOrg(null);
     window.location.href = '/login';

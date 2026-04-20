@@ -9,30 +9,10 @@ const { v4: uuidv4 } = require('uuid');
 const { z } = require('zod');
 const { Resend } = require('resend');
 const crypto = require('crypto');
+const { encrypt, decrypt } = require('../lib/crypto');
 
 const db = require('../database');
 const resend = new Resend(process.env.RESEND_API_KEY);
-
-// ─── Encryption helpers (AES-256-GCM) ───────────────────────────────────────
-function encrypt(text) {
-  const key = Buffer.from(process.env.ENCRYPTION_KEY, 'hex');
-  const iv = crypto.randomBytes(12);
-  const cipher = crypto.createCipheriv('aes-256-gcm', key, iv);
-  const encrypted = Buffer.concat([cipher.update(text, 'utf8'), cipher.final()]);
-  const tag = cipher.getAuthTag();
-  return iv.toString('hex') + ':' + tag.toString('hex') + ':' + encrypted.toString('hex');
-}
-
-function decrypt(ciphertext) {
-  const [ivHex, tagHex, encryptedHex] = ciphertext.split(':');
-  const key = Buffer.from(process.env.ENCRYPTION_KEY, 'hex');
-  const iv = Buffer.from(ivHex, 'hex');
-  const tag = Buffer.from(tagHex, 'hex');
-  const encrypted = Buffer.from(encryptedHex, 'hex');
-  const decipher = crypto.createDecipheriv('aes-256-gcm', key, iv);
-  decipher.setAuthTag(tag);
-  return decipher.update(encrypted) + decipher.final('utf8');
-}
 
 // ─── JWT helpers ─────────────────────────────────────────────────────────────
 function signAccessToken(payload) {

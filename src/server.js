@@ -94,12 +94,12 @@ app.use('/api/orgs',         require('./routes/orgs'));
 app.use('/api/api-keys',     require('./routes/api-keys'));
 app.use('/api/v1/devices',   require('./routes/v1/devices'));
 app.use('/api/v1/alerts',    require('./routes/v1/alerts'));
+app.use('/api/integrations', require('./routes/integrations'));
 const billingRouter = require('./routes/billing');
 app.use('/api/billing', billingRouter);
 app.use('/api/webhooks/stripe', billingRouter.webhookRouter);
 // app.use('/api/devices',      require('./routes/devices'));
 // app.use('/api/agents',       require('./routes/agents'));
-// app.use('/api/integrations', require('./routes/integrations'));
 // app.use('/api/webhooks',     require('./routes/webhooks'));
 // app.use('/api/reports',      require('./routes/reports'));
 // ─── 404 handler ─────────────────────────────────────────────────────────────

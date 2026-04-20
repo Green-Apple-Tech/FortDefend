@@ -1,4 +1,5 @@
 const { BaseAgent } = require('./base');
+const { defaultSafeRun } = require('./agentCommon');
 const { decrypt } = require('../lib/crypto');
 const intune = require('../integrations/intune');
 
@@ -356,57 +357,8 @@ class PatchGuardian extends BaseAgent {
     }
   }
 
-  /**
-   * Hardened run: never throws; logs each stage failure independently.
-   */
   async run() {
-    try {
-      const data = await this.observe().catch(async (e) => {
-        console.error(`[${AGENT_NAME}] observe (fatal catch):`, e);
-        try {
-          await this.log('observe_fatal', { error: e.message || String(e) }, null);
-        } catch {
-          /* ignore */
-        }
-        return { devices: [], pendingPatches: [] };
-      });
-
-      const thought = await this.think(data).catch(async (e) => {
-        console.error(`[${AGENT_NAME}] think (fatal catch):`, e);
-        try {
-          await this.log('think_fatal', { error: e.message || String(e) }, null);
-        } catch {
-          /* ignore */
-        }
-        return { decisions: [], summary: '' };
-      });
-
-      await this.act(thought.decisions || []).catch(async (e) => {
-        console.error(`[${AGENT_NAME}] act (fatal catch):`, e);
-        try {
-          await this.log('act_fatal', { error: e.message || String(e) }, null);
-        } catch {
-          /* ignore */
-        }
-      });
-
-      try {
-        await this.log('run_complete', {
-          success: true,
-          summary: thought.summary || null,
-          decisionCount: Array.isArray(thought.decisions) ? thought.decisions.length : 0,
-        });
-      } catch {
-        /* ignore */
-      }
-    } catch (err) {
-      console.error(`[${AGENT_NAME}] run outer error:`, err);
-      try {
-        await this.log('run_outer_fatal', { error: err.message || String(err) }, null);
-      } catch {
-        /* ignore */
-      }
-    }
+    return defaultSafeRun(this);
   }
 }
 

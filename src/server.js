@@ -33,12 +33,22 @@ app.use(cors({
 }));
 
 // ─── Body parsing ────────────────────────────────────────────────────────────
-// Stripe webhooks need the raw body — mount BEFORE express.json()
+// Stripe webhooks need the raw body and must NOT be parsed by express.json()
 app.use('/api/webhooks/stripe', express.raw({ type: 'application/json', limit: '10mb' }));
 
-// All other routes get parsed JSON
-app.use(express.json({ limit: '10mb' }));
-app.use(express.urlencoded({ extended: true, limit: '10mb' }));
+function skipStripeWebhook(req) {
+  return req.originalUrl === '/api/webhooks/stripe' || req.originalUrl.startsWith('/api/webhooks/stripe/');
+}
+
+app.use((req, res, next) => {
+  if (skipStripeWebhook(req)) return next();
+  express.json({ limit: '10mb' })(req, res, next);
+});
+
+app.use((req, res, next) => {
+  if (skipStripeWebhook(req)) return next();
+  express.urlencoded({ extended: true, limit: '10mb' })(req, res, next);
+});
 
 // ─── Request logging ─────────────────────────────────────────────────────────
 if (process.env.NODE_ENV !== 'test') {
@@ -53,6 +63,9 @@ const generalLimiter = rateLimit({
   standardHeaders: true,
   legacyHeaders: false,
   message: { error: 'Too many requests. Please try again later.' },
+  skip: (req) =>
+    req.originalUrl === '/api/webhooks/stripe' ||
+    req.originalUrl.startsWith('/api/webhooks/stripe/'),
 });
 
 // Strict auth rate limit: 5 requests per 15 minutes
@@ -81,10 +94,12 @@ app.use('/api/orgs',         require('./routes/orgs'));
 app.use('/api/api-keys',     require('./routes/api-keys'));
 app.use('/api/v1/devices',   require('./routes/v1/devices'));
 app.use('/api/v1/alerts',    require('./routes/v1/alerts'));
+const billingRouter = require('./routes/billing');
+app.use('/api/billing', billingRouter);
+app.use('/api/webhooks/stripe', billingRouter.webhookRouter);
 // app.use('/api/devices',      require('./routes/devices'));
 // app.use('/api/agents',       require('./routes/agents'));
 // app.use('/api/integrations', require('./routes/integrations'));
-// app.use('/api/billing',      require('./routes/billing'));
 // app.use('/api/webhooks',     require('./routes/webhooks'));
 // app.use('/api/reports',      require('./routes/reports'));
 // ─── 404 handler ─────────────────────────────────────────────────────────────

@@ -24,7 +24,6 @@
     "node-cron": "^3.0.3",
     "pg": "^8.11.5",
     "qrcode": "^1.5.3",
-    "recharts": "^3.8.1",
     "resend": "^3.2.0",
     "speakeasy": "^2.0.0",
     "stripe": "^15.6.0",

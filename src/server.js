@@ -106,7 +106,7 @@ app.use('/api/reboot-policies', require('./routes/rebootPolicies'));
 app.use('/api',              require('./routes/agent'));
 const billingRouter = require('./routes/billing');
 app.use('/api/billing', billingRouter);
-app.use('/api/webhooks/stripe', billingRouter.webhookRouter);
+
 app.get('/download/agent.exe', (req, res) => {
   const p = path.join(__dirname, '..', 'agent', 'agent.exe');
   if (!fs.existsSync(p)) return res.status(404).json({ error: 'agent.exe not found.' });

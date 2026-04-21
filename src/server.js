@@ -96,7 +96,7 @@ app.use('/api/android',      require('./routes/android'));
 app.use('/api/nmap',         require('./routes/nmap'));
 app.use('/api/integrations', require('./routes/integrations'));
 app.use('/api/reports',      require('./routes/reports'));
-app.use('/api/agents',       require('./routes/agents'));
+
 app.use('/api/devices',      require('./routes/devices'));
 app.use('/api/agent',        require('./routes/agent'));
 app.use('/api/reboot-policies', require('./routes/rebootPolicies'));

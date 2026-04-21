@@ -4,7 +4,7 @@ const { z } = require('zod');
 
 const db = require('../database');
 const { encrypt } = require('../lib/crypto');
-const { requireAuth, requireAdmin } = require('../middleware/middleware');
+const { requireAuth, requireAdmin } = require('../middleware/auth');
 const { IntegrationManager } = require('../integrations/manager');
 
 const router = express.Router();

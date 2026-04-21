@@ -4,7 +4,7 @@ const Stripe = require('stripe');
 const { z } = require('zod');
 
 const db = require('../database');
-const { requireAuth, requireAdmin } = require('../middleware/middleware');
+const { requireAuth, requireAdmin } = require('../middleware/auth');
 
 const PLAN_LIMITS = {
   personal: { device_limit: 5 },

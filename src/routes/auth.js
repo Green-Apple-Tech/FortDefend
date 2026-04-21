@@ -376,7 +376,7 @@ router.post('/login/totp', async (req, res) => {
 });
 
 // ─── POST /api/auth/setup-totp ────────────────────────────────────────────────
-router.post('/setup-totp', require('../middleware/middleware').requireAuth, async (req, res) => {
+router.post('/setup-totp', require('../middleware/auth').requireAuth, async (req, res) => {
   try {
     const secret = speakeasy.generateSecret({
       name: `${process.env.TOTP_ISSUER || 'FortDefend'} (${req.user.email})`,
@@ -412,7 +412,7 @@ router.post('/setup-totp', require('../middleware/middleware').requireAuth, asyn
 });
 
 // ─── POST /api/auth/confirm-totp ─────────────────────────────────────────────
-router.post('/confirm-totp', require('../middleware/middleware').requireAuth, async (req, res) => {
+router.post('/confirm-totp', require('../middleware/auth').requireAuth, async (req, res) => {
   try {
     const { setupToken, code } = req.body;
     if (!setupToken || !code) {

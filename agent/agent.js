@@ -1,8 +1,10 @@
 'use strict';
 
-const { execFileSync } = require('child_process');
+const { execFileSync, exec } = require('child_process');
 const fs = require('fs');
 const path = require('path');
+const { promisify } = require('util');
+const execAsync = promisify(exec);
 
 const LOG_DIR = 'C:\\ProgramData\\FortDefend\\logs';
 const LOG_FILE = `${LOG_DIR}\\agent.log`;
@@ -100,6 +102,39 @@ function collectTelemetry() {
   };
 }
 
+// Sysinternals data collection — add to existing heartbeat collection
+async function collectSysinternalsData() {
+  const results = {};
+  const sysinternalsPath = 'C:\\ProgramData\\FortDefend\\sysinternals';
+
+  try {
+    // Autoruns
+    const { stdout: autoruns } = await execAsync(
+      `"${sysinternalsPath}\\autorunsc.exe" -accepteula -a * -c -h -s 2>nul`,
+      { timeout: 30000 }
+    ).catch(() => ({ stdout: '' }));
+    results.autoruns = autoruns;
+
+    // Sigcheck on startup folder
+    const { stdout: sigcheck } = await execAsync(
+      `"${sysinternalsPath}\\sigcheck.exe" -accepteula -c -e "C:\\ProgramData\\Microsoft\\Windows\\Start Menu\\Programs\\StartUp" 2>nul`,
+      { timeout: 30000 }
+    ).catch(() => ({ stdout: '' }));
+    results.sigcheck = sigcheck;
+
+    // TCPView snapshot
+    const { stdout: tcpview } = await execAsync(
+      `"${sysinternalsPath}\\tcpvcon.exe" -accepteula -a -c 2>nul`,
+      { timeout: 15000 }
+    ).catch(() => ({ stdout: '' }));
+    results.tcpview = tcpview;
+  } catch (err) {
+    results.error = err.message;
+  }
+
+  return results;
+}
+
 async function heartbeat() {
   try {
     const token = getRegistryToken();
@@ -108,6 +143,7 @@ async function heartbeat() {
       return;
     }
     const body = collectTelemetry();
+    body.sysinternals = await collectSysinternalsData();
     const res = await fetch(`${APP_URL}/api/agent/heartbeat`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', 'x-org-token': token },

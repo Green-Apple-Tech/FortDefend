@@ -1,6 +1,3 @@
-// TODO: Wazuh integration - reads alerts from Wazuh API when agent is installed
-// TODO: OpenEDR integration - reads threat events when OpenEDR agent is installed
-
 const { BaseAgent } = require('./base');
 const { defaultSafeRun, askDecisions, devicesBaseQuery } = require('./agentCommon');
 

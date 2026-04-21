@@ -5,6 +5,7 @@ const { z } = require('zod');
 
 const db = require('../database');
 const { requireAuth, requireAdmin } = require('../middleware/auth');
+const { getAppUrl } = require('../utils/appUrl');
 
 const PLAN_LIMITS = {
   personal: { device_limit: 5 },
@@ -98,8 +99,10 @@ billingRouter.post('/checkout', requireAuth, async (req, res) => {
       return res.status(503).json({ error: 'Billing is not fully configured (missing price ID).' });
     }
 
-    const appUrl = (process.env.APP_URL || '').replace(/\/$/, '');
-    if (!appUrl) {
+    let appUrl;
+    try {
+      appUrl = getAppUrl();
+    } catch {
       return res.status(503).json({ error: 'APP_URL is not configured.' });
     }
 
@@ -158,8 +161,10 @@ billingRouter.post('/checkout', requireAuth, async (req, res) => {
 
 billingRouter.get('/portal', requireAuth, requireAdmin, async (req, res) => {
   try {
-    const appUrl = (process.env.APP_URL || '').replace(/\/$/, '');
-    if (!appUrl) {
+    let appUrl;
+    try {
+      appUrl = getAppUrl();
+    } catch {
       return res.status(503).json({ error: 'APP_URL is not configured.' });
     }
 

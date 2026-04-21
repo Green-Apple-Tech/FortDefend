@@ -27,6 +27,16 @@ function run(command) {
   }
 }
 
+function runJson(command) {
+  try {
+    const out = run(command);
+    if (!out) return null;
+    return JSON.parse(out);
+  } catch {
+    return null;
+  }
+}
+
 function getRegistryToken() {
   try {
     const raw = execFileSync('reg', ['query', REG_TOKEN_PATH, '/v', REG_TOKEN_KEY], { encoding: 'utf8', windowsHide: true });
@@ -39,6 +49,27 @@ function getRegistryToken() {
 }
 
 function collectTelemetry() {
+  const battery = runJson("(Get-WmiObject Win32_Battery | Select EstimatedChargeRemaining,BatteryStatus | ConvertTo-Json -Compress)");
+  const session = runJson("$u = query user 2>$null; $lines=@(); if($u){$lines = $u | Select-Object -Skip 1}; $active = $false; $idle = 999; foreach($l in $lines){ if($l -match 'Active'){ $active=$true }; if($l -match '\\s(\\d+|none|\\.)\\s+\\d{1,2}/'){ $v=$matches[1]; if($v -eq 'none' -or $v -eq '.'){ $idle=0 } elseif([int]$v -lt $idle){ $idle=[int]$v } } }; [pscustomobject]@{activeUserSession=$active;idleTimeMinutes=$idle} | ConvertTo-Json -Compress");
+  const openApps = runJson("(Get-Process | Where-Object {$_.MainWindowTitle -ne ''} | Select-Object ProcessName,MainWindowTitle | ConvertTo-Json -Depth 4 -Compress)");
+  const word = runJson("(Get-Process winword -ErrorAction SilentlyContinue | Select-Object MainWindowTitle | ConvertTo-Json -Compress)");
+  const excel = runJson("(Get-Process excel -ErrorAction SilentlyContinue | Select-Object MainWindowTitle | ConvertTo-Json -Compress)");
+  const browsers = runJson("(Get-Process chrome,msedge,firefox -ErrorAction SilentlyContinue | Measure-Object | Select-Object Count | ConvertTo-Json -Compress)");
+  const unsaved = runJson("(Get-Process | Where-Object {$_.MainWindowTitle -match '\\*'} | Select-Object ProcessName,MainWindowTitle | ConvertTo-Json -Compress)");
+  const queue = runJson("(Get-WmiObject Win32_PerfFormattedData_PerfOS_System | Select-Object ProcessorQueueLength | ConvertTo-Json -Compress)");
+  const netConn = runJson("(Get-NetTCPConnection -State Established -ErrorAction SilentlyContinue | Measure-Object | Select-Object Count | ConvertTo-Json -Compress)");
+  const rebootRequiredWU = run("if(Test-Path 'HKLM:\\SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\WindowsUpdate\\Auto Update\\RebootRequired'){ 'true' } else { 'false' }").trim() === 'true';
+  const rebootRequiredPending = run("if(Test-Path 'HKLM:\\SYSTEM\\CurrentControlSet\\Control\\Session Manager\\PendingFileRenameOperations'){ 'true' } else { 'false' }").trim() === 'true';
+  const batteryEntry = Array.isArray(battery) ? battery[0] : battery;
+  const noBattery = !batteryEntry;
+  const batteryStatus = Number(batteryEntry?.BatteryStatus);
+  const batteryLevel = noBattery ? null : Number.isFinite(Number(batteryEntry?.EstimatedChargeRemaining)) ? Number(batteryEntry.EstimatedChargeRemaining) : null;
+  const onAcPower = noBattery ? true : batteryStatus === 2;
+  const wordArr = Array.isArray(word) ? word : (word ? [word] : []);
+  const excelArr = Array.isArray(excel) ? excel : (excel ? [excel] : []);
+  const openBrowserCount = Number(browsers?.Count || 0);
+  const unsavedAnyArr = Array.isArray(unsaved) ? unsaved : (unsaved ? [unsaved] : []);
+
   return {
     collectedAt: new Date().toISOString(),
     hostname: process.env.COMPUTERNAME || 'windows-device',
@@ -51,6 +82,21 @@ function collectTelemetry() {
     threats: run('Get-MpThreatDetection | Select-Object -First 30 | ConvertTo-Json -Depth 6'),
     wifiSecurity: run('netsh wlan show interfaces | Out-String'),
     wazuhAlerts: fs.existsSync('C:\\Program Files (x86)\\ossec-agent\\') ? 'Wazuh agent directory found' : 'Wazuh agent not found',
+    telemetry: {
+      batteryLevel,
+      onAcPower,
+      activeUserSession: !!session?.activeUserSession,
+      idleTimeMinutes: Number.isFinite(Number(session?.idleTimeMinutes)) ? Number(session.idleTimeMinutes) : null,
+      openApplications: openApps || [],
+      unsavedWordDocs: wordArr.some((w) => String(w?.MainWindowTitle || '').includes('*')),
+      unsavedExcelDocs: excelArr.some((w) => String(w?.MainWindowTitle || '').includes('*')),
+      openBrowserCount,
+      anyUnsavedChanges: unsavedAnyArr.length > 0,
+      processorQueueLength: Number(queue?.ProcessorQueueLength || 0),
+      activeNetworkConnections: Number(netConn?.Count || 0),
+      rebootRequired: rebootRequiredWU || rebootRequiredPending,
+      rebootRequiredReason: rebootRequiredWU ? 'windows_update' : rebootRequiredPending ? 'pending_file_ops' : null,
+    },
   };
 }
 

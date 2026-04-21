@@ -43,7 +43,18 @@ class RebootScheduler extends BaseAgent {
         'os',
         'cpu_usage_pct',
         'status',
-        'updated_at'
+        'updated_at',
+        'battery_level',
+        'on_ac_power',
+        'active_user_session',
+        'idle_time_minutes',
+        'unsaved_word_docs',
+        'unsaved_excel_docs',
+        'open_browser_count',
+        'any_unsaved_changes',
+        'active_network_connections',
+        'reboot_required',
+        'reboot_required_reason'
       );
       const patchRows = await this.db('patch_history')
         .where('org_id', this.orgId)
@@ -65,19 +76,25 @@ class RebootScheduler extends BaseAgent {
         const devicePatches = patchRows.filter((p) => p.device_id === d.id);
         const pendingPatchCount = devicePatches.filter((p) => String(p.status).toLowerCase() !== 'success').length;
         const lastRebootDays = d.updated_at ? Math.floor((Date.now() - new Date(d.updated_at).getTime()) / (24 * 3600 * 1000)) : null;
-        const inUse = Number(d.cpu_usage_pct || 0) > 20 || d.status === 'online';
+        const isDeviceInUse =
+          !!d.active_user_session && (Number(d.cpu_usage_pct || 0) > 20 || Number(d.active_network_connections || 0) > 10);
+        const hasUnsavedWork = !!d.unsaved_word_docs || !!d.unsaved_excel_docs || !!d.any_unsaved_changes;
+        const isOnBattery = !d.on_ac_power && Number.isFinite(Number(d.battery_level)) && Number(d.battery_level) < 20;
+        const idleLongEnough = Number(d.idle_time_minutes || 0) > 30;
         return {
           ...d,
-          deviceInUse: inUse,
-          activeUserSessionLikely: inUse,
-          openApplicationsLikely: inUse,
-          unsavedWorkRisk: inUse ? 'possible' : 'low',
+          isDeviceInUse,
+          hasUnsavedWork,
+          isOnBattery,
+          rebootActuallyRequired: !!d.reboot_required,
+          idleLongEnough,
           timeVsPolicy: { inActiveHours, weekend, excludeWeekends: !!policy?.exclude_weekends },
           daysSinceLastReboot: lastRebootDays,
           pendingPatches: pendingPatchCount,
-          rebootRequired: pendingPatchCount > 0,
-          batteryLevel: null,
-          onAcPower: null,
+          rebootRequired: !!d.reboot_required,
+          rebootRequiredReason: d.reboot_required_reason || null,
+          batteryLevel: d.battery_level,
+          onAcPower: d.on_ac_power,
           policy,
         };
       }).filter((d) => {
@@ -92,10 +109,25 @@ class RebootScheduler extends BaseAgent {
   }
 
   async think(data) {
+    const candidates = Array.isArray(data?.candidates) ? data.candidates : [];
+    const promptReady = candidates.map((d) => ({
+      deviceId: d.id,
+      deviceName: d.name,
+      statusText: `Device ${d.name} status:
+- Reboot required: ${d.rebootActuallyRequired ? 'yes' : 'no'} — reason: ${d.rebootRequiredReason || 'none'}
+- User active: ${d.active_user_session ? 'yes' : 'no'}, idle for ${d.idle_time_minutes ?? 'unknown'} minutes
+- Unsaved work detected: ${d.hasUnsavedWork ? 'yes' : 'no'} (Word: ${d.unsaved_word_docs ? 'y' : 'n'}, Excel: ${d.unsaved_excel_docs ? 'y' : 'n'}, Browser tabs: ${d.open_browser_count ?? 0})
+- Battery: ${d.batteryLevel ?? 'unknown'}% on ${d.onAcPower ? 'AC' : 'battery'}
+- CPU usage: ${d.cpu_usage_pct ?? 0}%
+- Active network connections: ${d.active_network_connections ?? 0}
+- Last reboot: ${d.daysSinceLastReboot ?? 'unknown'} days ago
+- Reboot policy: ${(d.policy && d.policy.name) || 'default'} and ${(d.policy && d.policy.policy_type) || 'notify-only'}
+- Business hours: ${d.timeVsPolicy?.inActiveHours ? 'yes' : 'no'}`
+    }));
     return askDecisions(this, {
       instruction:
-        "You are FortDefend Reboot Scheduler AI. For each candidate device, decide if now is a good reboot time based on device usage, work risk, policy hours, urgency, pending patches, battery and power hints. Return decisions as array of {deviceId, action:'defer'|'notify'|'schedule'|'force', reason:string, userMessage:string, scheduleAt:string|null}.",
-      data,
+        "Based on this real-time data, decide the best reboot action. Return decisions as array of {deviceId, action:'defer'|'notify'|'schedule'|'force', reason:string, userMessage:string, scheduleAt:string|null}.",
+      data: { observedAt: data?.observedAt, devices: promptReady },
     });
   }
 

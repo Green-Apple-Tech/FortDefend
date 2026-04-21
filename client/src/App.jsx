@@ -21,6 +21,7 @@ import Settings from './pages/Settings';
 import Integrations from './pages/Integrations';
 import Install from './pages/Install';
 import Scripts from './pages/Scripts';
+import RebootPolicies from './pages/RebootPolicies';
 import MspDashboard from './pages/MspDashboard';
 import MspOverview from './pages/MspOverview';
 import ApiDocs from './pages/ApiDocs';
@@ -52,6 +53,7 @@ export default function App() {
               <Route path="/integrations" element={<Integrations />} />
               <Route path="/install" element={<Install />} />
               <Route path="/scripts" element={<Scripts />} />
+              <Route path="/reboot-policies" element={<RebootPolicies />} />
               <Route path="/api-docs" element={<ApiDocs />} />
               <Route path="/msp" element={<Navigate to="/msp/clients" replace />} />
               <Route path="/msp/clients" element={<MspDashboard />} />

@@ -8,10 +8,11 @@ const nav = [
   { to: '/reports', label: 'Reports' },
   { to: '/alerts', label: 'Alerts' },
   { to: '/billing', label: 'Billing' },
-  { to: '/settings', label: 'Settings' },
   { to: '/integrations', label: 'Integrations' },
   { to: '/install', label: 'Install' },
   { to: '/scripts', label: 'Scripts' },
+  { to: '/reboot-policies', label: 'Reboot Policies' },
+  { to: '/settings', label: 'Settings' },
 ];
 
 export function AppLayout() {

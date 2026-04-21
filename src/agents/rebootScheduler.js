@@ -30,6 +30,7 @@ class RebootScheduler extends BaseAgent {
 
   async observe() {
     try {
+      const policies = await this.db('reboot_policies').where('org_id', this.orgId);
       const devices = await devicesBaseQuery(this.db, this.orgId).select(
         'id',
         'name',
@@ -44,7 +45,7 @@ class RebootScheduler extends BaseAgent {
         if (!d.last_seen) return true;
         return now - new Date(d.last_seen).getTime() > staleHours * 3600 * 1000;
       });
-      return { devices, candidates, staleHours, observedAt: new Date().toISOString() };
+      return { devices, candidates, staleHours, policies, observedAt: new Date().toISOString() };
     } catch (e) {
       console.error('[Reboot Scheduler] observe:', e);
       return { devices: [], candidates: [] };
@@ -61,6 +62,7 @@ class RebootScheduler extends BaseAgent {
 
   async act(decisions) {
     try {
+      const policies = await this.db('reboot_policies').where('org_id', this.orgId);
       const row = await this.db('org_integrations').where('org_id', this.orgId).first();
       const intuneOk =
         row?.intune_enabled &&
@@ -73,9 +75,33 @@ class RebootScheduler extends BaseAgent {
         const action = String(d?.action || '').toLowerCase();
         await this.log('reboot_decision', d, deviceId).catch(() => {});
 
-        if (action.includes('defer') || action.includes('skip')) continue;
+        if (action.includes('defer') || action.includes('skip')) {
+          await this.log('reboot_deferred', { reason: d?.reason || 'deferred_by_policy' }, deviceId).catch(() => {});
+          continue;
+        }
 
         if (action.includes('reboot')) {
+          const policy = policies[0];
+          const now = new Date();
+          const hhmm = `${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`;
+          const inActiveHours =
+            policy?.active_hours_start &&
+            policy?.active_hours_end &&
+            hhmm >= policy.active_hours_start &&
+            hhmm <= policy.active_hours_end;
+          const weekend = now.getDay() === 0 || now.getDay() === 6;
+          const forced = policy?.policy_type === 'forced';
+          if (!forced && (inActiveHours || (policy?.exclude_weekends && weekend))) {
+            await this.log('reboot_skipped', { reason: 'inside_protected_hours' }, deviceId).catch(() => {});
+            continue;
+          }
+
+          await this.log('reboot_notification_command', {
+            message: policy?.notify_message || 'A restart is needed to finish updates.',
+            notifyBeforeMinutes: policy?.notify_before_minutes || 30,
+            policyType: policy?.policy_type || 'notify-only',
+          }, deviceId).catch(() => {});
+
           const dev = await devicesBaseQuery(this.db, this.orgId).where('id', deviceId).first();
           if (!dev?.external_id || dev.source !== 'intune' || !intuneOk) {
             await this.log('reboot_skipped', { reason: 'no_intune_device_or_config' }, deviceId).catch(() => {});

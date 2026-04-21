@@ -10,6 +10,10 @@ export default function Dashboard() {
   const [devices, setDevices] = useState([]);
   const [alerts, setAlerts] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [apiModalOpen, setApiModalOpen] = useState(false);
+  const [orgApiKey, setOrgApiKey] = useState('');
+  const [apiKeyLoading, setApiKeyLoading] = useState(false);
+  const [apiKeyError, setApiKeyError] = useState('');
 
   useEffect(() => {
     let cancelled = false;
@@ -65,6 +69,29 @@ export default function Dashboard() {
 
   if (isLoading) return <Spinner />;
   if (!user) return null;
+
+  async function openApiModal() {
+    setApiModalOpen(true);
+    setApiKeyLoading(true);
+    setApiKeyError('');
+    try {
+      const r = await api('/api/orgs/me/api-key');
+      setOrgApiKey(r?.apiKey || '');
+    } catch (e) {
+      setApiKeyError(e.message || 'Could not load API key.');
+    } finally {
+      setApiKeyLoading(false);
+    }
+  }
+
+  async function copyApiKey() {
+    if (!orgApiKey) return;
+    try {
+      await navigator.clipboard.writeText(orgApiKey);
+    } catch {
+      /* ignore */
+    }
+  }
 
   return (
     <div className="space-y-8">
@@ -140,6 +167,9 @@ export default function Dashboard() {
             <Link to="/integrations">
               <Button variant="secondary">Connect Google Admin</Button>
             </Link>
+            <Button variant="outline" onClick={openApiModal}>
+              Connect via API
+            </Button>
           </div>
         </Card>
       )}
@@ -199,6 +229,53 @@ export default function Dashboard() {
             Manage integrations
           </Link>
         </Card>
+      )}
+
+      {apiModalOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
+          <div className="w-full max-w-2xl rounded-xl bg-white p-6 shadow-xl">
+            <div className="flex items-start justify-between gap-4">
+              <div>
+                <h3 className="text-xl font-semibold text-gray-900">FortDefend API</h3>
+                <p className="mt-1 text-sm text-gray-600">
+                  Integrate FortDefend directly into your platform using our REST API
+                </p>
+              </div>
+              <button type="button" className="text-sm text-gray-500 hover:text-gray-700" onClick={() => setApiModalOpen(false)}>
+                Close
+              </button>
+            </div>
+
+            <div className="mt-5 rounded-lg border border-gray-200 bg-gray-50 p-4">
+              <p className="text-xs font-medium uppercase text-gray-500">Organization API key</p>
+              {apiKeyLoading ? (
+                <p className="mt-2 text-sm text-gray-600">Loading key…</p>
+              ) : apiKeyError ? (
+                <p className="mt-2 text-sm text-red-600">{apiKeyError}</p>
+              ) : (
+                <div className="mt-2 flex flex-wrap items-center gap-2">
+                  <code className="rounded bg-gray-900 px-3 py-2 text-xs text-gray-100">{orgApiKey || 'No key available'}</code>
+                  <Button variant="outline" onClick={copyApiKey} disabled={!orgApiKey}>
+                    Copy
+                  </Button>
+                </div>
+              )}
+            </div>
+
+            <div className="mt-4 grid gap-2 sm:grid-cols-2">
+              <Link className="rounded-lg border border-gray-200 px-3 py-2 text-sm text-brand hover:bg-brand-light/40" to="/api-docs#authentication">Authentication</Link>
+              <Link className="rounded-lg border border-gray-200 px-3 py-2 text-sm text-brand hover:bg-brand-light/40" to="/api-docs#device-management">Device Management</Link>
+              <Link className="rounded-lg border border-gray-200 px-3 py-2 text-sm text-brand hover:bg-brand-light/40" to="/api-docs#alerts-reports">Alerts & Reports</Link>
+              <Link className="rounded-lg border border-gray-200 px-3 py-2 text-sm text-brand hover:bg-brand-light/40" to="/api-docs#webhooks">Webhooks</Link>
+            </div>
+
+            <div className="mt-5">
+              <Link to="/api-docs">
+                <Button>View full API docs</Button>
+              </Link>
+            </div>
+          </div>
+        </div>
       )}
     </div>
   );

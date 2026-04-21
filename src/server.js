@@ -93,6 +93,7 @@ app.get('/health', (req, res) => {
 // ─── Routes ──────────────────────────────────────────────────────────────────
 app.use('/api/auth',         require('./routes/auth'));
 app.use('/api/orgs',         require('./routes/orgs'));
+app.use('/api/orgs/me/api-key', require('./routes/apiKeys'));
 app.use('/api/api-keys',     require('./routes/api-keys'));
 app.use('/api/v1/devices',   require('./routes/v1/devices'));
 app.use('/api/v1/alerts',    require('./routes/v1/alerts'));

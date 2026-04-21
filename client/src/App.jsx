@@ -23,6 +23,7 @@ import Install from './pages/Install';
 import Scripts from './pages/Scripts';
 import MspDashboard from './pages/MspDashboard';
 import MspOverview from './pages/MspOverview';
+import ApiDocs from './pages/ApiDocs';
 
 export default function App() {
   return (
@@ -51,6 +52,7 @@ export default function App() {
               <Route path="/integrations" element={<Integrations />} />
               <Route path="/install" element={<Install />} />
               <Route path="/scripts" element={<Scripts />} />
+              <Route path="/api-docs" element={<ApiDocs />} />
               <Route path="/msp" element={<Navigate to="/msp/clients" replace />} />
               <Route path="/msp/clients" element={<MspDashboard />} />
               <Route path="/msp/overview" element={<MspOverview />} />

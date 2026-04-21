@@ -3,6 +3,7 @@ const router = express.Router();
 const crypto = require('crypto');
 const { z } = require('zod');
 const db = require('../database');
+const { encrypt } = require('../lib/crypto');
 const { requireAuth, requireAdmin } = require('../middleware/middleware');
 
 router.get('/', requireAuth, requireAdmin, async (req, res) => {
@@ -39,6 +40,7 @@ router.post('/', requireAuth, requireAdmin, async (req, res) => {
       name: parsed.data.name,
       key_hash: keyHash,
       key_prefix: keyPrefix,
+      key_secret_enc: encrypt(rawKey),
       expires_at: expiresAt,
     });
     res.status(201).json({

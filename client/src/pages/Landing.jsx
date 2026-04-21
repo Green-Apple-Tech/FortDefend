@@ -109,7 +109,7 @@ export default function Landing() {
         </div>
       </nav>
 
-      <section style={{ textAlign: 'center', padding: '72px 32px 48px', maxWidth: 720, margin: '0 auto' }}>
+      <section style={{ textAlign: 'center', padding: '72px 32px 48px', maxWidth: '720px', margin: '0 auto' }}>
         <div style={{
           display: 'inline-block', background: '#E6F1FB', color: '#0C447C',
           fontSize: 12, fontWeight: 600, letterSpacing: '0.08em',
@@ -139,7 +139,7 @@ export default function Landing() {
         </div>
       </section>
 
-      <section style={{ maxWidth: 820px, margin: '0 auto', padding: '0 32px 64px' }}>
+      <section style={{ maxWidth: '820px', margin: '0 auto', padding: '0 32px 64px' }}>
         <h2 style={{ textAlign: 'center', fontSize: 26, fontWeight: 700, marginBottom: 8 }}>
           Stop paying for tools that don't talk to each other
         </h2>
@@ -180,7 +180,7 @@ export default function Landing() {
       </section>
 
       <section id="agents" style={{ background: '#f8f7f3', padding: '64px 32px' }}>
-        <div style={{ maxWidth: 820px, margin: '0 auto' }}>
+        <div style={{ maxWidth: '820px', margin: '0 auto' }}>
           <h2 style={{ textAlign: 'center', fontSize: 26, fontWeight: 700, marginBottom: 8 }}>15 AI agents running 24/7</h2>
           <p style={{ textAlign: 'center', color: '#52504a', marginBottom: 28, fontSize: 14 }}>Every plan includes every agent. No feature gating, no add-ons.</p>
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(230px, 1fr))', gap: 8 }}>
@@ -198,7 +198,7 @@ export default function Landing() {
       </section>
 
       <section id="pricing" style={{ padding: '64px 32px' }}>
-        <div style={{ maxWidth: 900px, margin: '0 auto' }}>
+        <div style={{ maxWidth: '900px', margin: '0 auto' }}>
           <h2 style={{ textAlign: 'center', fontSize: 26, fontWeight: 700, marginBottom: 8 }}>Simple, transparent pricing</h2>
           <p style={{ textAlign: 'center', color: '#52504a', marginBottom: 10, fontSize: 14 }}>
             Every plan includes all 15 AI agents and a 10-day free trial. Business plans billed per client site / LAN network.
@@ -254,7 +254,7 @@ export default function Landing() {
       </section>
 
       <section id="faq" style={{ background: '#f8f7f3', padding: '64px 32px' }}>
-        <div style={{ maxWidth: 640px, margin: '0 auto' }}>
+        <div style={{ maxWidth: '640px', margin: '0 auto' }}>
           <h2 style={{ textAlign: 'center', fontSize: 26, fontWeight: 700, marginBottom: 28 }}>Frequently asked questions</h2>
           {FAQS.map((f, i) => (
             <div key={i} style={{ borderBottom: '1px solid #e0ddd6' }}>

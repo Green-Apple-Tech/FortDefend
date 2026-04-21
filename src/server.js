@@ -1,167 +1,149 @@
-require('dotenv').config();
-
 const express = require('express');
-const path = require('path');
-const fs = require('fs');
-const mspRouter = require('./routes/msp');
-const androidRouter = require('./routes/android');
-const nmapRouter = require('./routes/nmap');
-const { startTrialMonitor } = require('./agents/trialMonitor');
 const helmet = require('helmet');
 const cors = require('cors');
-const rateLimit = require('express-rate-limit');
 const morgan = require('morgan');
+const rateLimit = require('express-rate-limit');
+const path = require('path');
+const fs = require('fs');
+const cookieParser = require('cookie-parser');
+
+const db = require('./database');
+const { startTrialMonitor } = require('./agents/trialMonitor');
 
 const app = express();
 
-// ─── Security headers via Helmet ────────────────────────────────────────────
-app.use(helmet());
-
-// ─── CORS ───────────────────────────────────────────────────────────────────
-const allowedOrigins = [
-  process.env.APP_URL,
-  'http://localhost:3000',
-  'http://localhost:5173',
-  'https://fortdefend-production.up.railway.app',
-].filter(Boolean);
-
-app.use(cors({
-  origin: (origin, callback) => {
-    // Allow requests with no origin (mobile apps, curl, Postman in dev)
-    if (!origin || allowedOrigins.includes(origin)) {
-      return callback(null, true);
-    }
-    callback(new Error('Not allowed by CORS'));
+// ── Security headers ──────────────────────────────────────────────────────────
+app.use(helmet({
+  contentSecurityPolicy: {
+    directives: {
+      defaultSrc: ["'self'"],
+      scriptSrc: ["'self'"],
+      styleSrc: ["'self'", "'unsafe-inline'"],
+      imgSrc: ["'self'", 'data:'],
+      connectSrc: ["'self'"],
+      frameSrc: ["'none'"],
+      objectSrc: ["'none'"],
+    },
   },
-  credentials: true,
-  methods: ['GET', 'POST', 'PATCH', 'PUT', 'DELETE', 'OPTIONS'],
-  allowedHeaders: ['Content-Type', 'Authorization', 'X-CSRF-Token'],
+  hsts: {
+    maxAge: 31536000,
+    includeSubDomains: true,
+    preload: true,
+  },
+  frameguard: { action: 'deny' },
+  noSniff: true,
+  referrerPolicy: { policy: 'strict-origin-when-cross-origin' },
 }));
 
-// ─── Body parsing ────────────────────────────────────────────────────────────
-// Stripe webhooks need the raw body and must NOT be parsed by express.json()
-app.use('/api/webhooks/stripe', express.raw({ type: 'application/json', limit: '10mb' }));
+app.set('trust proxy', 1);
 
-function skipStripeWebhook(req) {
-  return req.originalUrl === '/api/webhooks/stripe' || req.originalUrl.startsWith('/api/webhooks/stripe/');
-}
+// ── CORS ──────────────────────────────────────────────────────────────────────
+const allowedOrigins = [
+  'https://fortdefend.com',
+  'https://app.fortdefend.com',
+  'https://fortdefend-production.up.railway.app',
+  ...(process.env.NODE_ENV !== 'production' ? ['http://localhost:5173', 'http://localhost:3000'] : []),
+];
 
-app.use((req, res, next) => {
-  if (skipStripeWebhook(req)) return next();
-  express.json({ limit: '10mb' })(req, res, next);
-});
+app.use(cors({
+  origin: (origin, cb) => {
+    if (!origin || allowedOrigins.includes(origin)) return cb(null, true);
+    cb(new Error('Not allowed by CORS'));
+  },
+  credentials: true,
+}));
 
-app.use((req, res, next) => {
-  if (skipStripeWebhook(req)) return next();
-  express.urlencoded({ extended: true, limit: '10mb' })(req, res, next);
-});
+// ── Stripe webhook — raw body BEFORE json parser ──────────────────────────────
+app.use('/api/billing/webhook', express.raw({ type: 'application/json' }));
 
-// ─── Request logging ─────────────────────────────────────────────────────────
+// ── Body parsing ──────────────────────────────────────────────────────────────
+app.use(express.json({ limit: '10mb' }));
+app.use(express.urlencoded({ extended: true, limit: '10mb' }));
+app.use(cookieParser());
+
+// ── Logging ───────────────────────────────────────────────────────────────────
 if (process.env.NODE_ENV !== 'test') {
-  app.use(morgan(process.env.NODE_ENV === 'production' ? 'combined' : 'dev'));
+  app.use(morgan('combined'));
 }
 
-// ─── Rate limiting ───────────────────────────────────────────────────────────
-// General API rate limit: 100 requests per 15 minutes
-const generalLimiter = rateLimit({
+// ── Global rate limiter ───────────────────────────────────────────────────────
+app.use('/api/auth', rateLimit({
   windowMs: 15 * 60 * 1000,
-  max: 100,
+  max: 20,
+  message: { error: 'Too many requests. Try again in 15 minutes.' },
   standardHeaders: true,
   legacyHeaders: false,
-  message: { error: 'Too many requests. Please try again later.' },
-  skip: (req) =>
-    req.originalUrl === '/api/webhooks/stripe' ||
-    req.originalUrl.startsWith('/api/webhooks/stripe/'),
-});
+}));
 
-// Strict auth rate limit: 5 requests per 15 minutes
-const authLimiter = rateLimit({
-  windowMs: 15 * 60 * 1000,
-  max: 5,
+app.use('/api', rateLimit({
+  windowMs: 60 * 1000,
+  max: 200,
+  message: { error: 'Too many requests.' },
   standardHeaders: true,
   legacyHeaders: false,
-  message: { error: 'Too many authentication attempts. Please wait 15 minutes.' },
-});
+}));
 
-// Apply general limiter to all API routes
-app.use('/api', generalLimiter);
-
-// Apply strict limiter to auth routes specifically
-app.use('/api/auth', authLimiter);
-
-// ─── Health check (no auth, no rate limit) ───────────────────────────────────
+// ── Health check ──────────────────────────────────────────────────────────────
 app.get('/health', (req, res) => {
   res.json({ status: 'ok', timestamp: new Date().toISOString() });
 });
 
-// ─── Routes ──────────────────────────────────────────────────────────────────
+// ── API routes ────────────────────────────────────────────────────────────────
 app.use('/api/auth',         require('./routes/auth'));
-app.use('/api/orgs',         require('./routes/orgs'));
-app.use('/api/orgs/me/api-key', require('./routes/apiKeys'));
-app.use('/api/api-keys',     require('./routes/api-keys'));
-app.use('/api/v1/devices',   require('./routes/v1/devices'));
-app.use('/api/v1/alerts',    require('./routes/v1/alerts'));
+app.use('/api/billing',      require('./routes/billing'));
+app.use('/api/msp',          require('./routes/msp'));
+app.use('/api/android',      require('./routes/android'));
+app.use('/api/nmap',         require('./routes/nmap'));
 app.use('/api/integrations', require('./routes/integrations'));
 app.use('/api/reports',      require('./routes/reports'));
-app.use('/api/msp', mspRouter);
-app.use('/api/android', androidRouter);
-app.use('/api/nmap', nmapRouter);
+app.use('/api/agents',       require('./routes/agents'));
+app.use('/api/devices',      require('./routes/devices'));
+app.use('/api/agent',        require('./routes/agent'));
 app.use('/api/reboot-policies', require('./routes/rebootPolicies'));
-app.use('/api',              require('./routes/agent'));
-const billingRouter = require('./routes/billing');
-app.use('/api/billing', billingRouter);
 
+// ── Agent binary download ─────────────────────────────────────────────────────
 app.get('/download/agent.exe', (req, res) => {
   const p = path.join(__dirname, '..', 'agent', 'agent.exe');
-  if (!fs.existsSync(p)) return res.status(404).json({ error: 'agent.exe not found.' });
+  if (!fs.existsSync(p)) {
+    return res.status(404).json({ error: 'agent.exe not found.' });
+  }
   return res.download(p, 'agent.exe');
 });
-startTrialMonitor();
 
-// ─── API 404 handler ─────────────────────────────────────────────────────────
+// ── Serve React frontend ──────────────────────────────────────────────────────
+const clientBuild = path.join(__dirname, '..', 'client', 'dist');
+if (fs.existsSync(clientBuild)) {
+  app.use(express.static(clientBuild));
+  app.get('*', (req, res) => {
+    res.sendFile(path.join(clientBuild, 'index.html'));
+  });
+}
+
+// ── API 404 ───────────────────────────────────────────────────────────────────
 app.use('/api', (req, res) => {
   res.status(404).json({ error: 'Not found' });
 });
 
-// ─── Frontend static files (after API routes) ───────────────────────────────
-const clientDistPath = path.join(__dirname, '..', 'client', 'dist');
-app.use(express.static(clientDistPath));
-
-// Serve React app for any non-API, non-health route
-app.get('*', (req, res, next) => {
-  if (req.path === '/health' || req.path.startsWith('/api/')) return next();
-  res.sendFile(path.join(clientDistPath, 'index.html'));
-});
-
-// ─── 404 handler ─────────────────────────────────────────────────────────────
-app.use((req, res) => {
-  res.status(404).json({ error: 'Not found' });
-});
-
-// ─── Global error handler ────────────────────────────────────────────────────
-// Never leaks stack traces in production
+// ── Global error handler ──────────────────────────────────────────────────────
 app.use((err, req, res, next) => {
   const status = err.status || err.statusCode || 500;
+  const isDev = process.env.NODE_ENV !== 'production';
 
-  if (process.env.NODE_ENV !== 'production') {
-    console.error(err);
-    return res.status(status).json({
-      error: err.message || 'Internal server error',
-      stack: err.stack,
-    });
+  if (status >= 500) {
+    console.error('[FortDefend Error]', err.message, isDev ? err.stack : '');
   }
 
-  // Production: generic message only
-  console.error(`[ERROR] ${status} - ${err.message} - ${req.method} ${req.path}`);
   res.status(status).json({
-    error: status === 500 ? 'Internal server error' : err.message,
+    error: isDev ? err.message : 'Something went wrong. Please try again.',
+    ...(isDev && { stack: err.stack }),
   });
 });
 
-// ─── Start server ─────────────────────────────────────────────────────────────
+// ── Start ─────────────────────────────────────────────────────────────────────
 const PORT = process.env.PORT || 3000;
 app.listen(PORT, () => {
-  console.log(`PatchPilot server running on port ${PORT} [${process.env.NODE_ENV || 'development'}]`);
+  console.log(`[FortDefend] Server running on port ${PORT}`);
+  startTrialMonitor();
 });
 
 module.exports = app;

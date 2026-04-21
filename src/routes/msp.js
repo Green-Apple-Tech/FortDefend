@@ -26,10 +26,11 @@ router.get('/clients', requireAuth, requireMsp, async (req, res) => {
 
     const withStats = await Promise.all(
       clients.map(async (client) => {
-        const [devices, alerts, patches] = await Promise.all([
+        const [devices, alerts, patches, lastSeen] = await Promise.all([
           db('devices').where('org_id', client.id).count('id as count').first(),
           db('alerts').where('org_id', client.id).where('resolved', false).count('id as count').first(),
           db('patch_history').where('org_id', client.id).whereRaw("created_at > now() - interval '30 days'").count('id as count').first(),
+          db('devices').where('org_id', client.id).max('last_seen as last_seen').first(),
         ]);
         const devicesCount = parseInt(devices?.count || 0, 10);
         const alertsCount = parseInt(alerts?.count || 0, 10);
@@ -40,6 +41,7 @@ router.get('/clients', requireAuth, requireMsp, async (req, res) => {
           activeAlerts: alertsCount,
           patches30d: parseInt(patches?.count || 0, 10),
           securityScore,
+          lastSeen: lastSeen?.last_seen || null,
         };
       })
     );

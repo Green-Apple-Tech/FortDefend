@@ -30,8 +30,8 @@ export function Input({ label, className = '', id, ...props }) {
   );
 }
 
-export function Card({ children, className = '' }) {
-  return <div className={`rounded-xl border border-gray-200 bg-white p-6 shadow-sm ${className}`}>{children}</div>;
+export function Card({ children, className = '', ...props }) {
+  return <div className={`rounded-xl border border-gray-200 bg-white p-6 shadow-sm ${className}`} {...props}>{children}</div>;
 }
 
 export function Badge({ children, tone = 'default' }) {

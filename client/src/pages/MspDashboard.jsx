@@ -69,9 +69,14 @@ export default function MspDashboard() {
 
   return (
     <div className="space-y-6">
-      <div>
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <div>
         <h1 className="text-2xl font-bold text-gray-900">MSP Dashboard</h1>
         <p className="text-sm text-gray-600">Multi-tenant security view across all your managed clients.</p>
+        </div>
+        <Button onClick={() => document.getElementById('add-client-form')?.scrollIntoView({ behavior: 'smooth', block: 'start' })}>
+          Add New Client
+        </Button>
       </div>
 
       {error && <div className="rounded-lg bg-red-50 px-3 py-2 text-sm text-red-700">{error}</div>}
@@ -94,10 +99,11 @@ export default function MspDashboard() {
             <table className="min-w-full text-sm">
               <thead className="bg-gray-50 text-left text-xs uppercase text-gray-500">
                 <tr>
-                  <th className="px-3 py-2">Client</th>
+                  <th className="px-3 py-2">Client name</th>
                   <th className="px-3 py-2">Devices</th>
-                  <th className="px-3 py-2">Active Alerts</th>
                   <th className="px-3 py-2">Security Score</th>
+                  <th className="px-3 py-2">Active alerts</th>
+                  <th className="px-3 py-2">Last seen</th>
                   <th className="px-3 py-2">Action</th>
                 </tr>
               </thead>
@@ -106,15 +112,16 @@ export default function MspDashboard() {
                   <tr key={c.id} className="border-t border-gray-100">
                     <td className="px-3 py-2 font-medium text-gray-900">{c.name}</td>
                     <td className="px-3 py-2">{c.devices ?? 0}</td>
-                    <td className="px-3 py-2">{c.activeAlerts ?? 0}</td>
                     <td className="px-3 py-2">{c.securityScore ?? 'N/A'}</td>
+                    <td className="px-3 py-2">{c.activeAlerts ?? 0}</td>
+                    <td className="px-3 py-2">{c.lastSeen ? new Date(c.lastSeen).toLocaleString() : 'Never'}</td>
                     <td className="px-3 py-2">
-                      <Button variant="outline" onClick={() => onSwitch(c.id)}>Switch Context</Button>
+                      <Button variant="outline" onClick={() => onSwitch(c.id)}>View</Button>
                     </td>
                   </tr>
                 ))}
                 {clients.length === 0 && (
-                  <tr><td className="px-3 py-4 text-gray-500" colSpan={5}>No client orgs yet.</td></tr>
+                  <tr><td className="px-3 py-4 text-gray-500" colSpan={6}>No client orgs yet.</td></tr>
                 )}
               </tbody>
             </table>
@@ -122,7 +129,7 @@ export default function MspDashboard() {
         )}
       </Card>
 
-      <Card>
+      <Card id="add-client-form">
         <h2 className="font-semibold text-gray-900">Add new client</h2>
         <form onSubmit={onCreate} className="mt-4 flex flex-col gap-3 sm:flex-row">
           <Input label="Client organization name" value={name} onChange={(e) => setName(e.target.value)} className="sm:flex-1" />

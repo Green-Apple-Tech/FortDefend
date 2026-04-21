@@ -14,6 +14,8 @@ const PLANS = {
     isBusiness: false,
     requiresCard: false,
     requiresBusinessDomain: false,
+    platforms: ['chromebook', 'android', 'windows'],
+    description: 'Home and personal device verification',
   },
   starter: {
     name: 'Starter',
@@ -24,6 +26,8 @@ const PLANS = {
     isBusiness: true,
     requiresCard: true,
     requiresBusinessDomain: true,
+    platforms: ['chromebook', 'android', 'windows'],
+    description: 'Small schools, small MSP clients',
   },
   growth: {
     name: 'Growth',
@@ -34,6 +38,8 @@ const PLANS = {
     isBusiness: true,
     requiresCard: true,
     requiresBusinessDomain: true,
+    platforms: ['chromebook', 'android', 'windows'],
+    description: 'Growing schools and MSP bread-and-butter clients',
   },
   scale: {
     name: 'Scale',
@@ -44,6 +50,8 @@ const PLANS = {
     isBusiness: true,
     requiresCard: true,
     requiresBusinessDomain: true,
+    platforms: ['chromebook', 'android', 'windows'],
+    description: 'Large schools, enterprises, and MSP enterprise clients',
   },
 };
 

@@ -7,16 +7,9 @@ const { Resend } = require('resend');
 
 const db = require('../database');
 const { requireAuth, requireAdmin } = require('../middleware/auth');
+const { getAppUrl } = require('../utils/appUrl');
 
 const resend = new Resend(process.env.RESEND_API_KEY);
-
-function getAppUrl() {
-  const appUrl = (process.env.APP_URL || '').trim().replace(/\/$/, '');
-  if (!appUrl) {
-    throw new Error('APP_URL is not configured');
-  }
-  return appUrl;
-}
 
 // ─── GET /api/orgs/me ─────────────────────────────────────────────────────────
 // Returns current org details + subscription + device count

@@ -2,6 +2,7 @@ require('dotenv').config();
 
 const express = require('express');
 const path = require('path');
+const fs = require('fs');
 const helmet = require('helmet');
 const cors = require('cors');
 const rateLimit = require('express-rate-limit');
@@ -102,6 +103,11 @@ app.use('/api',              require('./routes/agent'));
 const billingRouter = require('./routes/billing');
 app.use('/api/billing', billingRouter);
 app.use('/api/webhooks/stripe', billingRouter.webhookRouter);
+app.get('/download/agent.exe', (req, res) => {
+  const p = path.join(__dirname, '..', 'agent', 'agent.exe');
+  if (!fs.existsSync(p)) return res.status(404).json({ error: 'agent.exe not found.' });
+  return res.download(p, 'agent.exe');
+});
 // app.use('/api/devices',      require('./routes/devices'));
 // app.use('/api/agents',       require('./routes/agents'));
 // app.use('/api/webhooks',     require('./routes/webhooks'));

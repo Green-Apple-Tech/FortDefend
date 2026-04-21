@@ -1,6 +1,7 @@
 require('dotenv').config();
 
 const express = require('express');
+const path = require('path');
 const helmet = require('helmet');
 const cors = require('cors');
 const rateLimit = require('express-rate-limit');
@@ -102,6 +103,22 @@ app.use('/api/webhooks/stripe', billingRouter.webhookRouter);
 // app.use('/api/agents',       require('./routes/agents'));
 // app.use('/api/webhooks',     require('./routes/webhooks'));
 // app.use('/api/reports',      require('./routes/reports'));
+
+// ─── API 404 handler ─────────────────────────────────────────────────────────
+app.use('/api', (req, res) => {
+  res.status(404).json({ error: 'Not found' });
+});
+
+// ─── Frontend static files (after API routes) ───────────────────────────────
+const clientDistPath = path.join(__dirname, '..', 'client', 'dist');
+app.use(express.static(clientDistPath));
+
+// Serve React app for any non-API, non-health route
+app.get('*', (req, res, next) => {
+  if (req.path === '/health' || req.path.startsWith('/api/')) return next();
+  res.sendFile(path.join(clientDistPath, 'index.html'));
+});
+
 // ─── 404 handler ─────────────────────────────────────────────────────────────
 app.use((req, res) => {
   res.status(404).json({ error: 'Not found' });

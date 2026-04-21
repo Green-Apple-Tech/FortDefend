@@ -5,6 +5,7 @@
   "main": "src/server.js",
   "scripts": {
     "start": "node src/server.js",
+    "build": "cd client && npm install && npm run build",
     "dev": "nodemon src/server.js",
     "migrate": "node -e \"require('./src/database').runMigrations()\"",
     "audit": "npm audit --audit-level=high"

@@ -25,7 +25,17 @@ exports.up = async function up(knex) {
       .update({ org_type: 'client' });
   }
 
-  await knex.raw("ALTER TYPE users_role ADD VALUE IF NOT EXISTS 'msp'");
+  const enumType = await knex('pg_type').where('typname', 'users_role').first();
+  if (enumType) {
+    await knex.raw("ALTER TYPE users_role ADD VALUE IF NOT EXISTS 'msp'");
+  } else {
+    const hasRole = await knex.schema.hasColumn('users', 'role');
+    if (hasRole) {
+      await knex.raw("ALTER TABLE users ALTER COLUMN role TYPE text");
+      await knex.raw("ALTER TABLE users DROP CONSTRAINT IF EXISTS users_role_check");
+      await knex.raw("ALTER TABLE users ADD CONSTRAINT users_role_check CHECK (role IN ('admin','viewer','msp'))");
+    }
+  }
 };
 
 exports.down = async function down(knex) {

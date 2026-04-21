@@ -2,10 +2,10 @@ import { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { api } from '../lib/api';
 import { useAuth } from '../context/AuthContext';
-import { Card, Badge, Button } from '../components/ui';
+import { Card, Badge, Button, Spinner } from '../components/ui';
 
 export default function Dashboard() {
-  const { org, user } = useAuth();
+  const { user, org, isLoading } = useAuth();
   const [summary, setSummary] = useState(null);
   const [devices, setDevices] = useState([]);
   const [alerts, setAlerts] = useState([]);
@@ -56,6 +56,9 @@ export default function Dashboard() {
     : 'N/A';
   const activeThreats = alerts.filter((a) => a?.severity === 'critical').length;
   const devicesEnrolled = Number.isFinite(Number(org?.deviceCount)) ? Number(org?.deviceCount) : devices.length;
+
+  if (isLoading) return <Spinner />;
+  if (!user) return null;
 
   return (
     <div className="space-y-8">

@@ -134,6 +134,7 @@ export function AuthProvider({ children }) {
       user,
       org,
       loading,
+      isLoading: loading,
       login,
       completeTotpLogin,
       logout,

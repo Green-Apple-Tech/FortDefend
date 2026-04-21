@@ -18,7 +18,7 @@ export default function Settings() {
     let cancelled = false;
     (async () => {
       try {
-        const [org] = await Promise.all([api('/api/orgs/me'), api('/api/integrations/status').catch(() => null)]);
+        const org = await api('/api/orgs/me');
         if (!cancelled && org?.name) setOrgName(org.name);
       } catch {
         /* ignore */

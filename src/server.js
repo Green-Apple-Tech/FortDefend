@@ -110,9 +110,6 @@ app.get('/download/agent.exe', (req, res) => {
   if (!fs.existsSync(p)) return res.status(404).json({ error: 'agent.exe not found.' });
   return res.download(p, 'agent.exe');
 });
-// app.use('/api/devices',      require('./routes/devices'));
-// app.use('/api/agents',       require('./routes/agents'));
-// app.use('/api/webhooks',     require('./routes/webhooks'));
 
 // ─── API 404 handler ─────────────────────────────────────────────────────────
 app.use('/api', (req, res) => {

@@ -1,278 +1,201 @@
-require('dotenv').config();
 const express = require('express');
 const router = express.Router();
 const bcrypt = require('bcryptjs');
 const jwt = require('jsonwebtoken');
 const speakeasy = require('speakeasy');
 const QRCode = require('qrcode');
+const crypto = require('crypto');
 const { v4: uuidv4 } = require('uuid');
 const { z } = require('zod');
 const { Resend } = require('resend');
-const crypto = require('crypto');
-const { encrypt, decrypt } = require('../lib/crypto');
-const { getAppUrl } = require('../utils/appUrl');
-
 const db = require('../database');
+const { requireAuth } = require('../middleware/auth');
+const { PLANS, isBusinessDomain, getTrialEndDate } = require('../config/plans');
+
 const resend = new Resend(process.env.RESEND_API_KEY);
 
-// ─── JWT helpers ─────────────────────────────────────────────────────────────
-function signAccessToken(payload) {
-  return jwt.sign(payload, process.env.JWT_SECRET, { expiresIn: '15m' });
+function encrypt(text) {
+  const iv = crypto.randomBytes(12);
+  const key = Buffer.from(process.env.ENCRYPTION_KEY, 'hex');
+  const cipher = crypto.createCipheriv('aes-256-gcm', key, iv);
+  const encrypted = Buffer.concat([cipher.update(text, 'utf8'), cipher.final()]);
+  const tag = cipher.getAuthTag();
+  return `${iv.toString('hex')}:${encrypted.toString('hex')}:${tag.toString('hex')}`;
 }
 
-function signRefreshToken(payload) {
-  return jwt.sign(payload, process.env.JWT_SECRET, { expiresIn: '7d' });
+function decrypt(ciphertext) {
+  const [ivHex, encHex, tagHex] = ciphertext.split(':');
+  const key = Buffer.from(process.env.ENCRYPTION_KEY, 'hex');
+  const decipher = crypto.createDecipheriv(
+    'aes-256-gcm', key, Buffer.from(ivHex, 'hex')
+  );
+  decipher.setAuthTag(Buffer.from(tagHex, 'hex'));
+  return decipher.update(Buffer.from(encHex, 'hex')) + decipher.final('utf8');
 }
 
-function setRefreshCookie(res, token) {
-  res.cookie('refreshToken', token, {
-    httpOnly: true,
-    secure: process.env.NODE_ENV === 'production',
-    sameSite: 'strict',
-    maxAge: 7 * 24 * 60 * 60 * 1000, // 7 days
-  });
+function signTokens(user, org) {
+  const access = jwt.sign(
+    { userId: user.id, orgId: org.id, role: user.role,
+      email: user.email, plan: org.plan },
+    process.env.JWT_SECRET,
+    { expiresIn: '15m' }
+  );
+  const refresh = jwt.sign(
+    { userId: user.id, type: 'refresh' },
+    process.env.JWT_SECRET,
+    { expiresIn: '7d' }
+  );
+  return { access, refresh };
 }
 
-async function issueTokens(res, user, org) {
-  const refreshToken = signRefreshToken({ userId: user.id, type: 'refresh' });
-  // Store refresh token in DB
-  await db('users').where('id', user.id).update({
-    last_login_at: new Date(),
-  });
-  // Save refresh token (we use a simple approach: store in a refresh_tokens table or in user row)
-  // For simplicity, we store hashed in users table via a separate column added later
-  // Here we just set the cookie
-  setRefreshCookie(res, refreshToken);
-
-  const accessToken = signAccessToken({
-    userId: user.id,
-    orgId: user.org_id,
-    role: user.role,
-    email: user.email,
-  });
-
-  return accessToken;
-}
-
-// ─── Email helpers ────────────────────────────────────────────────────────────
-async function sendVerificationEmail(email, token) {
-  const link = `${getAppUrl()}/verify-email?token=${encodeURIComponent(token)}`;
-  await resend.emails.send({
-    from: process.env.FROM_EMAIL,
-    to: email,
-    subject: 'Verify your FortDefend account',
-    html: `
-      <h2>Welcome to FortDefend</h2>
-      <p>Click the link below to verify your email address:</p>
-      <a href="${link}" style="background:#185FA5;color:white;padding:12px 24px;text-decoration:none;border-radius:4px;display:inline-block">Verify Email</a>
-      <p>This link expires in 24 hours.</p>
-      <p>If you did not create an account, ignore this email.</p>
-    `,
-  });
-}
-
-async function sendPasswordResetEmail(email, token) {
-  const link = `${getAppUrl()}/reset-password?token=${encodeURIComponent(token)}`;
-  await resend.emails.send({
-    from: process.env.FROM_EMAIL,
-    to: email,
-    subject: 'Reset your FortDefend password',
-    html: `
-      <h2>Password Reset</h2>
-      <p>Click the link below to reset your password. This link expires in 1 hour.</p>
-      <a href="${link}" style="background:#185FA5;color:white;padding:12px 24px;text-decoration:none;border-radius:4px;display:inline-block">Reset Password</a>
-      <p>If you did not request a password reset, ignore this email.</p>
-    `,
-  });
-}
-
-async function sendNewLoginEmail(email, ip) {
-  await resend.emails.send({
-    from: process.env.FROM_EMAIL,
-    to: email,
-    subject: 'New login detected on your FortDefend account',
-    html: `
-      <h2>New Login Detected</h2>
-      <p>A login was detected from a new location.</p>
-      <p><strong>IP Address:</strong> ${ip}</p>
-      <p><strong>Time:</strong> ${new Date().toUTCString()}</p>
-      <p>If this was you, no action is needed. If you did not log in, change your password immediately.</p>
-    `,
-  });
-}
-
-// ─── Validation schemas ───────────────────────────────────────────────────────
 const signupSchema = z.object({
   email: z.string().email(),
-  password: z.string()
-    .min(8, 'Password must be at least 8 characters')
-    .regex(/[A-Z]/, 'Password must contain an uppercase letter')
-    .regex(/[0-9]/, 'Password must contain a number'),
-  orgName: z.string().min(1).optional(),
+  password: z.string().min(8).regex(/[A-Z]/).regex(/[0-9]/),
+  orgName: z.string().min(2),
+  plan: z.enum(['personal','starter','growth','scale']).default('personal'),
 });
 
-const loginSchema = z.object({
-  email: z.string().email(),
-  password: z.string().min(1),
-});
+const passwordSchema = z.string().min(8).regex(/[A-Z]/).regex(/[0-9]/);
 
-const totpSchema = z.object({
-  code: z.string().length(6).regex(/^\d{6}$/),
-});
-
-// ─── POST /api/auth/signup ────────────────────────────────────────────────────
-router.post('/signup', async (req, res) => {
+router.post('/signup', async (req, res, next) => {
   try {
     const parsed = signupSchema.safeParse(req.body);
     if (!parsed.success) {
-      return res.status(400).json({ error: parsed.error.errors[0].message });
+      return res.status(400).json({ error: 'Validation failed', issues: parsed.error.issues });
     }
-    const { email, password, orgName } = parsed.data;
+    const { email, password, orgName, plan } = parsed.data;
+    const planConfig = PLANS[plan];
 
-    // Check if email already registered
-    const existing = await db('users').where('email', email.toLowerCase()).first();
+    if (planConfig.requiresBusinessDomain && !isBusinessDomain(email)) {
+      return res.status(400).json({
+        error: 'business_email_required',
+        message: 'Business plans require a company email. Use your work email or choose the personal plan.',
+      });
+    }
+
+    const existing = await db('users').where({ email }).first();
     if (existing) {
       return res.status(409).json({ error: 'An account with this email already exists.' });
     }
 
     const passwordHash = await bcrypt.hash(password, 12);
-    const emailVerifyToken = uuidv4();
+    const verifyToken = uuidv4();
+    const trialEndsAt = getTrialEndDate();
+    const orgId = uuidv4();
+    const userId = uuidv4();
 
-    // Create org and user in a transaction
     await db.transaction(async (trx) => {
-      const [org] = await trx('orgs').insert({
-        id: db.raw('gen_random_uuid()'),
-        name: orgName || email.split('@')[0] + "'s Organization",
-        plan: null,
-        device_limit: 5,
-      }).returning('*');
-
+      await trx('orgs').insert({
+        id: orgId,
+        name: orgName,
+        plan,
+        device_limit: planConfig.deviceLimit,
+        subscription_status: 'trialing',
+        trial_ends_at: trialEndsAt,
+        trial_started_at: new Date(),
+        created_at: new Date(),
+        updated_at: new Date(),
+      });
       await trx('users').insert({
-        id: db.raw('gen_random_uuid()'),
-        org_id: org.id,
-        email: email.toLowerCase(),
+        id: userId,
+        org_id: orgId,
+        email,
         password_hash: passwordHash,
         role: 'admin',
         email_verified: false,
-        email_verify_token: emailVerifyToken,
+        email_verify_token: verifyToken,
+        created_at: new Date(),
+        updated_at: new Date(),
       });
-
-      // Create default org_integrations row
-      await trx('org_integrations').insert({ org_id: org.id });
     });
 
-    await sendVerificationEmail(email, emailVerifyToken);
+    await resend.emails.send({
+      from: process.env.FROM_EMAIL,
+      to: email,
+      subject: 'Verify your FortDefend account',
+      html: `
+        <p>Welcome to FortDefend!</p>
+        <p>Click below to verify your email and start your 10-day free trial.
+           All 15 AI agents, full access.</p>
+        <p>
+          <a href="${process.env.APP_URL}/verify-email?token=${verifyToken}"
+             style="background:#185FA5;color:#fff;padding:12px 24px;
+                    border-radius:6px;text-decoration:none;font-weight:bold">
+            Verify my email and start trial
+          </a>
+        </p>
+        ${planConfig.requiresCard
+          ? '<p style="color:#8a887e;font-size:12px">Your card is saved but will not be charged until you activate your plan after the trial.</p>'
+          : '<p style="color:#8a887e;font-size:12px">No card required for the personal plan.</p>'
+        }
+      `,
+    });
 
-    res.status(201).json({ message: 'Check your email to verify your account.' });
-  } catch (err) {
-    console.error('Signup error:', err);
-    res.status(500).json({ error: 'Signup failed. Please try again.' });
-  }
+    res.status(201).json({
+      message: 'Check your email to verify your account and start your 10-day free trial.',
+      requiresCard: planConfig.requiresCard,
+    });
+  } catch (err) { next(err); }
 });
 
-// ─── POST /api/auth/verify-email ─────────────────────────────────────────────
-router.post('/verify-email', async (req, res) => {
+router.post('/verify-email', async (req, res, next) => {
   try {
     const { token } = req.body;
-    if (!token) return res.status(400).json({ error: 'Token is required.' });
-
-    const user = await db('users').where('email_verify_token', token).first();
-    if (!user) return res.status(400).json({ error: 'Invalid or expired verification link.' });
-
-    await db('users').where('id', user.id).update({
+    const user = await db('users').where({ email_verify_token: token }).first();
+    if (!user) {
+      return res.status(400).json({ error: 'Invalid or expired verification link.' });
+    }
+    await db('users').where({ id: user.id }).update({
       email_verified: true,
       email_verify_token: null,
+      updated_at: new Date(),
     });
-
-    res.json({ message: 'Email verified. You can now log in.' });
-  } catch (err) {
-    console.error('Verify email error:', err);
-    res.status(500).json({ error: 'Verification failed.' });
-  }
+    res.json({ message: 'Email verified. Your 10-day free trial is now active.' });
+  } catch (err) { next(err); }
 });
 
-// ─── POST /api/auth/login ─────────────────────────────────────────────────────
-router.post('/login', async (req, res) => {
+router.post('/login', async (req, res, next) => {
   try {
-    const parsed = loginSchema.safeParse(req.body);
-    if (!parsed.success) {
-      return res.status(400).json({ error: 'Invalid email or password format.' });
-    }
-    const { email, password } = parsed.data;
-    const ip = req.ip || req.headers['x-forwarded-for'] || 'unknown';
-    const userAgent = req.headers['user-agent'] || 'unknown';
-
-    const user = await db('users').where('email', email.toLowerCase()).first();
-
-    // Generic error to avoid revealing if email exists
-    if (!user) {
-      return res.status(401).json({ error: 'Invalid email or password.' });
+    const { email, password } = req.body;
+    if (!email || !password) {
+      return res.status(400).json({ error: 'Email and password required.' });
     }
 
-    // Check if account is locked
-    if (user.locked_until && new Date(user.locked_until) > new Date()) {
-      const minutesLeft = Math.ceil((new Date(user.locked_until) - new Date()) / 60000);
-      return res.status(423).json({
-        error: `Account locked due to too many failed attempts. Try again in ${minutesLeft} minutes.`
-      });
+    const user = await db('users').where({ email }).first();
+    if (!user) return res.status(401).json({ error: 'Invalid email or password.' });
+
+    if (user.locked_until && new Date() < new Date(user.locked_until)) {
+      return res.status(429).json({ error: 'Account temporarily locked. Try again later.' });
     }
 
-    // Verify password
-    const passwordValid = await bcrypt.compare(password, user.password_hash);
-    if (!passwordValid) {
+    const valid = await bcrypt.compare(password, user.password_hash);
+    if (!valid) {
       const attempts = (user.failed_login_attempts || 0) + 1;
-      const lockUntil = attempts >= 10 ? new Date(Date.now() + 30 * 60 * 1000) : null;
-
-      await db('users').where('id', user.id).update({
-        failed_login_attempts: attempts,
-        locked_until: lockUntil,
-      });
-
-      // Log failed attempt
-      await db('audit_log').insert({
-        id: db.raw('gen_random_uuid()'),
-        org_id: user.org_id,
-        user_id: user.id,
-        action: 'login_failed',
-        ip_address: ip,
-        user_agent: userAgent,
-      });
-
+      const update = { failed_login_attempts: attempts, updated_at: new Date() };
       if (attempts >= 10) {
-        return res.status(423).json({ error: 'Too many failed attempts. Account locked for 30 minutes.' });
+        update.locked_until = new Date(Date.now() + 30 * 60 * 1000);
       }
+      await db('users').where({ id: user.id }).update(update);
       return res.status(401).json({ error: 'Invalid email or password.' });
     }
 
-    // Check email verified
     if (!user.email_verified) {
       return res.status(401).json({
-        error: 'Please verify your email before logging in. Check your inbox.'
+        error: 'email_not_verified',
+        message: 'Please verify your email before logging in.',
       });
     }
 
-    // Reset failed attempts on successful password check
-    await db('users').where('id', user.id).update({ failed_login_attempts: 0, locked_until: null });
-
-    // Detect new IP
-    if (user.last_login_ip && user.last_login_ip !== ip) {
-      sendNewLoginEmail(user.email, ip).catch(console.error);
-    }
-
-    // Update last login IP
-    await db('users').where('id', user.id).update({ last_login_ip: ip });
-
-    // Log successful login
-    await db('audit_log').insert({
-      id: db.raw('gen_random_uuid()'),
-      org_id: user.org_id,
-      user_id: user.id,
-      action: 'login_success',
-      ip_address: ip,
-      user_agent: userAgent,
+    await db('users').where({ id: user.id }).update({
+      failed_login_attempts: 0,
+      locked_until: null,
+      last_login_at: new Date(),
+      last_login_ip: req.ip,
+      updated_at: new Date(),
     });
 
-    // If 2FA is enabled, return a temp token
+    const org = await db('orgs').where({ id: user.org_id }).first();
+
     if (user.totp_enabled) {
       const tempToken = jwt.sign(
         { userId: user.id, type: 'totp_pending' },
@@ -282,292 +205,235 @@ router.post('/login', async (req, res) => {
       return res.json({ requiresTOTP: true, tempToken });
     }
 
-    // No 2FA yet — issue full tokens and hint to set up 2FA
-    const accessToken = await issueTokens(res, user, null);
-    res.json({ accessToken, setupTOTP: true });
+    const { access, refresh } = signTokens(user, org);
+    await db('users').where({ id: user.id }).update({
+      refresh_token: refresh, updated_at: new Date(),
+    });
 
-  } catch (err) {
-    console.error('Login error:', err);
-    res.status(500).json({ error: 'Login failed. Please try again.' });
-  }
+    res.cookie('refresh_token', refresh, {
+      httpOnly: true, secure: true, sameSite: 'strict',
+      maxAge: 7 * 24 * 60 * 60 * 1000,
+    });
+
+    res.json({
+      accessToken: access,
+      user: { id: user.id, email: user.email, role: user.role },
+      org: {
+        id: org.id, name: org.name, plan: org.plan,
+        subscriptionStatus: org.subscription_status,
+        trialEndsAt: org.trial_ends_at,
+        graceEndsAt: org.grace_ends_at,
+        isReadOnly: org.is_read_only,
+      },
+      setupTOTP: !user.totp_enabled,
+    });
+  } catch (err) { next(err); }
 });
 
-// ─── POST /api/auth/login/totp ────────────────────────────────────────────────
-router.post('/login/totp', async (req, res) => {
+router.post('/login/totp', async (req, res, next) => {
   try {
     const { tempToken, code } = req.body;
-    if (!tempToken || !code) {
-      return res.status(400).json({ error: 'Token and code are required.' });
-    }
-
     let payload;
     try {
       payload = jwt.verify(tempToken, process.env.JWT_SECRET);
     } catch {
       return res.status(401).json({ error: 'Session expired. Please log in again.' });
     }
-
     if (payload.type !== 'totp_pending') {
-      return res.status(401).json({ error: 'Invalid token type.' });
+      return res.status(401).json({ error: 'Invalid token.' });
     }
 
-    const user = await db('users').where('id', payload.userId).first();
+    const user = await db('users').where({ id: payload.userId }).first();
     if (!user) return res.status(401).json({ error: 'User not found.' });
 
-    // Check if locked
-    if (user.locked_until && new Date(user.locked_until) > new Date()) {
-      return res.status(423).json({ error: 'Account temporarily locked.' });
-    }
-
-    // Verify TOTP code
     const secret = decrypt(user.totp_secret_enc);
     const valid = speakeasy.totp.verify({
-      secret,
-      encoding: 'base32',
-      token: code,
-      window: 1,
+      secret, encoding: 'base32', token: code, window: 1,
     });
 
     if (!valid) {
-      // Check backup codes
-      const backupCodes = user.backup_codes_hash || [];
-      let backupUsed = false;
-
-      for (let i = 0; i < backupCodes.length; i++) {
-        if (backupCodes[i] && await bcrypt.compare(code, backupCodes[i])) {
-          // Mark backup code as used
-          backupCodes[i] = null;
-          await db('users').where('id', user.id).update({
-            backup_codes_hash: JSON.stringify(backupCodes),
-          });
-          backupUsed = true;
-          break;
-        }
+      const attempts = (user.failed_login_attempts || 0) + 1;
+      const update = { failed_login_attempts: attempts, updated_at: new Date() };
+      if (attempts >= 3) {
+        update.locked_until = new Date(Date.now() + 15 * 60 * 1000);
       }
-
-      if (!backupUsed) {
-        const attempts = (user.failed_login_attempts || 0) + 1;
-        const lockUntil = attempts >= 3 ? new Date(Date.now() + 15 * 60 * 1000) : null;
-        await db('users').where('id', user.id).update({
-          failed_login_attempts: attempts,
-          locked_until: lockUntil,
-        });
-        return res.status(401).json({ error: 'Invalid 2FA code.' });
-      }
+      await db('users').where({ id: user.id }).update(update);
+      return res.status(401).json({ error: 'Invalid code.' });
     }
 
-    // Reset failed attempts
-    await db('users').where('id', user.id).update({ failed_login_attempts: 0, locked_until: null });
+    const org = await db('orgs').where({ id: user.org_id }).first();
+    const { access, refresh } = signTokens(user, org);
 
-    const accessToken = await issueTokens(res, user, null);
-    res.json({ accessToken });
-
-  } catch (err) {
-    console.error('TOTP login error:', err);
-    res.status(500).json({ error: 'Verification failed.' });
-  }
-});
-
-// ─── POST /api/auth/setup-totp ────────────────────────────────────────────────
-router.post('/setup-totp', require('../middleware/auth').requireAuth, async (req, res) => {
-  try {
-    const secret = speakeasy.generateSecret({
-      name: `${process.env.TOTP_ISSUER || 'FortDefend'} (${req.user.email})`,
-      issuer: process.env.TOTP_ISSUER || 'FortDefend',
+    await db('users').where({ id: user.id }).update({
+      refresh_token: refresh,
+      failed_login_attempts: 0,
+      locked_until: null,
+      updated_at: new Date(),
     });
 
-    // Generate backup codes (10 random 8-char codes)
+    res.cookie('refresh_token', refresh, {
+      httpOnly: true, secure: true, sameSite: 'strict',
+      maxAge: 7 * 24 * 60 * 60 * 1000,
+    });
+
+    res.json({ accessToken: access });
+  } catch (err) { next(err); }
+});
+
+router.post('/setup-totp', requireAuth, async (req, res, next) => {
+  try {
+    const user = await db('users').where({ id: req.user.userId }).first();
+    const secret = speakeasy.generateSecret({
+      name: `FortDefend (${user.email})`,
+      issuer: process.env.TOTP_ISSUER || 'FortDefend',
+    });
+    const qrCodeDataUrl = await QRCode.toDataURL(secret.otpauth_url);
     const backupCodes = Array.from({ length: 10 }, () =>
       crypto.randomBytes(4).toString('hex').toUpperCase()
     );
-
-    // Generate QR code
-    const qrCodeDataUrl = await QRCode.toDataURL(secret.otpauth_url);
-
-    // Store temp secret in session (not confirmed yet — don't save to DB yet)
-    // We'll save it when the user confirms with a valid code
-    // For now return the secret so the confirm endpoint can verify
-    const tempToken = jwt.sign(
-      { userId: req.user.id, totpSecret: secret.base32, backupCodes, type: 'totp_setup' },
+    const tempSecret = jwt.sign(
+      { secret: secret.base32, backupCodes },
       process.env.JWT_SECRET,
       { expiresIn: '10m' }
     );
-
-    res.json({
-      qrCodeDataUrl,
-      backupCodes,
-      setupToken: tempToken,
-    });
-  } catch (err) {
-    console.error('Setup TOTP error:', err);
-    res.status(500).json({ error: 'Failed to generate 2FA setup.' });
-  }
+    res.json({ qrCodeDataUrl, backupCodes, tempSecret });
+  } catch (err) { next(err); }
 });
 
-// ─── POST /api/auth/confirm-totp ─────────────────────────────────────────────
-router.post('/confirm-totp', require('../middleware/auth').requireAuth, async (req, res) => {
+router.post('/confirm-totp', requireAuth, async (req, res, next) => {
   try {
-    const { setupToken, code } = req.body;
-    if (!setupToken || !code) {
-      return res.status(400).json({ error: 'Setup token and code are required.' });
-    }
-
+    const { code, tempSecret } = req.body;
     let payload;
     try {
-      payload = jwt.verify(setupToken, process.env.JWT_SECRET);
+      payload = jwt.verify(tempSecret, process.env.JWT_SECRET);
     } catch {
-      return res.status(400).json({ error: 'Setup session expired. Start 2FA setup again.' });
+      return res.status(400).json({ error: 'Setup session expired. Please start again.' });
     }
 
-    if (payload.type !== 'totp_setup' || payload.userId !== req.user.id) {
-      return res.status(400).json({ error: 'Invalid setup token.' });
-    }
-
-    // Verify the code against the secret
     const valid = speakeasy.totp.verify({
-      secret: payload.totpSecret,
-      encoding: 'base32',
-      token: code,
-      window: 1,
+      secret: payload.secret, encoding: 'base32', token: code, window: 1,
     });
+    if (!valid) return res.status(400).json({ error: 'Invalid code. Please try again.' });
 
-    if (!valid) {
-      return res.status(400).json({ error: 'Invalid code. Please try again.' });
-    }
-
-    // Hash backup codes and save everything to DB
-    const hashedBackupCodes = await Promise.all(
+    const encryptedSecret = encrypt(payload.secret);
+    const hashedCodes = await Promise.all(
       payload.backupCodes.map(c => bcrypt.hash(c, 10))
     );
 
-    await db('users').where('id', req.user.id).update({
-      totp_secret_enc: encrypt(payload.totpSecret),
+    await db('users').where({ id: req.user.userId }).update({
+      totp_secret_enc: encryptedSecret,
       totp_enabled: true,
-      backup_codes_hash: JSON.stringify(hashedBackupCodes),
+      backup_codes_hash: JSON.stringify(hashedCodes),
+      updated_at: new Date(),
     });
 
-    res.json({ success: true, message: '2FA enabled successfully.' });
-  } catch (err) {
-    console.error('Confirm TOTP error:', err);
-    res.status(500).json({ error: 'Failed to confirm 2FA.' });
-  }
+    res.json({ success: true });
+  } catch (err) { next(err); }
 });
 
-// ─── POST /api/auth/refresh ───────────────────────────────────────────────────
-router.post('/refresh', async (req, res) => {
+router.post('/refresh', async (req, res, next) => {
   try {
-    const token = req.cookies?.refreshToken;
+    const token = req.cookies?.refresh_token;
     if (!token) return res.status(401).json({ error: 'No refresh token.' });
 
     let payload;
     try {
       payload = jwt.verify(token, process.env.JWT_SECRET);
     } catch {
-      return res.status(401).json({ error: 'Refresh token expired. Please log in again.' });
+      return res.status(401).json({ error: 'Invalid or expired refresh token.' });
     }
 
-    if (payload.type !== 'refresh') {
-      return res.status(401).json({ error: 'Invalid token type.' });
-    }
+    const user = await db('users')
+      .where({ id: payload.userId, refresh_token: token }).first();
+    if (!user) return res.status(401).json({ error: 'Session invalidated.' });
 
-    const user = await db('users').where('id', payload.userId).first();
-    if (!user) return res.status(401).json({ error: 'User not found.' });
+    const org = await db('orgs').where({ id: user.org_id }).first();
+    const { access, refresh: newRefresh } = signTokens(user, org);
 
-    // Rotate refresh token
-    const newRefreshToken = signRefreshToken({ userId: user.id, type: 'refresh' });
-    setRefreshCookie(res, newRefreshToken);
-
-    const accessToken = signAccessToken({
-      userId: user.id,
-      orgId: user.org_id,
-      role: user.role,
-      email: user.email,
+    await db('users').where({ id: user.id }).update({
+      refresh_token: newRefresh, updated_at: new Date(),
     });
 
-    res.json({ accessToken });
-  } catch (err) {
-    console.error('Refresh error:', err);
-    res.status(500).json({ error: 'Token refresh failed.' });
-  }
+    res.cookie('refresh_token', newRefresh, {
+      httpOnly: true, secure: true, sameSite: 'strict',
+      maxAge: 7 * 24 * 60 * 60 * 1000,
+    });
+
+    res.json({ accessToken: access });
+  } catch (err) { next(err); }
 });
 
-// ─── POST /api/auth/logout ────────────────────────────────────────────────────
-router.post('/logout', async (req, res) => {
-  res.clearCookie('refreshToken', {
-    httpOnly: true,
-    secure: process.env.NODE_ENV === 'production',
-    sameSite: 'strict',
-  });
-  res.json({ message: 'Logged out successfully.' });
+router.post('/logout', requireAuth, async (req, res, next) => {
+  try {
+    await db('users').where({ id: req.user.userId }).update({
+      refresh_token: null, updated_at: new Date(),
+    });
+    res.clearCookie('refresh_token');
+    res.json({ message: 'Logged out.' });
+  } catch (err) { next(err); }
 });
 
-// ─── POST /api/auth/forgot-password ──────────────────────────────────────────
-router.post('/forgot-password', async (req, res) => {
+router.post('/forgot-password', async (req, res, next) => {
   try {
     const { email } = req.body;
-    if (!email) return res.status(400).json({ error: 'Email is required.' });
+    const msg = 'If that email exists, a reset link has been sent.';
+    const user = await db('users').where({ email }).first();
+    if (!user) return res.json({ message: msg });
 
-    // Always return success to avoid revealing if email exists
-    const user = await db('users').where('email', email.toLowerCase()).first();
-    if (user) {
-      const resetToken = uuidv4();
-      const expires = new Date(Date.now() + 60 * 60 * 1000); // 1 hour
+    const resetToken = uuidv4();
+    await db('users').where({ id: user.id }).update({
+      password_reset_token: resetToken,
+      password_reset_expires: new Date(Date.now() + 60 * 60 * 1000),
+      updated_at: new Date(),
+    });
 
-      await db('users').where('id', user.id).update({
-        password_reset_token: resetToken,
-        password_reset_expires: expires,
-      });
+    await resend.emails.send({
+      from: process.env.FROM_EMAIL,
+      to: email,
+      subject: 'Reset your FortDefend password',
+      html: `
+        <p>Click below to reset your password. This link expires in 1 hour.</p>
+        <p>
+          <a href="${process.env.APP_URL}/reset-password?token=${resetToken}"
+             style="background:#185FA5;color:#fff;padding:12px 24px;
+                    border-radius:6px;text-decoration:none">
+            Reset my password
+          </a>
+        </p>
+      `,
+    });
 
-      await sendPasswordResetEmail(email, resetToken);
-    }
-
-    res.json({ message: 'If an account exists with that email, a reset link has been sent.' });
-  } catch (err) {
-    console.error('Forgot password error:', err);
-    res.status(500).json({ error: 'Failed to send reset email.' });
-  }
+    res.json({ message: msg });
+  } catch (err) { next(err); }
 });
 
-// ─── POST /api/auth/reset-password ───────────────────────────────────────────
-router.post('/reset-password', async (req, res) => {
+router.post('/reset-password', async (req, res, next) => {
   try {
     const { token, password } = req.body;
-    if (!token || !password) {
-      return res.status(400).json({ error: 'Token and new password are required.' });
+    if (!passwordSchema.safeParse(password).success) {
+      return res.status(400).json({
+        error: 'Password must be at least 8 characters with one uppercase letter and one number.',
+      });
     }
 
-    const parsed = z.string()
-      .min(8, 'Password must be at least 8 characters')
-      .regex(/[A-Z]/, 'Password must contain an uppercase letter')
-      .regex(/[0-9]/, 'Password must contain a number')
-      .safeParse(password);
+    const user = await db('users')
+      .where({ password_reset_token: token })
+      .where('password_reset_expires', '>', new Date())
+      .first();
 
-    if (!parsed.success) {
-      return res.status(400).json({ error: parsed.error.errors[0].message });
-    }
+    if (!user) return res.status(400).json({ error: 'Invalid or expired reset link.' });
 
-    const user = await db('users').where('password_reset_token', token).first();
-    if (!user || !user.password_reset_expires || new Date(user.password_reset_expires) < new Date()) {
-      return res.status(400).json({ error: 'Invalid or expired reset link.' });
-    }
-
-    const passwordHash = await bcrypt.hash(password, 12);
-
-    await db('users').where('id', user.id).update({
-      password_hash: passwordHash,
+    await db('users').where({ id: user.id }).update({
+      password_hash: await bcrypt.hash(password, 12),
       password_reset_token: null,
       password_reset_expires: null,
       failed_login_attempts: 0,
       locked_until: null,
+      updated_at: new Date(),
     });
 
-    res.json({ message: 'Password reset successfully. You can now log in.' });
-  } catch (err) {
-    console.error('Reset password error:', err);
-    res.status(500).json({ error: 'Password reset failed.' });
-  }
+    res.json({ message: 'Password reset. You can now log in.' });
+  } catch (err) { next(err); }
 });
 
 module.exports = router;
-module.exports.encrypt = encrypt;
-module.exports.decrypt = decrypt;

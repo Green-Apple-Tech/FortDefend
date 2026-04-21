@@ -1,327 +1,256 @@
-require('dotenv').config();
 const express = require('express');
-const Stripe = require('stripe');
-const { z } = require('zod');
-
+const router = express.Router();
+const stripe = require('stripe')(process.env.STRIPE_SECRET_KEY);
 const db = require('../database');
 const { requireAuth, requireAdmin } = require('../middleware/auth');
-const { getAppUrl } = require('../utils/appUrl');
+const { PLANS, getPlanByPriceId } = require('../config/plans');
+const { v4: uuidv4 } = require('uuid');
 
-const PLAN_LIMITS = {
-  personal: { device_limit: 5 },
-  starter: { device_limit: 50 },
-  growth: { device_limit: 100 },
-  scale: { device_limit: 1000 },
-};
-
-const CHECKOUT_PLANS = z.enum(['personal', 'starter', 'growth', 'scale']);
-
-function getStripe() {
-  const key = process.env.STRIPE_SECRET_KEY;
-  if (!key) {
-    const err = new Error('Stripe is not configured.');
-    err.status = 503;
-    throw err;
-  }
-  return new Stripe(key);
-}
-
-function priceIdToPlan() {
-  return {
-    [process.env.STRIPE_PERSONAL_PRICE_ID]: 'personal',
-    [process.env.STRIPE_STARTER_PRICE_ID]: 'starter',
-    [process.env.STRIPE_GROWTH_PRICE_ID]: 'growth',
-    [process.env.STRIPE_SCALE_PRICE_ID]: 'scale',
-  };
-}
-
-function planToPriceId(plan) {
-  const map = {
-    personal: process.env.STRIPE_PERSONAL_PRICE_ID,
-    starter: process.env.STRIPE_STARTER_PRICE_ID,
-    growth: process.env.STRIPE_GROWTH_PRICE_ID,
-    scale: process.env.STRIPE_SCALE_PRICE_ID,
-  };
-  return map[plan];
-}
-
-function resolvePlanFromSubscription(subscription) {
-  const priceMap = priceIdToPlan();
-  const item = subscription.items?.data?.[0];
-  const priceId = item?.price?.id;
-  if (priceId && priceMap[priceId]) return priceMap[priceId];
-  const metaPlan = subscription.metadata?.plan;
-  if (metaPlan && PLAN_LIMITS[metaPlan]) return metaPlan;
-  return null;
-}
-
-async function updateOrgFromSubscription(orgId, subscription) {
-  const plan = resolvePlanFromSubscription(subscription);
-  const limits = plan ? PLAN_LIMITS[plan] : null;
-
-  const updates = {
-    stripe_subscription_id: subscription.id,
-    subscription_status: subscription.status,
-    updated_at: new Date(),
-  };
-
-  if (subscription.current_period_end) {
-    updates.next_billing_at = new Date(subscription.current_period_end * 1000);
-  }
-
-  if (plan && limits) {
-    updates.plan = plan;
-    updates.device_limit = limits.device_limit;
-  }
-
-  await db('orgs').where('id', orgId).update(updates);
-}
-
-async function findOrgIdForStripeCustomer(customerId) {
-  if (!customerId) return null;
-  const org = await db('orgs').where('stripe_customer_id', customerId).first();
-  return org?.id || null;
-}
-
-const billingRouter = express.Router();
-const webhookRouter = express.Router();
-
-billingRouter.post('/checkout', requireAuth, async (req, res) => {
+router.post('/checkout', requireAuth, requireAdmin, async (req, res, next) => {
   try {
-    const parsed = z.object({ plan: CHECKOUT_PLANS }).safeParse(req.body);
-    if (!parsed.success) {
-      return res.status(400).json({ error: 'Invalid plan. Use personal, starter, growth, or scale.' });
-    }
+    const { plan, couponCode } = req.body;
+    if (!PLANS[plan]) return res.status(400).json({ error: 'Invalid plan.' });
 
-    const { plan } = parsed.data;
-    const priceId = planToPriceId(plan);
-    if (!priceId) {
-      return res.status(503).json({ error: 'Billing is not fully configured (missing price ID).' });
-    }
-
-    let appUrl;
-    try {
-      appUrl = getAppUrl();
-    } catch {
-      return res.status(503).json({ error: 'APP_URL is not configured.' });
-    }
-
-    const org = await db('orgs').where('id', req.user.orgId).first();
-    if (!org) return res.status(404).json({ error: 'Organization not found.' });
-
-    if (
-      org.stripe_subscription_id &&
-      org.subscription_status &&
-      ['active', 'trialing'].includes(org.subscription_status)
-    ) {
-      return res.status(409).json({
-        error: 'You already have an active subscription. Use the billing portal to change plans.',
-      });
-    }
-
-    const stripe = getStripe();
+    const planConfig = PLANS[plan];
+    const org = await db('orgs').where({ id: req.user.orgId }).first();
 
     let customerId = org.stripe_customer_id;
     if (!customerId) {
       const customer = await stripe.customers.create({
         email: req.user.email,
+        name: org.name,
         metadata: { org_id: org.id },
       });
       customerId = customer.id;
-      await db('orgs').where('id', org.id).update({
-        stripe_customer_id: customerId,
-        updated_at: new Date(),
-      });
+      await db('orgs').where({ id: org.id })
+        .update({ stripe_customer_id: customerId });
     }
 
-    const session = await stripe.checkout.sessions.create({
-      mode: 'subscription',
+    const { n } = await db('devices')
+      .where({ org_id: org.id }).count('id as n').first();
+    const deviceCount = Math.max(1, parseInt(n, 10));
+
+    const sessionParams = {
       customer: customerId,
-      line_items: [{ price: priceId, quantity: 1 }],
-      success_url: `${appUrl}/dashboard?payment=success`,
-      cancel_url: `${appUrl}/pricing`,
+      mode: 'subscription',
+      success_url: `${process.env.APP_URL}/dashboard?payment=success`,
+      cancel_url: `${process.env.APP_URL}/pricing`,
       metadata: { org_id: org.id, plan },
       subscription_data: {
         metadata: { org_id: org.id, plan },
+        ...(planConfig.isBusiness && {
+          trial_period_days: 10,
+          trial_settings: {
+            end_behavior: { missing_payment_method: 'pause' },
+          },
+          cancel_at: Math.floor(Date.now() / 1000) + (12 * 24 * 60 * 60),
+        }),
       },
-      allow_promotion_codes: true,
-    });
+      line_items: [{
+        price: planConfig.stripePriceId,
+        quantity: plan === 'personal' ? deviceCount : 1,
+      }],
+      ...(planConfig.isBusiness && {
+        payment_method_collection: 'always',
+        consent_collection: { terms_of_service: 'required' },
+      }),
+    };
 
-    if (!session.url) {
-      return res.status(500).json({ error: 'Checkout session did not return a URL.' });
+    if (couponCode) {
+      try {
+        await stripe.coupons.retrieve(couponCode);
+        sessionParams.discounts = [{ coupon: couponCode }];
+      } catch { /* invalid coupon */ }
     }
 
+    const session = await stripe.checkout.sessions.create(sessionParams);
     res.json({ checkoutUrl: session.url });
-  } catch (err) {
-    console.error('Billing checkout error:', err);
-    const status = err.status || 500;
-    res.status(status).json({ error: err.message || 'Failed to start checkout.' });
-  }
+  } catch (err) { next(err); }
 });
 
-billingRouter.get('/portal', requireAuth, requireAdmin, async (req, res) => {
+router.post('/activate', requireAuth, requireAdmin, async (req, res, next) => {
   try {
-    let appUrl;
+    const org = await db('orgs').where({ id: req.user.orgId }).first();
+    if (!org.stripe_subscription_id) {
+      return res.status(400).json({ error: 'No subscription found.' });
+    }
+    await stripe.subscriptions.update(org.stripe_subscription_id, {
+      trial_end: 'now',
+      cancel_at: null,
+      proration_behavior: 'none',
+    });
+    await db('orgs').where({ id: org.id }).update({
+      subscription_status: 'active',
+      is_read_only: false,
+      trial_ends_at: null,
+      grace_ends_at: null,
+      updated_at: new Date(),
+    });
+    res.json({ message: 'Plan activated. Welcome to FortDefend!' });
+  } catch (err) { next(err); }
+});
+
+router.post('/webhook',
+  express.raw({ type: 'application/json' }),
+  async (req, res) => {
+    let event;
     try {
-      appUrl = getAppUrl();
+      event = stripe.webhooks.constructEvent(
+        req.body,
+        req.headers['stripe-signature'],
+        process.env.STRIPE_WEBHOOK_SECRET
+      );
     } catch {
-      return res.status(503).json({ error: 'APP_URL is not configured.' });
+      return res.status(400).json({ error: 'Webhook signature invalid.' });
     }
 
-    const org = await db('orgs').where('id', req.user.orgId).first();
-    if (!org?.stripe_customer_id) {
-      return res.status(400).json({ error: 'No billing account on file. Subscribe first.' });
-    }
+    const obj = event.data.object;
 
-    const stripe = getStripe();
-    const portal = await stripe.billingPortal.sessions.create({
-      customer: org.stripe_customer_id,
-      return_url: `${appUrl}/dashboard`,
-    });
-
-    res.json({ portalUrl: portal.url });
-  } catch (err) {
-    console.error('Billing portal error:', err);
-    res.status(500).json({ error: err.message || 'Failed to open billing portal.' });
-  }
-});
-
-billingRouter.get('/status', requireAuth, async (req, res) => {
-  try {
-    const org = await db('orgs').where('id', req.user.orgId).first();
-    if (!org) return res.status(404).json({ error: 'Organization not found.' });
-
-    const deviceRow = await db('devices')
-      .where('org_id', req.user.orgId)
-      .count('id as count')
-      .first();
-
-    res.json({
-      current_plan: org.plan,
-      device_limit: org.device_limit != null ? parseInt(org.device_limit, 10) : 5,
-      device_count: parseInt(deviceRow.count, 10),
-      subscription_status: org.subscription_status,
-      next_billing_date: org.next_billing_at ? new Date(org.next_billing_at).toISOString() : null,
-    });
-  } catch (err) {
-    console.error('Billing status error:', err);
-    res.status(500).json({ error: 'Failed to load billing status.' });
-  }
-});
-
-webhookRouter.post('/', async (req, res) => {
-  const secret = process.env.STRIPE_WEBHOOK_SECRET;
-  if (!secret) {
-    console.error('STRIPE_WEBHOOK_SECRET is not set.');
-    return res.status(503).send('Webhook not configured.');
-  }
-
-  const sig = req.headers['stripe-signature'];
-  if (!sig) {
-    return res.status(400).send('Missing stripe-signature header.');
-  }
-
-  let event;
-  try {
-    const stripe = getStripe();
-    const payload = Buffer.isBuffer(req.body) ? req.body : Buffer.from(JSON.stringify(req.body));
-    event = stripe.webhooks.constructEvent(payload, sig, secret);
-  } catch (err) {
-    console.error('Stripe webhook signature verification failed:', err.message);
-    return res.status(400).send(`Webhook Error: ${err.message}`);
-  }
-
-  const stripe = getStripe();
-
-  try {
-    switch (event.type) {
-      case 'checkout.session.completed': {
-        const session = event.data.object;
-        if (session.mode !== 'subscription' || !session.subscription) break;
-
-        const orgId = session.metadata?.org_id;
-        if (!orgId) {
-          console.error('checkout.session.completed: missing org_id metadata');
+    try {
+      switch (event.type) {
+        case 'checkout.session.completed': {
+          const plan = obj.metadata?.plan;
+          if (!plan || !PLANS[plan]) break;
+          await db('orgs').where({ id: obj.metadata.org_id }).update({
+            plan,
+            device_limit: PLANS[plan].deviceLimit,
+            stripe_subscription_id: obj.subscription,
+            subscription_status: 'trialing',
+            updated_at: new Date(),
+          });
           break;
         }
-
-        const subscription = await stripe.subscriptions.retrieve(session.subscription, {
-          expand: ['items.data.price'],
-        });
-        await updateOrgFromSubscription(orgId, subscription);
-        break;
-      }
-
-      case 'customer.subscription.updated':
-      case 'customer.subscription.deleted': {
-        const subscription = event.data.object;
-        const orgId =
-          subscription.metadata?.org_id ||
-          (await findOrgIdForStripeCustomer(subscription.customer));
-
-        if (!orgId) {
-          console.error(`${event.type}: could not resolve org for subscription ${subscription.id}`);
+        case 'customer.subscription.updated': {
+          const priceId = obj.items?.data?.[0]?.price?.id;
+          const plan = getPlanByPriceId(priceId);
+          const orgRow = await db('orgs')
+            .where({ stripe_subscription_id: obj.id }).first();
+          if (!orgRow) break;
+          await db('orgs').where({ id: orgRow.id }).update({
+            ...(plan && { plan, device_limit: PLANS[plan].deviceLimit }),
+            subscription_status: obj.status,
+            updated_at: new Date(),
+          });
           break;
         }
-
-        if (event.type === 'customer.subscription.deleted') {
-          await db('orgs').where('id', orgId).update({
-            stripe_subscription_id: null,
+        case 'customer.subscription.deleted': {
+          const orgRow = await db('orgs')
+            .where({ stripe_subscription_id: obj.id }).first();
+          if (!orgRow) break;
+          await db('orgs').where({ id: orgRow.id }).update({
             subscription_status: 'canceled',
-            plan: null,
-            device_limit: 5,
-            next_billing_at: null,
+            is_read_only: true,
             updated_at: new Date(),
           });
           break;
         }
-
-        await updateOrgFromSubscription(orgId, subscription);
-        break;
-      }
-
-      case 'invoice.payment_failed': {
-        const invoice = event.data.object;
-        const orgId = await findOrgIdForStripeCustomer(invoice.customer);
-        if (!orgId) break;
-
-        await db('orgs').where('id', orgId).update({
-          subscription_status: 'past_due',
-          updated_at: new Date(),
-        });
-        break;
-      }
-
-      case 'invoice.paid': {
-        const invoice = event.data.object;
-        const orgId = await findOrgIdForStripeCustomer(invoice.customer);
-        if (!orgId) break;
-
-        if (invoice.subscription) {
-          const subscription = await stripe.subscriptions.retrieve(invoice.subscription, {
-            expand: ['items.data.price'],
-          });
-          await updateOrgFromSubscription(orgId, subscription);
-        } else {
-          await db('orgs').where('id', orgId).update({
-            subscription_status: 'active',
+        case 'invoice.payment_failed': {
+          const sub = await stripe.subscriptions.retrieve(obj.subscription);
+          const orgRow = await db('orgs')
+            .where({ stripe_subscription_id: sub.id }).first();
+          if (!orgRow) break;
+          await db('orgs').where({ id: orgRow.id }).update({
+            subscription_status: 'past_due',
             updated_at: new Date(),
           });
+          break;
         }
-        break;
+        case 'invoice.paid': {
+          const sub = await stripe.subscriptions.retrieve(obj.subscription);
+          const orgRow = await db('orgs')
+            .where({ stripe_subscription_id: sub.id }).first();
+          if (!orgRow) break;
+          await db('orgs').where({ id: orgRow.id }).update({
+            subscription_status: 'active',
+            is_read_only: false,
+            updated_at: new Date(),
+          });
+          break;
+        }
       }
-
-      default:
-        break;
+    } catch (err) {
+      console.error('Webhook error:', err.message);
     }
 
     res.json({ received: true });
-  } catch (err) {
-    console.error('Stripe webhook handler error:', err);
-    res.status(500).json({ error: 'Webhook handler failed.' });
   }
+);
+
+router.get('/status', requireAuth, async (req, res, next) => {
+  try {
+    const org = await db('orgs').where({ id: req.user.orgId }).first();
+    const { n } = await db('devices')
+      .where({ org_id: org.id }).count('id as n').first();
+    const deviceCount = parseInt(n, 10);
+    const now = new Date();
+    const trialDaysLeft = org.trial_ends_at
+      ? Math.max(0, Math.ceil((new Date(org.trial_ends_at) - now) / 86400000))
+      : null;
+    const graceDaysLeft = org.grace_ends_at
+      ? Math.max(0, Math.ceil((new Date(org.grace_ends_at) - now) / 86400000))
+      : null;
+    res.json({
+      plan: org.plan,
+      planName: PLANS[org.plan]?.name || 'None',
+      deviceLimit: org.device_limit,
+      deviceCount,
+      subscriptionStatus: org.subscription_status,
+      isReadOnly: org.is_read_only,
+      isTrialing: org.subscription_status === 'trialing',
+      trialEndsAt: org.trial_ends_at,
+      trialDaysLeft,
+      graceEndsAt: org.grace_ends_at,
+      graceDaysLeft,
+      monthlyTotal: org.plan === 'personal'
+        ? deviceCount : (PLANS[org.plan]?.price || 0),
+    });
+  } catch (err) { next(err); }
 });
 
-billingRouter.webhookRouter = webhookRouter;
+router.get('/portal', requireAuth, requireAdmin, async (req, res, next) => {
+  try {
+    const org = await db('orgs').where({ id: req.user.orgId }).first();
+    if (!org.stripe_customer_id) {
+      return res.status(400).json({ error: 'No billing account found. Please upgrade first.' });
+    }
+    const session = await stripe.billingPortal.sessions.create({
+      customer: org.stripe_customer_id,
+      return_url: `${process.env.APP_URL}/settings`,
+    });
+    res.json({ portalUrl: session.url });
+  } catch (err) { next(err); }
+});
 
-module.exports = billingRouter;
+router.post('/referral/generate', requireAuth, requireAdmin, async (req, res, next) => {
+  try {
+    const org = await db('orgs').where({ id: req.user.orgId }).first();
+    if (org.referral_code) {
+      return res.json({
+        referralCode: org.referral_code,
+        referralUrl: `${process.env.APP_URL}/signup?ref=${org.referral_code}`,
+      });
+    }
+    const code = uuidv4().slice(0, 8).toUpperCase();
+    await db('orgs').where({ id: org.id }).update({ referral_code: code });
+    res.json({
+      referralCode: code,
+      referralUrl: `${process.env.APP_URL}/signup?ref=${code}`,
+    });
+  } catch (err) { next(err); }
+});
+
+router.get('/referral/stats', requireAuth, requireAdmin, async (req, res, next) => {
+  try {
+    const org = await db('orgs').where({ id: req.user.orgId }).first();
+    const referrals = await db('referrals').where({ referrer_org_id: org.id });
+    res.json({
+      referralCode: org.referral_code,
+      referralUrl: org.referral_code
+        ? `${process.env.APP_URL}/signup?ref=${org.referral_code}` : null,
+      totalReferrals: referrals.length,
+      creditsEarned: referrals.filter(r => r.credited_at).length,
+    });
+  } catch (err) { next(err); }
+});
+
+module.exports = router;

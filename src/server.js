@@ -3,6 +3,8 @@ require('dotenv').config();
 const express = require('express');
 const path = require('path');
 const fs = require('fs');
+const mspRouter = require('./routes/msp');
+const { startTrialMonitor } = require('./agents/trialMonitor');
 const helmet = require('helmet');
 const cors = require('cors');
 const rateLimit = require('express-rate-limit');
@@ -99,7 +101,7 @@ app.use('/api/v1/devices',   require('./routes/v1/devices'));
 app.use('/api/v1/alerts',    require('./routes/v1/alerts'));
 app.use('/api/integrations', require('./routes/integrations'));
 app.use('/api/reports',      require('./routes/reports'));
-app.use('/api/msp',          require('./routes/msp'));
+app.use('/api/msp', mspRouter);
 app.use('/api/reboot-policies', require('./routes/rebootPolicies'));
 app.use('/api',              require('./routes/agent'));
 const billingRouter = require('./routes/billing');
@@ -110,6 +112,7 @@ app.get('/download/agent.exe', (req, res) => {
   if (!fs.existsSync(p)) return res.status(404).json({ error: 'agent.exe not found.' });
   return res.download(p, 'agent.exe');
 });
+startTrialMonitor();
 
 // ─── API 404 handler ─────────────────────────────────────────────────────────
 app.use('/api', (req, res) => {

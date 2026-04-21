@@ -16,6 +16,7 @@ const nav = [
 
 export function AppLayout() {
   const { user, org, logout } = useAuth();
+  const navItems = user?.role === 'msp' ? [{ to: '/msp', label: 'MSP' }, ...nav] : nav;
 
   return (
     <div className="min-h-screen bg-gray-50">
@@ -27,7 +28,7 @@ export function AppLayout() {
               FortDefend
             </Link>
             <nav className="flex flex-1 flex-col gap-1">
-              {nav.map(({ to, label }) => (
+              {navItems.map(({ to, label }) => (
                 <NavLink
                   key={to}
                   to={to}
@@ -59,7 +60,7 @@ export function AppLayout() {
           </header>
           <div className="border-b border-gray-200 bg-white px-2 py-2 md:hidden">
             <div className="flex flex-wrap gap-1">
-              {nav.map(({ to, label }) => (
+              {navItems.map(({ to, label }) => (
                 <NavLink
                   key={to}
                   to={to}

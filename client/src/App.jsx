@@ -21,6 +21,7 @@ import Settings from './pages/Settings';
 import Integrations from './pages/Integrations';
 import Install from './pages/Install';
 import Scripts from './pages/Scripts';
+import MspDashboard from './pages/MspDashboard';
 
 export default function App() {
   return (
@@ -49,6 +50,7 @@ export default function App() {
               <Route path="/integrations" element={<Integrations />} />
               <Route path="/install" element={<Install />} />
               <Route path="/scripts" element={<Scripts />} />
+              <Route path="/msp" element={<MspDashboard />} />
               <Route path="/setup-2fa" element={<Setup2FA />} />
             </Route>
           </Route>

@@ -123,7 +123,7 @@ router.post('/invite', requireAuth, requireAdmin, async (req, res) => {
   try {
     const schema = z.object({
       email: z.string().email(),
-      role: z.enum(['admin', 'viewer']).default('viewer'),
+      role: z.enum(['admin', 'viewer', 'msp']).default('viewer'),
     });
 
     const parsed = schema.safeParse(req.body);
@@ -197,10 +197,10 @@ router.delete('/users/:userId', requireAuth, requireAdmin, async (req, res) => {
 // Change a user's role (admin only)
 router.patch('/users/:userId/role', requireAuth, requireAdmin, async (req, res) => {
   try {
-    const schema = z.object({ role: z.enum(['admin', 'viewer']) });
+    const schema = z.object({ role: z.enum(['admin', 'viewer', 'msp']) });
     const parsed = schema.safeParse(req.body);
     if (!parsed.success) {
-      return res.status(400).json({ error: 'Role must be admin or viewer.' });
+      return res.status(400).json({ error: 'Role must be admin, viewer, or msp.' });
     }
 
     if (req.params.userId === req.user.id) {
@@ -373,9 +373,10 @@ router.delete('/clients/:clientId', requireAuth, requireAdmin, async (req, res) 
 // ─── GET /api/users/me ────────────────────────────────────────────────────────
 router.get('/me/profile', requireAuth, async (req, res) => {
   try {
+    const profileOrgId = req.user.homeOrgId || req.user.orgId;
     const user = await db('users')
       .where('id', req.user.id)
-      .where('org_id', req.user.orgId)
+      .where('org_id', profileOrgId)
       .select('id', 'email', 'role', 'email_verified', 'totp_enabled', 'last_login_at', 'created_at')
       .first();
 

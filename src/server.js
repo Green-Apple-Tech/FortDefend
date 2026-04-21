@@ -98,6 +98,7 @@ app.use('/api/integrations', require('./routes/integrations'));
 app.use('/api/reports',      require('./routes/reports'));
 
 app.use('/api/devices',      require('./routes/devices'));
+app.use('/api/remediation',  require('./routes/remediation'));
 app.use('/api/agent',        require('./routes/agent'));
 app.use('/api/reboot-policies', require('./routes/rebootPolicies'));
 

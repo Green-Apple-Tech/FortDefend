@@ -10,6 +10,14 @@ const { requireAuth, requireAdmin } = require('../middleware/middleware');
 
 const resend = new Resend(process.env.RESEND_API_KEY);
 
+function getAppUrl() {
+  const appUrl = (process.env.APP_URL || '').trim().replace(/\/$/, '');
+  if (!appUrl) {
+    throw new Error('APP_URL is not configured');
+  }
+  return appUrl;
+}
+
 // ─── GET /api/orgs/me ─────────────────────────────────────────────────────────
 // Returns current org details + subscription + device count
 router.get('/me', requireAuth, async (req, res) => {
@@ -137,7 +145,7 @@ router.post('/invite', requireAuth, requireAdmin, async (req, res) => {
 
     const org = await db('orgs').where('id', req.user.orgId).first();
     const inviteToken = uuidv4();
-    const inviteLink = `${process.env.APP_URL}/accept-invite?token=${inviteToken}`;
+    const inviteLink = `${getAppUrl()}/accept-invite?token=${encodeURIComponent(inviteToken)}`;
 
     // Send invitation email
     await resend.emails.send({

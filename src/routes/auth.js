@@ -14,6 +14,14 @@ const { encrypt, decrypt } = require('../lib/crypto');
 const db = require('../database');
 const resend = new Resend(process.env.RESEND_API_KEY);
 
+function getAppUrl() {
+  const appUrl = (process.env.APP_URL || '').trim().replace(/\/$/, '');
+  if (!appUrl) {
+    throw new Error('APP_URL is not configured');
+  }
+  return appUrl;
+}
+
 // ─── JWT helpers ─────────────────────────────────────────────────────────────
 function signAccessToken(payload) {
   return jwt.sign(payload, process.env.JWT_SECRET, { expiresIn: '15m' });
@@ -55,7 +63,7 @@ async function issueTokens(res, user, org) {
 
 // ─── Email helpers ────────────────────────────────────────────────────────────
 async function sendVerificationEmail(email, token) {
-  const link = `${process.env.APP_URL}/verify-email?token=${token}`;
+  const link = `${getAppUrl()}/verify-email?token=${encodeURIComponent(token)}`;
   await resend.emails.send({
     from: process.env.FROM_EMAIL,
     to: email,
@@ -71,7 +79,7 @@ async function sendVerificationEmail(email, token) {
 }
 
 async function sendPasswordResetEmail(email, token) {
-  const link = `${process.env.APP_URL}/reset-password?token=${token}`;
+  const link = `${getAppUrl()}/reset-password?token=${encodeURIComponent(token)}`;
   await resend.emails.send({
     from: process.env.FROM_EMAIL,
     to: email,

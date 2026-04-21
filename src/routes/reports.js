@@ -2,7 +2,7 @@ const express = require('express');
 const router = express.Router();
 
 const db = require('../database');
-const { requireAuth } = require('../middleware/middleware');
+const { requireAuth } = require('../middleware/auth');
 
 router.get('/dashboard', requireAuth, async (req, res) => {
   try {

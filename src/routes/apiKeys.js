@@ -1,20 +1,11 @@
 const express = require('express');
-const crypto = require('crypto');
 
 const db = require('../database');
 const { encrypt, decrypt } = require('../lib/crypto');
-const { requireAuth, requireAdmin } = require('../middleware/middleware');
+const { buildApiKey } = require('../utils/apiKeys');
+const { requireAuth, requireAdmin } = require('../middleware/auth');
 
 const router = express.Router();
-
-function buildApiKey() {
-  const rawKey = 'fd_' + crypto.randomBytes(32).toString('hex');
-  return {
-    rawKey,
-    keyHash: crypto.createHash('sha256').update(rawKey).digest('hex'),
-    keyPrefix: rawKey.substring(0, 8),
-  };
-}
 
 async function getOrCreatePrimaryKey(orgId) {
   const existing = await db('api_keys')

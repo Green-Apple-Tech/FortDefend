@@ -1,10 +1,10 @@
 const express = require('express');
 const router = express.Router();
-const crypto = require('crypto');
 const { z } = require('zod');
 const db = require('../database');
 const { encrypt } = require('../lib/crypto');
-const { requireAuth, requireAdmin } = require('../middleware/middleware');
+const { buildApiKey } = require('../utils/apiKeys');
+const { requireAuth, requireAdmin } = require('../middleware/auth');
 
 router.get('/', requireAuth, requireAdmin, async (req, res) => {
   try {
@@ -29,9 +29,7 @@ router.post('/', requireAuth, requireAdmin, async (req, res) => {
     if (!parsed.success) {
       return res.status(400).json({ error: parsed.error.errors[0].message });
     }
-    const rawKey = 'fd_' + crypto.randomBytes(32).toString('hex');
-    const keyHash = crypto.createHash('sha256').update(rawKey).digest('hex');
-    const keyPrefix = rawKey.substring(0, 8);
+    const { rawKey, keyHash, keyPrefix } = buildApiKey();
     const expiresAt = parsed.data.expiresInDays
       ? new Date(Date.now() + parsed.data.expiresInDays * 24 * 60 * 60 * 1000)
       : null;

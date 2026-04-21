@@ -2,7 +2,7 @@ const express = require('express');
 const { z } = require('zod');
 
 const db = require('../database');
-const { requireAuth, requireAdmin } = require('../middleware/middleware');
+const { requireAuth, requireAdmin } = require('../middleware/auth');
 const AnthropicSdk = require('@anthropic-ai/sdk');
 
 const Anthropic = AnthropicSdk.Anthropic || AnthropicSdk.default;

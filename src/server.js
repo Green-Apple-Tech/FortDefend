@@ -96,13 +96,13 @@ app.use('/api/api-keys',     require('./routes/api-keys'));
 app.use('/api/v1/devices',   require('./routes/v1/devices'));
 app.use('/api/v1/alerts',    require('./routes/v1/alerts'));
 app.use('/api/integrations', require('./routes/integrations'));
+app.use('/api/reports',      require('./routes/reports'));
 const billingRouter = require('./routes/billing');
 app.use('/api/billing', billingRouter);
 app.use('/api/webhooks/stripe', billingRouter.webhookRouter);
 // app.use('/api/devices',      require('./routes/devices'));
 // app.use('/api/agents',       require('./routes/agents'));
 // app.use('/api/webhooks',     require('./routes/webhooks'));
-// app.use('/api/reports',      require('./routes/reports'));
 
 // ─── API 404 handler ─────────────────────────────────────────────────────────
 app.use('/api', (req, res) => {

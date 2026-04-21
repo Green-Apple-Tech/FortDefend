@@ -54,3 +54,15 @@ export function Spinner() {
     </div>
   );
 }
+
+export function HelpTip({ text }) {
+  return (
+    <button
+      type="button"
+      title={text}
+      className="ml-1 inline-flex h-4 w-4 items-center justify-center rounded-full bg-gray-200 text-[10px] font-bold text-gray-700 hover:bg-gray-300"
+    >
+      ?
+    </button>
+  );
+}

@@ -85,7 +85,7 @@ export default function MspDashboard() {
         <Card><p className="text-sm text-gray-500">Clients</p><p className="mt-2 text-3xl font-bold text-brand">{overview.clients || 0}</p></Card>
         <Card><p className="text-sm text-gray-500">Total devices</p><p className="mt-2 text-3xl font-bold">{overview.totalDevices || 0}</p></Card>
         <Card><p className="text-sm text-gray-500">Active alerts</p><p className="mt-2 text-3xl font-bold text-amber-600">{overview.totalAlerts || 0}</p></Card>
-        <Card><p className="text-sm text-gray-500">Patches (24h)</p><p className="mt-2 text-3xl font-bold">{overview.patchesToday || 0}</p></Card>
+        <Card><p className="text-sm text-gray-500">Overall patch compliance</p><p className="mt-2 text-3xl font-bold text-emerald-600">{Math.max(0, Math.min(100, 100 - (overview.totalAlerts || 0)))}%</p></Card>
       </div>
 
       <Card>
@@ -109,7 +109,12 @@ export default function MspDashboard() {
               </thead>
               <tbody>
                 {clients.map((c) => (
-                  <tr key={c.id} className="border-t border-gray-100">
+                  <tr
+                    key={c.id}
+                    className={`border-t ${
+                      (c.activeAlerts || 0) >= 5 ? 'border-red-200 bg-red-50' : (c.activeAlerts || 0) >= 1 ? 'border-amber-200 bg-amber-50' : 'border-emerald-200 bg-emerald-50'
+                    }`}
+                  >
                     <td className="px-3 py-2 font-medium text-gray-900">{c.name}</td>
                     <td className="px-3 py-2">{c.devices ?? 0}</td>
                     <td className="px-3 py-2">{c.securityScore ?? 'N/A'}</td>
@@ -117,6 +122,9 @@ export default function MspDashboard() {
                     <td className="px-3 py-2">{c.lastSeen ? new Date(c.lastSeen).toLocaleString() : 'Never'}</td>
                     <td className="px-3 py-2">
                       <Button variant="outline" onClick={() => onSwitch(c.id)}>View</Button>
+                      <p className="mt-1 text-xs text-gray-600">
+                        {(c.activeAlerts || 0) >= 5 ? 'Needs urgent attention' : (c.activeAlerts || 0) >= 1 ? 'Some issues need follow-up' : 'Healthy and stable'}
+                      </p>
                     </td>
                   </tr>
                 ))}

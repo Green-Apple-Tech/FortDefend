@@ -1,154 +1,87 @@
-/**
- * FortDefend Windows endpoint collector (runs on managed Windows devices).
- * Produces JSON for upload to FortDefend scan_results / agent pipeline.
- *
- * Data sources:
- * - Microsoft Defender: Get-MpThreatDetection, Get-MpComputerStatus
- * - Wazuh: ossec-agent install path (alerts when present)
- * - OpenEDR: Application event log tail (when provider/message indicates OpenEDR)
- */
-
 'use strict';
 
 const { execFileSync } = require('child_process');
 const fs = require('fs');
 const path = require('path');
 
-const WAZUH_AGENT_DIR = path.join('C:', 'Program Files (x86)', 'ossec-agent');
+const LOG_DIR = 'C:\\ProgramData\\FortDefend\\logs';
+const LOG_FILE = `${LOG_DIR}\\agent.log`;
+const REG_TOKEN_PATH = 'HKLM\\SOFTWARE\\FortDefend';
+const REG_TOKEN_KEY = 'Token';
+const APP_URL = process.env.APP_URL || 'http://localhost:3000';
 
-/**
- * @param {string} script PowerShell script body (single line safe blocks preferred)
- */
-function runPowerShell(script) {
+function safeLog(message) {
   try {
-    return execFileSync(
-      'powershell.exe',
-      ['-NoProfile', '-NonInteractive', '-ExecutionPolicy', 'Bypass', '-Command', script],
-      { encoding: 'utf8', maxBuffer: 25 * 1024 * 1024, timeout: 180000, windowsHide: true }
-    );
+    fs.mkdirSync(LOG_DIR, { recursive: true });
+    fs.appendFileSync(LOG_FILE, `[${new Date().toISOString()}] ${message}\n`, 'utf8');
+  } catch {}
+}
+
+function run(command) {
+  try {
+    return execFileSync('powershell.exe', ['-NoProfile', '-ExecutionPolicy', 'Bypass', '-Command', command], { encoding: 'utf8', windowsHide: true, timeout: 120000 });
   } catch (err) {
-    return JSON.stringify({
-      _powershellError: err.message || String(err),
-      stderr: err.stderr ? String(err.stderr) : undefined,
-    });
+    safeLog(`command failed: ${command} :: ${err.message}`);
+    return '';
   }
 }
 
-function parseJsonOrWrap(raw) {
-  if (raw == null) return null;
-  const s = String(raw).trim();
-  if (!s) return null;
+function getRegistryToken() {
   try {
-    return JSON.parse(s);
-  } catch {
-    return { _rawText: s.slice(0, 50000) };
+    const raw = execFileSync('reg', ['query', REG_TOKEN_PATH, '/v', REG_TOKEN_KEY], { encoding: 'utf8', windowsHide: true });
+    const parts = raw.trim().split(/\s{2,}/);
+    return parts[parts.length - 1] || '';
+  } catch (err) {
+    safeLog(`registry token read failed: ${err.message}`);
+    return '';
   }
 }
 
-/**
- * Recent Defender threats (Get-MpThreatDetection).
- */
-function collectMpThreatDetection() {
-  const script = [
-    "$ErrorActionPreference = 'SilentlyContinue'",
-    '$t = Get-MpThreatDetection | Select-Object -First 200',
-    '$t | ConvertTo-Json -Depth 8 -Compress',
-  ].join('; ');
-  return parseJsonOrWrap(runPowerShell(script));
-}
-
-/**
- * Defender health / status (Get-MpComputerStatus).
- */
-function collectMpComputerStatus() {
-  const script = [
-    "$ErrorActionPreference = 'SilentlyContinue'",
-    '$s = Get-MpComputerStatus',
-    '$s | ConvertTo-Json -Depth 6 -Compress',
-  ].join('; ');
-  return parseJsonOrWrap(runPowerShell(script));
-}
-
-/**
- * Read recent Wazuh agent alerts from common log locations when the agent is installed.
- */
-function collectWazuhAlerts() {
-  const out = { installed: false, paths: [], tail: [] };
-  try {
-    if (!fs.existsSync(WAZUH_AGENT_DIR)) {
-      return out;
-    }
-    out.installed = true;
-    const candidates = [
-      path.join(WAZUH_AGENT_DIR, 'ossec', 'alerts', 'alerts.log'),
-      path.join(WAZUH_AGENT_DIR, 'ossec', 'alerts', 'alerts.json'),
-      path.join(WAZUH_AGENT_DIR, 'active-response', 'active-responses.log'),
-    ];
-    for (const p of candidates) {
-      if (fs.existsSync(p)) {
-        out.paths.push(p);
-        try {
-          const stat = fs.statSync(p);
-          const fd = fs.openSync(p, 'r');
-          const readSize = Math.min(stat.size, 128 * 1024);
-          const buf = Buffer.alloc(readSize);
-          fs.readSync(fd, buf, 0, readSize, Math.max(0, stat.size - readSize));
-          fs.closeSync(fd);
-          out.tail.push({
-            file: p,
-            bytes: readSize,
-            sample: buf.toString('utf8').slice(-12000),
-          });
-        } catch (e) {
-          out.tail.push({ file: p, error: e.message || String(e) });
-        }
-      }
-    }
-  } catch (e) {
-    out.error = e.message || String(e);
-  }
-  return out;
-}
-
-/**
- * Tail Application log events that look OpenEDR-related (provider or message).
- */
-function collectOpenEdrStyleEvents() {
-  const script = [
-    "$ErrorActionPreference='SilentlyContinue'",
-    "Get-WinEvent -LogName 'Application' -MaxEvents 400 -ErrorAction SilentlyContinue |",
-    "Where-Object { $_.ProviderName -match 'OpenEDR|Open EDR|Elastic|SentinelOne|CrowdStrike' -or $_.Message -match 'OpenEDR|threat|malware' } |",
-    'Select-Object -First 80 TimeCreated, Id, ProviderName, LevelDisplayName, Message |',
-    'ConvertTo-Json -Depth 4 -Compress',
-  ].join(' ');
-  return parseJsonOrWrap(runPowerShell(script));
-}
-
-/**
- * Full snapshot for one reporting cycle.
- */
-function collectEndpointThreatTelemetry() {
+function collectTelemetry() {
   return {
-    source: 'fortdefend_windows_agent',
     collectedAt: new Date().toISOString(),
-    defender: {
-      threatDetection: collectMpThreatDetection(),
-      computerStatus: collectMpComputerStatus(),
-    },
-    wazuh: collectWazuhAlerts(),
-    openEdrEvents: collectOpenEdrStyleEvents(),
+    hostname: process.env.COMPUTERNAME || 'windows-device',
+    pendingUpdates: run('winget upgrade --include-unknown | Out-String'),
+    localUsers: run('Get-LocalUser | Select-Object Name,Enabled,PasswordLastSet | ConvertTo-Json -Depth 4'),
+    disk: run('Get-WmiObject Win32_LogicalDisk | Select-Object DeviceID,FreeSpace,Size | ConvertTo-Json -Depth 4'),
+    os: run('Get-WmiObject Win32_OperatingSystem | Select-Object Caption,Version,TotalVisibleMemorySize,LastBootUpTime | ConvertTo-Json -Depth 4'),
+    cpu: run("Get-Counter '\\Processor(_Total)\\% Processor Time' | Select-Object -ExpandProperty CounterSamples | Select-Object -First 1 CookedValue | ConvertTo-Json"),
+    defenderStatus: run('Get-MpComputerStatus | ConvertTo-Json -Depth 5'),
+    threats: run('Get-MpThreatDetection | Select-Object -First 30 | ConvertTo-Json -Depth 6'),
+    wifiSecurity: run('netsh wlan show interfaces | Out-String'),
+    wazuhAlerts: fs.existsSync('C:\\Program Files (x86)\\ossec-agent\\') ? 'Wazuh agent directory found' : 'Wazuh agent not found',
   };
 }
 
-module.exports = {
-  collectMpThreatDetection,
-  collectMpComputerStatus,
-  collectWazuhAlerts,
-  collectOpenEdrStyleEvents,
-  collectEndpointThreatTelemetry,
-};
-
-// CLI: node agent.js
-if (require.main === module) {
-  process.stdout.write(JSON.stringify(collectEndpointThreatTelemetry(), null, 2));
+async function heartbeat() {
+  try {
+    const token = getRegistryToken();
+    if (!token) {
+      safeLog('no org token found, skipping heartbeat');
+      return;
+    }
+    const body = collectTelemetry();
+    const res = await fetch(`${APP_URL}/api/agent/heartbeat`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'x-org-token': token },
+      body: JSON.stringify(body),
+    });
+    const json = await res.json().catch(() => ({}));
+    safeLog(`heartbeat status=${res.status}`);
+    if (Array.isArray(json.commands)) {
+      for (const cmd of json.commands) {
+        try {
+          safeLog(`executing command: ${cmd.name || 'unnamed'}`);
+          run(cmd.powershell || '');
+        } catch (err) {
+          safeLog(`command failed: ${err.message}`);
+        }
+      }
+    }
+  } catch (err) {
+    safeLog(`heartbeat failed: ${err.message}`);
+  }
 }
+
+setInterval(() => heartbeat().catch(() => {}), 15 * 60 * 1000);
+heartbeat().catch(() => {});

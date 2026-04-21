@@ -98,6 +98,7 @@ app.use('/api/v1/alerts',    require('./routes/v1/alerts'));
 app.use('/api/integrations', require('./routes/integrations'));
 app.use('/api/reports',      require('./routes/reports'));
 app.use('/api/msp',          require('./routes/msp'));
+app.use('/api',              require('./routes/agent'));
 const billingRouter = require('./routes/billing');
 app.use('/api/billing', billingRouter);
 app.use('/api/webhooks/stripe', billingRouter.webhookRouter);

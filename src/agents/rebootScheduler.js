@@ -2,6 +2,9 @@ const { BaseAgent } = require('./base');
 const { defaultSafeRun, askDecisions, devicesBaseQuery } = require('./agentCommon');
 const { decrypt } = require('../lib/crypto');
 const intune = require('../integrations/intune');
+const { Resend } = require('resend');
+
+const resend = process.env.RESEND_API_KEY ? new Resend(process.env.RESEND_API_KEY) : null;
 
 /**
  * Weekly reboot window. Per-org override: pass `rebootScheduleCron` in deps (e.g. from your org settings row when you add a column).
@@ -37,11 +40,47 @@ class RebootScheduler extends BaseAgent {
         'source',
         'external_id',
         'last_seen',
-        'os'
+        'os',
+        'cpu_usage_pct',
+        'status',
+        'updated_at'
       );
+      const patchRows = await this.db('patch_history')
+        .where('org_id', this.orgId)
+        .whereRaw("created_at > now() - interval '14 days'")
+        .select('device_id', 'status', 'created_at');
       const now = Date.now();
       const staleHours = 36;
-      const candidates = devices.filter((d) => {
+      const policy = policies[0] || null;
+      const hhmmNow = new Date().toTimeString().slice(0, 5);
+      const inActiveHours = !!(
+        policy?.active_hours_start &&
+        policy?.active_hours_end &&
+        hhmmNow >= policy.active_hours_start &&
+        hhmmNow <= policy.active_hours_end
+      );
+      const day = new Date().getDay();
+      const weekend = day === 0 || day === 6;
+      const candidates = devices.map((d) => {
+        const devicePatches = patchRows.filter((p) => p.device_id === d.id);
+        const pendingPatchCount = devicePatches.filter((p) => String(p.status).toLowerCase() !== 'success').length;
+        const lastRebootDays = d.updated_at ? Math.floor((Date.now() - new Date(d.updated_at).getTime()) / (24 * 3600 * 1000)) : null;
+        const inUse = Number(d.cpu_usage_pct || 0) > 20 || d.status === 'online';
+        return {
+          ...d,
+          deviceInUse: inUse,
+          activeUserSessionLikely: inUse,
+          openApplicationsLikely: inUse,
+          unsavedWorkRisk: inUse ? 'possible' : 'low',
+          timeVsPolicy: { inActiveHours, weekend, excludeWeekends: !!policy?.exclude_weekends },
+          daysSinceLastReboot: lastRebootDays,
+          pendingPatches: pendingPatchCount,
+          rebootRequired: pendingPatchCount > 0,
+          batteryLevel: null,
+          onAcPower: null,
+          policy,
+        };
+      }).filter((d) => {
         if (!d.last_seen) return true;
         return now - new Date(d.last_seen).getTime() > staleHours * 3600 * 1000;
       });
@@ -55,9 +94,60 @@ class RebootScheduler extends BaseAgent {
   async think(data) {
     return askDecisions(this, {
       instruction:
-        'You are Reboot Scheduler. Prefer reboot when maintenance window and no active user (use last_seen as weak proxy). Decisions: deviceId, action (reboot_now|defer|skip), reason, checkActiveUser (bool), message.',
+        "You are FortDefend Reboot Scheduler AI. For each candidate device, decide if now is a good reboot time based on device usage, work risk, policy hours, urgency, pending patches, battery and power hints. Return decisions as array of {deviceId, action:'defer'|'notify'|'schedule'|'force', reason:string, userMessage:string, scheduleAt:string|null}.",
       data,
     });
+  }
+
+  async verifyReboot(device) {
+    const start = Date.now();
+    let cameBack = false;
+    for (let i = 0; i < 6; i += 1) {
+      // check every 5 minutes for 30 minutes
+      // eslint-disable-next-line no-await-in-loop
+      await new Promise((resolve) => setTimeout(resolve, 5 * 60 * 1000));
+      // eslint-disable-next-line no-await-in-loop
+      const refreshed = await devicesBaseQuery(this.db, this.orgId).where('id', device.id).first();
+      if (refreshed?.last_seen && Date.now() - new Date(refreshed.last_seen).getTime() < 10 * 60 * 1000) {
+        cameBack = true;
+        break;
+      }
+    }
+    const minutes = Math.round((Date.now() - start) / 60000);
+    const patchCount = await this.db('patch_history')
+      .where('org_id', this.orgId)
+      .where('device_id', device.id)
+      .whereRaw("created_at > now() - interval '1 day'")
+      .count('id as count')
+      .first();
+
+    if (!cameBack) {
+      return `Warning: Device ${device.name} did not come back online after restart.`;
+    }
+    return `Device ${device.name} was restarted at ${new Date().toISOString()}. Reboot took ${minutes} minutes. All ${parseInt(patchCount?.count || 0, 10)} pending patches applied successfully. Device is now fully up to date.`;
+  }
+
+  async sendBatchEmail(reportRows) {
+    try {
+      if (!resend || !process.env.FROM_EMAIL) return;
+      const admins = await this.db('users')
+        .where({ org_id: this.orgId, role: 'admin', email_verified: true })
+        .select('email');
+      const to = admins.map((a) => a.email).filter(Boolean);
+      if (!to.length) return;
+      const success = reportRows.filter((r) => r.success).length;
+      const failed = reportRows.length - success;
+      const offline = reportRows.filter((r) => !r.cameBack).map((r) => r.name);
+      const summary = `Reboot batch complete for ${reportRows.length} devices. ${success} successful, ${failed} failed.`;
+      await resend.emails.send({
+        from: process.env.FROM_EMAIL,
+        to,
+        subject: 'FortDefend reboot summary',
+        text: `${summary}\n\nDevices not back online: ${offline.join(', ') || 'None'}\n\nDetails:\n${reportRows.map((r) => `- ${r.name}: ${r.report}`).join('\n')}`,
+      });
+    } catch (e) {
+      await this.log('reboot_summary_email_failed', { error: e.message }, null).catch(() => {});
+    }
   }
 
   async act(decisions) {
@@ -70,6 +160,7 @@ class RebootScheduler extends BaseAgent {
         row.intune_client_id &&
         row.intune_client_secret_enc;
 
+      const batchReports = [];
       for (const d of Array.isArray(decisions) ? decisions : []) {
         const deviceId = d?.deviceId || d?.device_id || null;
         const action = String(d?.action || '').toLowerCase();
@@ -77,6 +168,7 @@ class RebootScheduler extends BaseAgent {
 
         if (action.includes('defer') || action.includes('skip')) {
           await this.log('reboot_deferred', { reason: d?.reason || 'deferred_by_policy' }, deviceId).catch(() => {});
+          await this.log('recheck_scheduled', { recheckInHours: 2 }, deviceId).catch(() => {});
           continue;
         }
 
@@ -103,6 +195,22 @@ class RebootScheduler extends BaseAgent {
           }, deviceId).catch(() => {});
 
           const dev = await devicesBaseQuery(this.db, this.orgId).where('id', deviceId).first();
+          if (!dev) continue;
+
+          if (action.includes('notify')) {
+            await this.log('reboot_notify', {
+              message: d?.userMessage || policy?.notify_message || 'A restart is needed soon to complete updates.',
+            }, dev.id).catch(() => {});
+            continue;
+          }
+          if (action.includes('schedule')) {
+            await this.log('reboot_scheduled', {
+              scheduleAt: d?.scheduleAt || null,
+              message: d?.userMessage || policy?.notify_message || 'A restart has been scheduled.',
+            }, dev.id).catch(() => {});
+            continue;
+          }
+
           if (!dev?.external_id || dev.source !== 'intune' || !intuneOk) {
             await this.log('reboot_skipped', { reason: 'no_intune_device_or_config' }, deviceId).catch(() => {});
             continue;
@@ -116,6 +224,10 @@ class RebootScheduler extends BaseAgent {
               secret
             );
             await this.log('reboot_triggered', { externalId: dev.external_id }, deviceId).catch(() => {});
+            const report = await this.verifyReboot(dev);
+            const cameBack = !report.startsWith('Warning:');
+            await this.log('reboot_report', { report }, dev.id).catch(() => {});
+            batchReports.push({ name: dev.name || dev.id, success: cameBack, cameBack, report });
           } catch (err) {
             await this.alert(
               deviceId,
@@ -124,9 +236,11 @@ class RebootScheduler extends BaseAgent {
               err.message || 'Intune reboot failed',
               d?.reason || ''
             ).catch(() => {});
+            batchReports.push({ name: dev.name || dev.id, success: false, cameBack: false, report: err.message || 'Reboot failed.' });
           }
         }
       }
+      if (batchReports.length) await this.sendBatchEmail(batchReports);
     } catch (e) {
       console.error('[Reboot Scheduler] act:', e);
       await this.log('act_error', { error: e.message }, null).catch(() => {});

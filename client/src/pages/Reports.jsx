@@ -4,7 +4,7 @@ import {
 } from 'recharts';
 import { Card, Button, HelpTip } from '../components/ui';
 
-const tabs = ['Executive Summary', 'Patch Report', 'Threat Report', 'Device Health', 'Business ROI'];
+const tabs = ['Executive Summary', 'Patch Report', 'Threat Report', 'Device Health', 'Business ROI', 'Reboot Report'];
 const patchData = Array.from({ length: 30 }, (_, i) => ({ day: `${i + 1}`, patches: Math.round(Math.random() * 9) + 1 }));
 const threatData = [{ name: 'Blocked', value: 37 }, { name: 'Detected', value: 9 }];
 const severity = [{ k: 'Critical', c: 'bg-red-100 text-red-700' }, { k: 'Warning', c: 'bg-amber-100 text-amber-700' }, { k: 'Info', c: 'bg-blue-100 text-blue-700' }];
@@ -148,6 +148,35 @@ export default function Reports() {
             <Card><p className="text-sm text-gray-600">Year to date savings</p><p className="text-3xl font-bold text-emerald-600">${ytdCash.toLocaleString()}</p></Card>
           </div>
           <Card><p className="text-sm text-gray-700">Patch compliance across all devices is <strong>{patchCompliance}%</strong>. This means most of your business devices are fully up to date.</p></Card>
+          <Button onClick={exportPdf}>Share with your boss</Button>
+        </div>
+      )}
+
+      {tab === 'Reboot Report' && (
+        <div className="space-y-4">
+          <Card>
+            <div className="grid gap-4 sm:grid-cols-3">
+              <div><p className="text-sm text-gray-600">Reboot success rate</p><p className="text-3xl font-bold text-emerald-600">93%</p></div>
+              <div><p className="text-sm text-gray-600">Average reboot duration</p><p className="text-3xl font-bold text-brand">11 min</p></div>
+              <div><p className="text-sm text-gray-600">Patches applied per reboot</p><p className="text-3xl font-bold">4.2</p></div>
+            </div>
+          </Card>
+          <Card>
+            <h3 className="font-semibold text-gray-900">Reboot history timeline</h3>
+            <div className="mt-3 h-56">
+              <ResponsiveContainer width="100%" height="100%">
+                <LineChart data={[{ w: 'W1', rebooted: 8 }, { w: 'W2', rebooted: 11 }, { w: 'W3', rebooted: 9 }, { w: 'W4', rebooted: 12 }]}>
+                  <XAxis dataKey="w" /><YAxis /><Tooltip /><Line dataKey="rebooted" stroke="#185FA5" />
+                </LineChart>
+              </ResponsiveContainer>
+            </div>
+          </Card>
+          <Card>
+            <p className="text-sm text-gray-700">Devices that missed scheduled reboots: <strong>3</strong></p>
+            <p className="mt-2 text-sm text-amber-700">
+              AI insight: Most of your devices are rebooted during business hours — consider switching to overnight scheduling to improve productivity.
+            </p>
+          </Card>
           <Button onClick={exportPdf}>Share with your boss</Button>
         </div>
       )}

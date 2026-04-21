@@ -3,6 +3,10 @@ const { z } = require('zod');
 
 const db = require('../database');
 const { requireAuth, requireAdmin } = require('../middleware/middleware');
+const AnthropicSdk = require('@anthropic-ai/sdk');
+
+const Anthropic = AnthropicSdk.Anthropic || AnthropicSdk.default;
+const anthropicClient = process.env.ANTHROPIC_API_KEY ? new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY }) : null;
 
 const router = express.Router();
 
@@ -106,6 +110,78 @@ router.get('/pending', requireAuth, async (req, res) => {
   } catch (err) {
     console.error('Pending reboot list error:', err);
     res.status(500).json({ error: 'Failed to load pending reboots.' });
+  }
+});
+
+router.get('/history', requireAuth, async (req, res) => {
+  try {
+    const rows = await db('agent_logs')
+      .where('org_id', req.user.orgId)
+      .whereIn('action', ['reboot_triggered', 'reboot_report', 'reboot_failed', 'reboot_skipped'])
+      .orderBy('created_at', 'desc')
+      .limit(300);
+    res.json({ history: rows });
+  } catch (err) {
+    console.error('Reboot history error:', err);
+    res.status(500).json({ error: 'Failed to load reboot history.' });
+  }
+});
+
+router.get('/pending-reboots', requireAuth, async (req, res) => {
+  try {
+    const rows = await db('agent_logs')
+      .where('org_id', req.user.orgId)
+      .whereIn('action', ['reboot_deferred', 'reboot_scheduled'])
+      .orderBy('created_at', 'desc')
+      .limit(200);
+    const pending = rows.map((r) => ({
+      ...r,
+      aiRecommendation: 'Best next window is tonight after business hours to reduce disruption.',
+    }));
+    res.json({ pending });
+  } catch (err) {
+    console.error('Pending reboots error:', err);
+    res.status(500).json({ error: 'Failed to load pending reboots.' });
+  }
+});
+
+router.post('/:id/ai-optimize', requireAuth, requireAdmin, async (req, res) => {
+  try {
+    const policy = await db('reboot_policies').where({ id: req.params.id, org_id: req.user.orgId }).first();
+    if (!policy) return res.status(404).json({ error: 'Policy not found.' });
+    const sampleUsage = await db('devices')
+      .where('org_id', req.user.orgId)
+      .select('id', 'name', 'last_seen', 'cpu_usage_pct', 'os')
+      .limit(200);
+
+    if (!anthropicClient) {
+      return res.json({
+        recommendation:
+          'Suggested schedule: weekdays at 8:30 PM local time, with a 30-minute warning and weekend catch-up window.',
+      });
+    }
+
+    const msg = await anthropicClient.messages.create({
+      model: process.env.ANTHROPIC_MODEL || 'claude-3-5-sonnet-20241022',
+      max_tokens: 500,
+      messages: [
+        {
+          role: 'user',
+          content: `You are a reboot scheduling expert. Given this reboot policy and usage sample, return plain English recommendation and cron schedule as JSON with keys recommendation and suggestedCron.\nPolicy: ${JSON.stringify(policy)}\nUsage: ${JSON.stringify(sampleUsage)}`,
+        },
+      ],
+    });
+    const text = msg.content?.find((b) => b.type === 'text')?.text || '{}';
+    let parsed;
+    try {
+      parsed = JSON.parse(text.replace(/^```json\s*/i, '').replace(/```\s*$/i, ''));
+    } catch {
+      parsed = { recommendation: text };
+    }
+    res.json(parsed);
+  } catch (err) {
+    console.error('AI optimize reboot policy error:', err);
+    res.status(500).json({ error: 'Failed to optimize reboot policy.' });
   }
 });
 

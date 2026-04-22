@@ -286,7 +286,7 @@ router.post('/login/totp', async (req, res, next) => {
 
 router.post('/setup-totp', requireAuth, async (req, res, next) => {
   try {
-    const user = await db('users').where({ id: req.user.userId }).first();
+    const user = await db('users').where({ id: req.user.id }).first();
     const secret = speakeasy.generateSecret({
       name: `FortDefend (${user.email})`,
       issuer: process.env.TOTP_ISSUER || 'FortDefend',
@@ -324,7 +324,7 @@ router.post('/confirm-totp', requireAuth, async (req, res, next) => {
       payload.backupCodes.map(c => bcrypt.hash(c, 10))
     );
 
-    await db('users').where({ id: req.user.userId }).update({
+    await db('users').where({ id: req.user.id }).update({
       totp_secret_enc: encryptedSecret,
       totp_enabled: true,
       backup_codes_hash: JSON.stringify(hashedCodes),
@@ -369,7 +369,7 @@ router.post('/refresh', async (req, res, next) => {
 
 router.post('/logout', requireAuth, async (req, res, next) => {
   try {
-    await db('users').where({ id: req.user.userId }).update({
+    await db('users').where({ id: req.user.id }).update({
       refresh_token: null, updated_at: new Date(),
     });
     res.clearCookie('refresh_token');

@@ -36,10 +36,8 @@ export default function Login() {
         setLoading(false);
         return;
       }
-if (res.ok || res.accessToken || res.token) {
+      if (res.ok || res.accessToken || res.token) {
         navigate(from, { replace: true });
-        return;
-      }
         return;
       }
       setError('Login failed.');

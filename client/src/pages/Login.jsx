@@ -38,8 +38,13 @@ if (res.requiresTOTP && res.tempToken) {
         return;
       }
 if (res.ok || res.accessToken || res.token) {
-        navigate(from, { replace: true });
-        return;
+  if (res.setupTOTP) {
+    navigate('/setup-2fa', { replace: true });
+  } else {
+    navigate(from, { replace: true });
+  }
+  return;
+}
       }
       setError('Login failed.');
     } catch (err) {

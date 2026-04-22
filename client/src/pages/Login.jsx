@@ -36,12 +36,10 @@ export default function Login() {
         setLoading(false);
         return;
       }
-      if (res.ok || res.accessToken || res.token) {
-        if (res.setupTOTP) {
-          navigate('/setup-2fa', { replace: true });
-        } else {
-          navigate(from, { replace: true });
-        }
+if (res.ok || res.accessToken || res.token) {
+        navigate(from, { replace: true });
+        return;
+      }
         return;
       }
       setError('Login failed.');

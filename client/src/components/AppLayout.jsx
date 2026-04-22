@@ -1,9 +1,11 @@
+
 import { Link, NavLink, Outlet } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import { Banner2FA } from './Banner2FA';
 
 const nav = [
   { to: '/dashboard', label: 'Dashboard' },
+  { to: '/groups', label: 'Groups' },
   { to: '/devices', label: 'Devices' },
   { to: '/reports', label: 'Reports' },
   { to: '/alerts', label: 'Alerts' },
@@ -17,11 +19,6 @@ const nav = [
 
 export function AppLayout() {
   const { user, org, logout } = useAuth();
-  const mspNav = [
-    { to: '/msp/clients', label: 'My Clients' },
-    { to: '/msp/overview', label: 'MSP Overview' },
-  ];
-  const navItems = user?.role === 'msp' ? [...mspNav, ...nav] : nav;
 
   return (
     <div className="min-h-screen bg-gray-50">
@@ -40,7 +37,7 @@ export function AppLayout() {
               )}
             </div>
             <nav className="flex flex-1 flex-col gap-1">
-              {navItems.map(({ to, label }) => (
+              {nav.map(({ to, label }) => (
                 <NavLink
                   key={to}
                   to={to}
@@ -79,7 +76,7 @@ export function AppLayout() {
           </header>
           <div className="border-b border-gray-200 bg-white px-2 py-2 md:hidden">
             <div className="flex flex-wrap gap-1">
-              {navItems.map(({ to, label }) => (
+              {nav.map(({ to, label }) => (
                 <NavLink
                   key={to}
                   to={to}

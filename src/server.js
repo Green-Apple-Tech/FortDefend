@@ -89,20 +89,21 @@ app.get('/health', (req, res) => {
 });
 
 // ── API routes ────────────────────────────────────────────────────────────────
-app.use('/api/auth',         require('./routes/auth'));
-app.use('/api/orgs',         require('./routes/orgs'));
-app.use('/api/billing',      require('./routes/billing'));
-app.use('/api/msp',          require('./routes/msp'));
-app.use('/api/android',      require('./routes/android'));
-app.use('/api/nmap',         require('./routes/nmap'));
-app.use('/api/integrations', require('./routes/integrations'));
-app.use('/api/reports',      require('./routes/reports'));
-app.use('/api/enrollment',   require('./routes/enrollment'));
-app.use('/api/extension',    require('./routes/chromebook-extension'));
-app.use('/api/devices',      require('./routes/devices'));
-app.use('/api/remediation',  require('./routes/remediation'));
-app.use('/api/agent',        require('./routes/agent'));
+app.use('/api/auth',            require('./routes/auth'));
+app.use('/api/orgs',            require('./routes/orgs'));
+app.use('/api/billing',         require('./routes/billing'));
+app.use('/api/msp',             require('./routes/msp'));
+app.use('/api/android',         require('./routes/android'));
+app.use('/api/nmap',            require('./routes/nmap'));
+app.use('/api/integrations',    require('./routes/integrations'));
+app.use('/api/reports',         require('./routes/reports'));
+app.use('/api/enrollment',      require('./routes/enrollment'));
+app.use('/api/extension',       require('./routes/chromebook-extension'));
+app.use('/api/devices',         require('./routes/devices'));
+app.use('/api/remediation',     require('./routes/remediation'));
+app.use('/api/agent',           require('./routes/agent'));
 app.use('/api/reboot-policies', require('./routes/rebootPolicies'));
+app.use('/api/groups',          require('./routes/groups'));
 
 // ── Agent binary download ─────────────────────────────────────────────────────
 app.get('/download/agent.exe', (req, res) => {

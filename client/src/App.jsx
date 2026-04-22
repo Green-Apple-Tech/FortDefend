@@ -25,6 +25,7 @@ import RebootPolicies from './pages/RebootPolicies';
 import MspDashboard from './pages/MspDashboard';
 import MspOverview from './pages/MspOverview';
 import ApiDocs from './pages/ApiDocs';
+import Groups from './pages/Groups';
 
 export default function App() {
   return (
@@ -46,6 +47,7 @@ export default function App() {
             <Route element={<AppLayout />}>
               <Route path="/dashboard" element={<Dashboard />} />
               <Route path="/devices" element={<Devices />} />
+              <Route path="/groups" element={<Groups />} />
               <Route path="/reports" element={<Reports />} />
               <Route path="/alerts" element={<Alerts />} />
               <Route path="/billing" element={<Billing />} />

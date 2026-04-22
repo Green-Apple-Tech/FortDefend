@@ -109,25 +109,29 @@ router.post('/signup', async (req, res, next) => {
       });
     });
 
+    const verifyUrl = `${process.env.APP_URL}/verify-email?token=${verifyToken}`;
+
     await resend.emails.send({
       from: process.env.FROM_EMAIL,
       to: email,
       subject: 'Verify your FortDefend account',
       html: `
-        <p>Welcome to FortDefend!</p>
-        <p>Click below to verify your email and start your 10-day free trial.
-           All 15 AI agents, full access.</p>
-        <p>
-          <a href="${process.env.APP_URL}/verify-email?token=${verifyToken}"
-             style="background:#185FA5;color:#fff;padding:12px 24px;
-                    border-radius:6px;text-decoration:none;font-weight:bold">
-            Verify my email and start trial
-          </a>
-        </p>
-        ${planConfig.requiresCard
-          ? '<p style="color:#8a887e;font-size:12px">Your card is saved but will not be charged until you activate your plan after the trial.</p>'
-          : '<p style="color:#8a887e;font-size:12px">No card required for the personal plan.</p>'
-        }
+        <div style="font-family:Arial,sans-serif;max-width:600px;margin:0 auto;padding:24px;">
+          <h2 style="color:#0A1628;">Welcome to FortDefend!</h2>
+          <p>Click the button below to verify your email and start your 10-day free trial. All 15 AI agents, full access.</p>
+          <p style="margin:32px 0;">
+            <a href="${verifyUrl}"
+               style="display:inline-block;background:#185FA5;color:#ffffff;padding:14px 28px;border-radius:6px;text-decoration:none;font-weight:bold;font-size:16px;">
+              Verify my email and start trial
+            </a>
+          </p>
+          <p style="color:#666;font-size:14px;">If the button doesn't work, copy and paste this link into your browser:</p>
+          <p style="word-break:break-all;color:#185FA5;font-size:14px;">${verifyUrl}</p>
+          ${planConfig.requiresCard
+            ? '<p style="color:#8a887e;font-size:12px;">Your card is saved but will not be charged until you activate your plan after the trial.</p>'
+            : '<p style="color:#8a887e;font-size:12px;">No card required for the personal plan.</p>'
+          }
+        </div>
       `,
     });
 
@@ -225,7 +229,7 @@ router.post('/login', async (req, res, next) => {
         graceEndsAt: org.grace_ends_at,
         isReadOnly: org.is_read_only,
       },
-setupTOTP: false,
+      setupTOTP: false,
     });
   } catch (err) { next(err); }
 });
@@ -387,19 +391,25 @@ router.post('/forgot-password', async (req, res, next) => {
       updated_at: new Date(),
     });
 
+    const resetUrl = `${process.env.APP_URL}/reset-password?token=${resetToken}`;
+
     await resend.emails.send({
       from: process.env.FROM_EMAIL,
       to: email,
       subject: 'Reset your FortDefend password',
       html: `
-        <p>Click below to reset your password. This link expires in 1 hour.</p>
-        <p>
-          <a href="${process.env.APP_URL}/reset-password?token=${resetToken}"
-             style="background:#185FA5;color:#fff;padding:12px 24px;
-                    border-radius:6px;text-decoration:none">
-            Reset my password
-          </a>
-        </p>
+        <div style="font-family:Arial,sans-serif;max-width:600px;margin:0 auto;padding:24px;">
+          <h2 style="color:#0A1628;">Reset your password</h2>
+          <p>Click the button below to reset your password. This link expires in 1 hour.</p>
+          <p style="margin:32px 0;">
+            <a href="${resetUrl}"
+               style="display:inline-block;background:#185FA5;color:#ffffff;padding:14px 28px;border-radius:6px;text-decoration:none;font-weight:bold;font-size:16px;">
+              Reset my password
+            </a>
+          </p>
+          <p style="color:#666;font-size:14px;">If the button doesn't work, copy and paste this link into your browser:</p>
+          <p style="word-break:break-all;color:#185FA5;font-size:14px;">${resetUrl}</p>
+        </div>
       `,
     });
 

@@ -7,7 +7,7 @@ export default function Login() {
   const { login, completeTotpLogin } = useAuth();
   const navigate = useNavigate();
   const location = useLocation();
-  const from = location.state?.from || '/dashboard';
+const from = (location.state?.from && location.state.from !== '/login') ? location.state.from : '/dashboard';
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [totp, setTotp] = useState('');

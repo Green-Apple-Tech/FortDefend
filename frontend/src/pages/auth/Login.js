@@ -17,6 +17,8 @@ export default function Login() {
       const data = await login(email, password);
       if (data.requiresTOTP) {
         window.location.href = '/verify-2fa?token=' + data.tempToken;
+      } else {
+        window.location.href = '/dashboard';
       }
     } catch (err) {
       setError(err.response?.data?.error || 'Login failed. Please try again.');

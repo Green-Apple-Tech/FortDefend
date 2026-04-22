@@ -8,7 +8,6 @@ export default function Login() {
   const navigate = useNavigate();
   const location = useLocation();
   const from = location.state?.from || '/dashboard';
-
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [totp, setTotp] = useState('');
@@ -31,20 +30,19 @@ export default function Login() {
         navigate(from, { replace: true });
         return;
       }
-const res = await login(email, password);
-console.log('Login result:', JSON.stringify(res));  // ADD THIS
-if (res.requiresTOTP && res.tempToken) {
+      const res = await login(email, password);
+      if (res.requiresTOTP && res.tempToken) {
+        setTempToken(res.tempToken);
         setLoading(false);
         return;
       }
-if (res.ok || res.accessToken || res.token) {
-  if (res.setupTOTP) {
-    navigate('/setup-2fa', { replace: true });
-  } else {
-    navigate(from, { replace: true });
-  }
-  return;
-}
+      if (res.ok || res.accessToken || res.token) {
+        if (res.setupTOTP) {
+          navigate('/setup-2fa', { replace: true });
+        } else {
+          navigate(from, { replace: true });
+        }
+        return;
       }
       setError('Login failed.');
     } catch (err) {
@@ -79,30 +77,3 @@ if (res.ok || res.accessToken || res.token) {
             </>
           ) : (
             <Input
-              label="Two-factor code"
-              inputMode="numeric"
-              pattern="\d{6}"
-              maxLength={6}
-              placeholder="000000"
-              value={totp}
-              onChange={(e) => setTotp(e.target.value)}
-              required
-            />
-          )}
-          <Button type="submit" className="w-full" disabled={loading}>
-            {loading ? 'Signing in…' : tempToken ? 'Verify' : 'Continue'}
-          </Button>
-        </form>
-        <p className="mt-6 text-center text-sm text-gray-600">
-          <Link to="/forgot-password" className="text-brand hover:underline">
-            Forgot password?
-          </Link>
-          {' · '}
-          <Link to="/signup" className="text-brand hover:underline">
-            Create account
-          </Link>
-        </p>
-      </div>
-    </div>
-  );
-}

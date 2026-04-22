@@ -22,7 +22,7 @@ export default function Setup2FA() {
         if (!cancelled) {
           setQr(res.qrCodeDataUrl || '');
           setBackupCodes(res.backupCodes || []);
-          setSetupToken(res.setupToken || '');
+          setSetupToken(res.tempSecret || '');
         }
       } catch (e) {
         if (!cancelled) setError(e.message || 'Could not start 2FA setup.');
@@ -42,7 +42,7 @@ export default function Setup2FA() {
     try {
       await api('/api/auth/confirm-totp', {
         method: 'POST',
-        body: { setupToken, code },
+        body: { tempSecret: setupToken, code },
       });
       setDone(true);
       await refreshOrg();
@@ -57,7 +57,6 @@ export default function Setup2FA() {
     <div className="mx-auto max-w-lg px-4 py-12">
       <h1 className="text-2xl font-bold text-gray-900">Set up two-factor authentication</h1>
       <p className="mt-2 text-sm text-gray-600">Scan the QR code with your authenticator app, then enter a 6-digit code.</p>
-
       {loading && <p className="mt-6 text-sm text-gray-500">Loading…</p>}
       {error && <div className="mt-4 rounded-lg bg-red-50 px-3 py-2 text-sm text-red-700">{error}</div>}
       {done && (
@@ -65,7 +64,6 @@ export default function Setup2FA() {
           2FA is enabled. Store your backup codes in a safe place.
         </div>
       )}
-
       {!done && qr && (
         <div className="mt-8 space-y-6">
           <div className="flex justify-center rounded-xl border border-gray-200 bg-white p-4">
@@ -87,7 +85,6 @@ export default function Setup2FA() {
           </form>
         </div>
       )}
-
       <p className="mt-8 text-sm">
         <Link to="/dashboard" className="text-brand hover:underline">
           ← Back to dashboard

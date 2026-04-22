@@ -31,9 +31,9 @@ export default function Login() {
         navigate(from, { replace: true });
         return;
       }
-      const res = await login(email, password);
-      if (res.requiresTOTP && res.tempToken) {
-        setTempToken(res.tempToken);
+const res = await login(email, password);
+console.log('Login result:', JSON.stringify(res));  // ADD THIS
+if (res.requiresTOTP && res.tempToken) {
         setLoading(false);
         return;
       }

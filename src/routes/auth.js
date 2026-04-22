@@ -225,7 +225,7 @@ router.post('/login', async (req, res, next) => {
         graceEndsAt: org.grace_ends_at,
         isReadOnly: org.is_read_only,
       },
-      setupTOTP: !user.totp_enabled,
+setupTOTP: false,
     });
   } catch (err) { next(err); }
 });

@@ -51,7 +51,7 @@ function signTokens(user, org) {
 const signupSchema = z.object({
   email: z.string().email(),
   password: z.string().min(8).regex(/[A-Z]/).regex(/[0-9]/),
-  orgName: z.string().min(2),
+  orgName: z.string().min(2).optional().default('My Organization'),
   plan: z.enum(['personal','starter','growth','scale']).default('personal'),
 });
 

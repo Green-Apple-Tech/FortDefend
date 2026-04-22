@@ -37,7 +37,7 @@ export default function Login() {
         setLoading(false);
         return;
       }
-      if (res.ok) {
+if (res.ok || res.accessToken || res.token) {
         navigate(from, { replace: true });
         return;
       }

@@ -97,6 +97,8 @@ app.use('/api/nmap',         require('./routes/nmap'));
 app.use('/api/integrations', require('./routes/integrations'));
 app.use('/api/reports',      require('./routes/reports'));
 
+app.use('/api/enrollment', require('./routes/enrollment'));
+app.use('/api/extension',  require('./routes/chromebook-extension'));
 app.use('/api/devices',      require('./routes/devices'));
 app.use('/api/remediation',  require('./routes/remediation'));
 app.use('/api/agent',        require('./routes/agent'));

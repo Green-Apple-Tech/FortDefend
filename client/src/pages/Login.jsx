@@ -77,3 +77,30 @@ export default function Login() {
             </>
           ) : (
             <Input
+              label="Two-factor code"
+              inputMode="numeric"
+              pattern="\d{6}"
+              maxLength={6}
+              placeholder="000000"
+              value={totp}
+              onChange={(e) => setTotp(e.target.value)}
+              required
+            />
+          )}
+          <Button type="submit" className="w-full" disabled={loading}>
+            {loading ? 'Signing in…' : tempToken ? 'Verify' : 'Continue'}
+          </Button>
+        </form>
+        <p className="mt-6 text-center text-sm text-gray-600">
+          <Link to="/forgot-password" className="text-brand hover:underline">
+            Forgot password?
+          </Link>
+          {' · '}
+          <Link to="/signup" className="text-brand hover:underline">
+            Create account
+          </Link>
+        </p>
+      </div>
+    </div>
+  );
+}

@@ -165,6 +165,9 @@ router.post('/login', async (req, res, next) => {
     if (!email || !password) {
       return res.status(400).json({ error: 'Email and password required.' });
     }
+    if (!process.env.JWT_SECRET) {
+      return res.status(500).json({ error: 'Server configuration error: JWT secret is missing.' });
+    }
 
     const user = await db('users').where({ email }).first();
     if (!user) return res.status(401).json({ error: 'Invalid email or password.' });
@@ -173,7 +176,17 @@ router.post('/login', async (req, res, next) => {
       return res.status(429).json({ error: 'Account temporarily locked. Try again later.' });
     }
 
-    const valid = await bcrypt.compare(password, user.password_hash);
+    let valid = false;
+    try {
+      if (!user.password_hash) {
+        return res.status(500).json({ error: 'User account is misconfigured. Contact support.' });
+      }
+      valid = await bcrypt.compare(password, user.password_hash);
+    } catch (bcryptErr) {
+      console.error('[Auth/Login] bcrypt compare failed:', bcryptErr);
+      return res.status(500).json({ error: 'Authentication system error. Please try again.' });
+    }
+
     if (!valid) {
       const attempts = (user.failed_login_attempts || 0) + 1;
       const update = { failed_login_attempts: attempts, updated_at: new Date() };
@@ -200,6 +213,9 @@ router.post('/login', async (req, res, next) => {
     });
 
     const org = await db('orgs').where({ id: user.org_id }).first();
+    if (!org) {
+      return res.status(500).json({ error: 'User organization is missing. Contact support.' });
+    }
 
     if (user.totp_enabled) {
       const tempToken = jwt.sign(
@@ -232,7 +248,10 @@ router.post('/login', async (req, res, next) => {
       },
       setupTOTP: false,
     });
-  } catch (err) { next(err); }
+  } catch (err) {
+    console.error('[Auth/Login] Unhandled login error:', err);
+    next(err);
+  }
 });
 
 router.post('/login/totp', async (req, res, next) => {

@@ -25,7 +25,7 @@ import RebootPolicies from './pages/RebootPolicies';
 import MspDashboard from './pages/MspDashboard';
 import MspOverview from './pages/MspOverview';
 import ApiDocs from './pages/ApiDocs';
-import Groups from './pages/Groups';
+import Groups from './pages/groups';
 import SoftwareManager from './pages/SoftwareManager';
 
 export default function App() {

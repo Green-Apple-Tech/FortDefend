@@ -5,6 +5,7 @@ const DIRECTORY_BASE = 'https://admin.googleapis.com/admin/directory/v1';
 
 const SCOPES = [
   'https://www.googleapis.com/auth/admin.directory.device.chromeos',
+  'https://www.googleapis.com/auth/admin.directory.device.mobile.readonly',
   'https://www.googleapis.com/auth/admin.directory.orgunit',
 ].join(' ');
 
@@ -159,6 +160,104 @@ function _normalizeChromebook(d) {
   };
 }
 
+function parseMajorVersion(version) {
+  if (!version) return null;
+  const match = String(version).match(/\d+/);
+  if (!match) return null;
+  const major = Number.parseInt(match[0], 10);
+  return Number.isFinite(major) ? major : null;
+}
+
+function normalizeMobileOs(device) {
+  const rawOs = String(device.os || device.releaseVersion || '').toLowerCase();
+  if (rawOs.includes('ipad')) return 'iPadOS';
+  return 'iOS';
+}
+
+function _normalizeMobileDevice(d) {
+  const lastSeenRaw = d.lastSync || d.lastSyncTime || d.lastContact || null;
+  const supervised = Boolean(
+    d.isSupervised ??
+      d.supervised ??
+      d.supervisedDevice ??
+      d.deviceSupervised
+  );
+
+  return {
+    id: d.resourceId || d.deviceId || d.name || d.imei || d.serialNumber,
+    source: 'google_mobile',
+    name: d.model || d.deviceModel || d.name || d.serialNumber || d.resourceId,
+    serial: d.serialNumber || d.hardwareId || d.imei || null,
+    os: normalizeMobileOs(d),
+    osVersion: d.os || d.releaseVersion || d.osVersion || null,
+    model: d.model || d.deviceModel || null,
+    email: d.email || d.userEmail || null,
+    status: d.status || d.deviceStatus || null,
+    lastSeen: lastSeenRaw ? new Date(lastSeenRaw).toISOString() : null,
+    supervised,
+    hardwareId: d.hardwareId || null,
+    alerts: [],
+    _raw: d,
+  };
+}
+
+function getIOSComplianceStatus(device) {
+  const alerts = [];
+  const latestIosMajor = Number.parseInt(process.env.LATEST_IOS_MAJOR || '18', 10);
+  const currentMajor = parseMajorVersion(device.osVersion);
+
+  if (Number.isFinite(latestIosMajor) && currentMajor != null && currentMajor < latestIosMajor - 1) {
+    alerts.push({
+      type: 'os_version',
+      severity: 'high',
+      message: `iOS version ${device.osVersion} is more than 1 major version behind current.`,
+    });
+  }
+
+  if (!device.supervised) {
+    alerts.push({
+      type: 'supervision',
+      severity: 'medium',
+      message: 'Device is not supervised.',
+    });
+  }
+
+  const passcodeSet = Boolean(
+    device._raw?.passcodePresent ??
+      device._raw?.passcodeSet ??
+      device._raw?.devicePasswordStatus === 'ENABLED'
+  );
+  if (!passcodeSet) {
+    alerts.push({
+      type: 'passcode',
+      severity: 'high',
+      message: 'Device passcode is not set.',
+    });
+  }
+
+  if (device.lastSeen) {
+    const lastSyncMs = new Date(device.lastSeen).getTime();
+    if (Number.isFinite(lastSyncMs)) {
+      const ageMs = Date.now() - lastSyncMs;
+      if (ageMs > 7 * 24 * 60 * 60 * 1000) {
+        alerts.push({
+          type: 'sync',
+          severity: 'medium',
+          message: 'Device has not synced in over 7 days.',
+        });
+      }
+    }
+  } else {
+    alerts.push({
+      type: 'sync',
+      severity: 'medium',
+      message: 'Device has no recent sync timestamp.',
+    });
+  }
+
+  return alerts;
+}
+
 async function getChromebookDevice(deviceId, serviceAccountJson, adminEmail, customerId = 'my_customer') {
   const token = await getAccessToken(serviceAccountJson, adminEmail);
   const data = await adminRequest(
@@ -188,6 +287,34 @@ async function getChromebookDevices(orgUnitPath, serviceAccountJson, adminEmail,
     if (page.nextPageToken) {
       params.set('pageToken', page.nextPageToken);
       path = `/customer/${encodeURIComponent(customerId)}/devices/chromeos?${params.toString()}`;
+    } else {
+      path = null;
+    }
+  }
+
+  return devices;
+}
+
+async function getMobileDevices(customerId = 'my_customer', serviceAccountJson, adminEmail) {
+  const token = await getAccessToken(serviceAccountJson, adminEmail);
+  const params = new URLSearchParams({
+    maxResults: '100',
+  });
+
+  let path = `/customer/${encodeURIComponent(customerId)}/mobiledevices?${params.toString()}`;
+  const devices = [];
+
+  while (path) {
+    const page = await adminRequest(token, 'GET', path);
+    for (const d of page?.mobiledevices || []) {
+      if (String(d.type || '').toUpperCase() !== 'IOS') continue;
+      const normalized = _normalizeMobileDevice(d);
+      normalized.alerts = getIOSComplianceStatus(normalized);
+      devices.push(normalized);
+    }
+    if (page.nextPageToken) {
+      params.set('pageToken', page.nextPageToken);
+      path = `/customer/${encodeURIComponent(customerId)}/mobiledevices?${params.toString()}`;
     } else {
       path = null;
     }
@@ -288,9 +415,12 @@ module.exports = {
   getAccessToken,
   getChromebookDevice,
   getChromebookDevices,
+  getMobileDevices,
+  getIOSComplianceStatus,
   getOrgUnits,
   getDeviceTelemetry,
   getUpdateStatus,
   sendDeviceCommand,
   _normalizeChromebook,
+  _normalizeMobileDevice,
 };

@@ -79,6 +79,7 @@ export default function Integrations() {
           <ul className="mt-3 space-y-2 text-sm text-gray-700">
             <li>Intune: {status.intune?.configured ? 'configured' : 'not configured'} (enabled: {String(!!status.intune?.enabled)})</li>
             <li>Google: {status.google?.configured ? 'configured' : 'not configured'} (enabled: {String(!!status.google?.enabled)})</li>
+            <li>Google Mobile Devices: {status.google?.mobileDeviceCount ?? 0}</li>
           </ul>
         </Card>
       )}
@@ -103,6 +104,9 @@ export default function Integrations() {
       <Card>
         <h2 className="text-lg font-semibold text-gray-900">Google Admin</h2>
         <p className="mt-1 text-sm text-gray-600">Domain-wide delegation service account JSON + admin email to impersonate.</p>
+        <p className="mt-1 text-xs text-gray-500">
+          Required delegated scopes: <code>admin.directory.device.chromeos</code>, <code>admin.directory.device.mobile.readonly</code>, and <code>admin.directory.orgunit</code>.
+        </p>
         <form onSubmit={connectGoogle} className="mt-4 space-y-3">
           <Input
             label="Admin email"

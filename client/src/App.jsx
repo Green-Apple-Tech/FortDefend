@@ -34,7 +34,7 @@ export default function App() {
       <AuthProvider>
         <Routes>
           <Route element={<MarketingLayout />}>
-            <Route path="/" element={<Landing />} />
+            <Route path="/" element={<Navigate to="/login" replace />} />
             <Route path="/pricing" element={<Pricing />} />
           </Route>
 

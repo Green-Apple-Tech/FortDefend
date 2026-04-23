@@ -20,6 +20,18 @@ router.get('/status', requireAuth, async (req, res) => {
       });
     }
 
+    const googleConfigured = !!(row.google_admin_email && row.google_service_account_enc);
+    let googleMobileDeviceCount = 0;
+    if (googleConfigured && row.google_enabled) {
+      try {
+        const mgr = new IntegrationManager(req.user.orgId);
+        const { devices } = await mgr.getAllDevices();
+        googleMobileDeviceCount = devices.filter((d) => d.source === 'google_mobile').length;
+      } catch (countErr) {
+        console.error('Integrations status mobile count error:', countErr);
+      }
+    }
+
     res.json({
       intune: {
         enabled: !!row.intune_enabled,
@@ -31,7 +43,8 @@ router.get('/status', requireAuth, async (req, res) => {
       },
       google: {
         enabled: !!row.google_enabled,
-        configured: !!(row.google_admin_email && row.google_service_account_enc),
+        configured: googleConfigured,
+        mobileDeviceCount: googleMobileDeviceCount,
       },
       googleCustomerId: row.google_customer_id || null,
       updatedAt: row.updated_at,

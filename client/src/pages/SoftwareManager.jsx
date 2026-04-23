@@ -3,6 +3,7 @@ import { api } from '../lib/api';
 import { Button, Card, Input } from '../components/ui';
 
 const CATEGORY_TABS = ['All', 'Browsers', 'Security', 'Productivity', 'Dev Tools', 'Utilities', 'Media'];
+const COLUMN_PREFS_KEY = 'software_manager_hidden_columns';
 
 function keyFor(deviceId, wingetId) {
   return `${deviceId}::${wingetId}`;
@@ -27,6 +28,8 @@ export default function SoftwareManager() {
   const [toast, setToast] = useState('');
   const [actionLoading, setActionLoading] = useState(false);
   const [addModalOpen, setAddModalOpen] = useState(false);
+  const [manageColumnsOpen, setManageColumnsOpen] = useState(false);
+  const [hiddenWingetIds, setHiddenWingetIds] = useState([]);
   const [addAppLoading, setAddAppLoading] = useState(false);
   const [addAppForm, setAddAppForm] = useState({
     winget_id: '',
@@ -79,6 +82,31 @@ export default function SoftwareManager() {
     return () => clearTimeout(timer);
   }, [toast]);
 
+  useEffect(() => {
+    try {
+      const raw = localStorage.getItem(COLUMN_PREFS_KEY);
+      if (!raw) return;
+      const parsed = JSON.parse(raw);
+      if (Array.isArray(parsed)) {
+        setHiddenWingetIds(parsed.filter((id) => typeof id === 'string'));
+      }
+    } catch {
+      setHiddenWingetIds([]);
+    }
+  }, []);
+
+  useEffect(() => {
+    localStorage.setItem(COLUMN_PREFS_KEY, JSON.stringify(hiddenWingetIds));
+  }, [hiddenWingetIds]);
+
+  useEffect(() => {
+    const validIds = new Set(matrix.apps.map((app) => app.winget_id));
+    setHiddenWingetIds((prev) => {
+      const next = prev.filter((id) => validIds.has(id));
+      return next.length === prev.length ? prev : next;
+    });
+  }, [matrix.apps]);
+
   const filteredApps = useMemo(() => {
     return matrix.apps.filter((app) => {
       const inCategory = category === 'All' || app.category === category;
@@ -87,6 +115,12 @@ export default function SoftwareManager() {
       return !search || hay.includes(search.toLowerCase());
     });
   }, [matrix.apps, search, category]);
+
+  const hiddenSet = useMemo(() => new Set(hiddenWingetIds), [hiddenWingetIds]);
+
+  const visibleApps = useMemo(() => {
+    return filteredApps.filter((app) => !hiddenSet.has(app.winget_id));
+  }, [filteredApps, hiddenSet]);
 
   const installationsByKey = useMemo(() => {
     const map = new Map();
@@ -120,7 +154,7 @@ export default function SoftwareManager() {
   const selectedCount = selected.size;
 
   const toggleCell = (deviceId, wingetId, shiftPressed = false) => {
-    const apps = filteredApps;
+    const apps = visibleApps;
     const deviceIndex = matrix.devices.findIndex((d) => d.id === deviceId);
     const appIndex = apps.findIndex((a) => a.winget_id === wingetId);
     if (deviceIndex === -1 || appIndex === -1) return;
@@ -168,7 +202,25 @@ export default function SoftwareManager() {
   const selectRow = (deviceId) => {
     setSelected((prev) => {
       const next = new Set(prev);
-      filteredApps.forEach((app) => next.add(keyFor(deviceId, app.winget_id)));
+      visibleApps.forEach((app) => next.add(keyFor(deviceId, app.winget_id)));
+      return next;
+    });
+  };
+
+  const toggleColumnVisibility = (wingetId) => {
+    setHiddenWingetIds((prev) => {
+      const currentlyHidden = prev.includes(wingetId);
+      if (currentlyHidden) {
+        return prev.filter((id) => id !== wingetId);
+      }
+      return [...prev, wingetId];
+    });
+    setSelected((prev) => {
+      const next = new Set(prev);
+      Array.from(next).forEach((cellKey) => {
+        const [, appWingetId] = cellKey.split('::');
+        if (appWingetId === wingetId) next.delete(cellKey);
+      });
       return next;
     });
   };
@@ -311,8 +363,37 @@ export default function SoftwareManager() {
               onChange={(e) => setSearch(e.target.value)}
             />
           </div>
-          <div className="flex items-end">
+          <div className="relative flex items-end gap-2">
+            <Button variant="outline" className="h-[42px]" onClick={() => setManageColumnsOpen((prev) => !prev)}>
+              Manage Columns
+            </Button>
             <Button className="h-[42px]" onClick={() => setAddModalOpen(true)}>Add App</Button>
+            {manageColumnsOpen && (
+              <div className="absolute right-0 top-[46px] z-30 max-h-80 w-80 overflow-auto rounded-xl border border-gray-200 bg-white p-3 shadow-xl">
+                <div className="mb-2 flex items-center justify-between">
+                  <p className="text-sm font-semibold text-gray-900">Visible App Columns</p>
+                  <button type="button" className="text-xs text-gray-500 hover:text-gray-700" onClick={() => setManageColumnsOpen(false)}>
+                    Close
+                  </button>
+                </div>
+                <div className="space-y-2">
+                  {matrix.apps.map((app) => {
+                    const checked = !hiddenSet.has(app.winget_id);
+                    return (
+                      <label key={app.id} className="flex items-center justify-between gap-2 rounded px-1 py-1 hover:bg-gray-50">
+                        <span className="truncate text-sm text-gray-700">{app.name}</span>
+                        <input
+                          type="checkbox"
+                          checked={checked}
+                          onChange={() => toggleColumnVisibility(app.winget_id)}
+                          className="h-4 w-4 rounded border-gray-300 text-brand focus:ring-brand"
+                        />
+                      </label>
+                    );
+                  })}
+                </div>
+              </div>
+            )}
           </div>
         </div>
       </div>
@@ -335,7 +416,7 @@ export default function SoftwareManager() {
       <Card className="p-0">
         {loading ? (
           <div className="p-8 text-sm text-gray-500">Loading software matrix...</div>
-        ) : filteredApps.length === 0 ? (
+        ) : visibleApps.length === 0 ? (
           <div className="p-8 text-sm text-gray-500">No apps match your filters.</div>
         ) : (
           <>
@@ -346,7 +427,7 @@ export default function SoftwareManager() {
                     <th className="sticky left-0 z-30 border-b border-r border-gray-200 bg-white px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-gray-500">
                       Devices
                     </th>
-                    {filteredApps.map((app) => (
+                    {visibleApps.map((app) => (
                       <th key={app.id} className="min-w-[120px] border-b border-gray-200 px-2 py-3 text-center">
                         <button
                           type="button"
@@ -372,7 +453,7 @@ export default function SoftwareManager() {
                           <span className="max-w-[200px] truncate text-sm font-medium text-gray-800">{device.name}</span>
                         </button>
                       </th>
-                      {filteredApps.map((app) => renderCell(device, app))}
+                      {visibleApps.map((app) => renderCell(device, app))}
                     </tr>
                   ))}
                 </tbody>
@@ -391,7 +472,7 @@ export default function SoftwareManager() {
                     <span className="font-semibold text-gray-900">{device.name}</span>
                   </button>
                   <div className="grid grid-cols-2 gap-2">
-                    {filteredApps.map((app) => {
+                    {visibleApps.map((app) => {
                       const status = cellStatus(device.id, app.winget_id);
                       const cellKey = keyFor(device.id, app.winget_id);
                       const isSelected = selected.has(cellKey);

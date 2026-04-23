@@ -64,6 +64,16 @@ class IntegrationManager {
           .then((devices) => ({ source: 'google_admin', devices }))
           .catch((err) => ({ source: 'google_admin', devices: [], error: err.message }))
       );
+      tasks.push(
+        googleAdmin
+          .getMobileDevices(
+            googleCreds.customerId,
+            googleCreds.serviceAccountJson,
+            googleCreds.adminEmail
+          )
+          .then((devices) => ({ source: 'google_mobile', devices }))
+          .catch((err) => ({ source: 'google_mobile', devices: [], error: err.message }))
+      );
     }
 
     const parts = await Promise.all(tasks);

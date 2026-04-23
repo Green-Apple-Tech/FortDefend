@@ -158,12 +158,18 @@ function _normalizeDevice(d) {
   };
 
   const lastSeen = d.lastSyncDateTime || d.lastContactedDateTime || null;
+  const osRaw = String(d.operatingSystem || '').toLowerCase();
+  let normalizedOs = 'windows';
+  if (osRaw.includes('ios')) normalizedOs = 'iOS';
+  if (osRaw.includes('ipad')) normalizedOs = 'iPadOS';
+  if (osRaw.includes('android')) normalizedOs = 'android';
+
   const base = {
     id: d.id,
     source: 'intune',
     name: d.deviceName || d.name || d.id,
     serial: d.serialNumber || d.imei || null,
-    os: 'windows',
+    os: normalizedOs,
     osVersion: d.osVersion || d.operatingSystem || null,
     compliance: d.complianceState || null,
     lastSeen: lastSeen ? new Date(lastSeen).toISOString() : null,

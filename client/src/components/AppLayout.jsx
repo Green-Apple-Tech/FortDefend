@@ -7,6 +7,18 @@ const nav = [
   { to: '/dashboard', label: 'Dashboard' },
   { to: '/groups', label: 'Groups' },
   { to: '/devices', label: 'Devices' },
+  {
+    to: '/software',
+    label: 'Software Manager',
+    icon: (
+      <svg viewBox="0 0 24 24" className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth="1.8">
+        <rect x="3.5" y="3.5" width="7" height="7" rx="1.5" />
+        <rect x="13.5" y="3.5" width="7" height="7" rx="1.5" />
+        <rect x="3.5" y="13.5" width="7" height="7" rx="1.5" />
+        <path d="M15 13h4.5a1.5 1.5 0 0 1 1.5 1.5V19a1.5 1.5 0 0 1-1.5 1.5H15a1.5 1.5 0 0 1-1.5-1.5v-4.5A1.5 1.5 0 0 1 15 13z" />
+      </svg>
+    ),
+  },
   { to: '/reports', label: 'Reports' },
   { to: '/alerts', label: 'Alerts' },
   { to: '/billing', label: 'Billing' },
@@ -37,7 +49,7 @@ export function AppLayout() {
               )}
             </div>
             <nav className="flex flex-1 flex-col gap-1">
-              {nav.map(({ to, label }) => (
+              {nav.map(({ to, label, icon }) => (
                 <NavLink
                   key={to}
                   to={to}
@@ -45,7 +57,10 @@ export function AppLayout() {
                     `rounded-lg px-3 py-2 text-sm font-medium ${isActive ? 'bg-brand-light text-brand' : 'text-gray-600 hover:bg-gray-50'}`
                   }
                 >
-                  {label}
+                  <span className="flex items-center gap-2">
+                    {icon || <span className="h-4 w-4" />}
+                    <span>{label}</span>
+                  </span>
                 </NavLink>
               ))}
             </nav>
@@ -76,7 +91,7 @@ export function AppLayout() {
           </header>
           <div className="border-b border-gray-200 bg-white px-2 py-2 md:hidden">
             <div className="flex flex-wrap gap-1">
-              {nav.map(({ to, label }) => (
+              {nav.map(({ to, label, icon }) => (
                 <NavLink
                   key={to}
                   to={to}
@@ -84,7 +99,10 @@ export function AppLayout() {
                     `rounded-md px-2 py-1 text-xs font-medium ${isActive ? 'bg-brand text-white' : 'text-gray-600'}`
                   }
                 >
-                  {label}
+                  <span className="flex items-center gap-1">
+                    {icon}
+                    <span>{label}</span>
+                  </span>
                 </NavLink>
               ))}
             </div>

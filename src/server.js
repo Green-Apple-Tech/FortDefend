@@ -104,6 +104,7 @@ app.use('/api/remediation',     require('./routes/remediation'));
 app.use('/api/agent',           require('./routes/agent'));
 app.use('/api/reboot-policies', require('./routes/rebootPolicies'));
 app.use('/api/groups',          require('./routes/groups'));
+app.use('/api/software',        require('./routes/softwareManager'));
 
 // ── Agent binary download ─────────────────────────────────────────────────────
 app.get('/download/agent.exe', (req, res) => {
@@ -145,9 +146,43 @@ app.use((err, req, res, next) => {
 
 // ── Start ─────────────────────────────────────────────────────────────────────
 const PORT = process.env.PORT || 3000;
-app.listen(PORT, () => {
+const server = app.listen(PORT, () => {
   console.log(`[FortDefend] Server running on port ${PORT}`);
   startTrialMonitor();
 });
+
+server.on('error', (err) => {
+  if (err && err.code === 'EADDRINUSE') {
+    console.error(`[FortDefend] Port ${PORT} is already in use. Stop the existing process or set a different PORT, then restart.`);
+    process.exit(1);
+  }
+
+  console.error('[FortDefend] Server failed to start:', err.message || err);
+  process.exit(1);
+});
+
+let isShuttingDown = false;
+async function shutdown(signal) {
+  if (isShuttingDown) return;
+  isShuttingDown = true;
+
+  console.log(`[FortDefend] Received ${signal}. Shutting down gracefully...`);
+
+  server.close(async () => {
+    try {
+      await db.destroy();
+    } catch (err) {
+      console.error('[FortDefend] Error closing database pool:', err.message || err);
+      process.exit(1);
+      return;
+    }
+
+    console.log('[FortDefend] Shutdown complete.');
+    process.exit(0);
+  });
+}
+
+process.on('SIGINT', () => shutdown('SIGINT'));
+process.on('SIGTERM', () => shutdown('SIGTERM'));
 
 module.exports = app;

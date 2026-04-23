@@ -1,5 +1,5 @@
 {
-  "name": "patchpilot",
+  "name": "fortdefend",
   "version": "1.0.0",
   "description": "PatchPilot - Windows/Chromebook Security SaaS",
   "main": "src/server.js",

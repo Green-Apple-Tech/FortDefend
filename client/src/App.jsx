@@ -26,6 +26,7 @@ import MspDashboard from './pages/MspDashboard';
 import MspOverview from './pages/MspOverview';
 import ApiDocs from './pages/ApiDocs';
 import Groups from './pages/Groups';
+import SoftwareManager from './pages/SoftwareManager';
 
 export default function App() {
   return (
@@ -47,6 +48,7 @@ export default function App() {
             <Route element={<AppLayout />}>
               <Route path="/dashboard" element={<Dashboard />} />
               <Route path="/devices" element={<Devices />} />
+              <Route path="/software" element={<ProtectedRoute><SoftwareManager /></ProtectedRoute>} />
               <Route path="/groups" element={<Groups />} />
               <Route path="/reports" element={<Reports />} />
               <Route path="/alerts" element={<Alerts />} />

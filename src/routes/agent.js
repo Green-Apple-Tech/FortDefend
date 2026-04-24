@@ -653,7 +653,17 @@ router.post('/heartbeat', async (req, res) => {
       }
     }
     if (installedApps.length > 0 && canPersistDeviceApps) {
-      const wingetIds = [...new Set(installedApps.map((a) => String(a?.Id || '').trim()).filter(Boolean))];
+      console.log('[heartbeat] saving apps:', installedApps?.length);
+      const wingetIds = [
+        ...new Set(
+          installedApps
+            .map((a) => {
+              const id = a?.id ?? a?.wingetId ?? a?.Id ?? a?.winget_id;
+              return id != null ? String(id).trim() : '';
+            })
+            .filter(Boolean),
+        ),
+      ];
       let known = [];
       try {
         known = wingetIds.length
@@ -674,40 +684,80 @@ router.post('/heartbeat', async (req, res) => {
       const knownByWinget = new Map(known.map((k) => [k.winget_id, k.id]));
       const nowStamp = new Date();
       for (const app of installedApps) {
-        const appName = String(app?.Name || '').trim() || 'Unknown';
-        const wingetId = app?.Id ? String(app.Id).trim() : null;
-        const installedVersion = app?.Version == null ? null : String(app.Version);
-        const latestVersion = app?.AvailableVersion == null ? null : String(app.AvailableVersion);
-        const updateAvailable = app?.update_available === true
+        const appName = String(app?.name ?? app?.Name ?? '').trim();
+        if (!appName) continue;
+        const wingetIdRaw = app?.id ?? app?.wingetId ?? app?.Id ?? app?.winget_id ?? null;
+        const wingetId =
+          wingetIdRaw != null && String(wingetIdRaw).trim() !== '' ? String(wingetIdRaw).trim() : null;
+        const installedVersion =
+          app?.version == null && app?.Version == null ? null : String(app?.version ?? app?.Version ?? '');
+        const latestVersion =
+          app?.availableVersion == null && app?.AvailableVersion == null
+            ? null
+            : String(app?.availableVersion ?? app?.AvailableVersion ?? '');
+        const updateAvailable =
+          app?.update_available === true
           || (!!latestVersion && !!installedVersion && latestVersion !== installedVersion);
-        const row = {
+        const insertRow = {
           org_id: orgId,
           device_id: deviceId,
           app_name: appName,
           winget_id: wingetId,
-          installed_version: installedVersion,
-          latest_version: latestVersion,
+          installed_version: installedVersion || null,
+          latest_version: latestVersion || null,
+          update_available: updateAvailable,
+          catalogue_app_id: wingetId ? knownByWinget.get(wingetId) || null : null,
+          last_scanned_at: nowStamp,
+          created_at: nowStamp,
+          updated_at: nowStamp,
+        };
+        const mergeFields = {
+          org_id: orgId,
+          winget_id: wingetId,
+          installed_version: installedVersion || null,
+          latest_version: latestVersion || null,
           update_available: updateAvailable,
           catalogue_app_id: wingetId ? knownByWinget.get(wingetId) || null : null,
           last_scanned_at: nowStamp,
           updated_at: nowStamp,
         };
-        if (!wingetId) continue;
         try {
           await db('sm_device_apps')
-            .insert({ ...row, created_at: nowStamp })
-            .onConflict(['org_id', 'device_id', 'winget_id'])
-            .merge(row);
+            .insert(insertRow)
+            .onConflict(['device_id', 'app_name'])
+            .merge(mergeFields);
         } catch (err) {
           const msg = String(err?.message || '').toLowerCase();
           const isSchemaIssue =
             msg.includes('sm_device_apps')
             && (msg.includes('does not exist') || msg.includes('column') || msg.includes('relation') || msg.includes('schema'));
+          const isConflictTargetMissing =
+            msg.includes('no unique or exclusion constraint matching the on conflict specification');
+          if (isConflictTargetMissing) {
+            try {
+              const existingRow = await db('sm_device_apps')
+                .where({ device_id: deviceId, app_name: appName })
+                .first();
+              if (existingRow) {
+                await db('sm_device_apps').where({ id: existingRow.id }).update(mergeFields);
+              } else {
+                await db('sm_device_apps').insert(insertRow);
+              }
+            } catch (err2) {
+              console.error('[agent/heartbeat] fallback upsert sm_device_apps failed', {
+                orgId,
+                deviceId,
+                appName,
+                error: err2?.message,
+              });
+            }
+            continue;
+          }
           if (isSchemaIssue) {
             console.error('[agent/heartbeat] skipping sm_device_apps insert due to schema mismatch', {
               orgId,
               deviceId,
-              wingetId,
+              appName,
               error: err?.message,
             });
             break;
@@ -715,6 +765,7 @@ router.post('/heartbeat', async (req, res) => {
           console.error('[agent/heartbeat] failed to upsert installed app row', {
             orgId,
             deviceId,
+            appName,
             wingetId,
             error: err?.message,
             stack: err?.stack,

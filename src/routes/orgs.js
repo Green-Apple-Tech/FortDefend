@@ -9,7 +9,6 @@ const db = require('../database');
 const { requireAuth, requireAdmin } = require('../middleware/auth');
 const { checkTrialStatus } = require('../middleware/trial');
 const { getAppUrl } = require('../utils/appUrl');
-const enrollmentRouter = require('./enrollment');
 
 const resend = new Resend(process.env.RESEND_API_KEY);
 
@@ -65,96 +64,7 @@ router.get('/me', requireAuth, async (req, res) => {
   }
 });
 
-// GET /api/orgs/me/enrollment — org-scoped tokens and download URLs for Enroll Devices page (any org member)
-router.get('/me/enrollment', requireAuth, checkTrialStatus, async (req, res) => {
-  try {
-    const org = await db('orgs').where({ id: req.user.orgId }).first();
-    if (!org) return res.status(404).json({ error: 'Organization not found.' });
-
-    const { count } = await db('devices').where({ org_id: req.user.orgId }).count('id as count').first();
-    const deviceCount = parseInt(count, 10);
-
-    let baseUrl;
-    try {
-      baseUrl = getAppUrl();
-    } catch {
-      baseUrl = (process.env.APP_URL || '').trim().replace(/\/$/, '') || `${req.protocol}://${req.get('host')}`;
-    }
-    const gen = enrollmentRouter.generateEnrollmentToken;
-    const buildAgentDownloadUrl = enrollmentRouter.buildAgentDownloadUrl;
-    if (typeof gen !== 'function' || typeof buildAgentDownloadUrl !== 'function') {
-      return res.status(500).json({ error: 'Enrollment helper not available.' });
-    }
-
-    const rawGroup = req.query.groupId;
-    let groupId = rawGroup;
-    if (groupId === '' || groupId === undefined || groupId === null) groupId = null;
-    if (groupId) {
-      const g = await db('groups').where({ id: groupId, org_id: req.user.orgId }).first();
-      if (!g) return res.status(400).json({ error: 'Group not found.' });
-    }
-
-    const tokenOpts = groupId ? { groupId } : undefined;
-    const tokenWindows = gen(req.user.orgId, 'windows', tokenOpts);
-    const tokenAndroid = gen(req.user.orgId, 'android', tokenOpts);
-    const tokenChrome = gen(req.user.orgId, 'chromebook', tokenOpts);
-    const tokenUniversal = gen(req.user.orgId, 'universal', tokenOpts);
-
-    const enc = (t) => encodeURIComponent(t);
-    const orgId = req.user.orgId;
-    const extensionId = 'jpchjpcgcldplgfdjclgfljegdopkphc';
-
-    const googleAdminPolicy = {
-      policies: {
-        ExtensionSettings: {
-          [extensionId]: {
-            installation_mode: 'force_installed',
-            update_url: 'https://clients2.google.com/service/update2/crx',
-            allowed_types: 'extension',
-          },
-        },
-      },
-    };
-
-    const installScriptParams = new URLSearchParams();
-    installScriptParams.set('token', tokenWindows);
-    installScriptParams.set('org', orgId);
-    if (groupId) installScriptParams.set('group', groupId);
-    const msiQuery = new URLSearchParams();
-    msiQuery.set('token', tokenWindows);
-    msiQuery.set('org', orgId);
-    if (groupId) msiQuery.set('group', groupId);
-
-    res.json({
-      orgId,
-      orgName: org.name,
-      deviceCount,
-      extensionId,
-      chromeWebStoreUrl: `https://chrome.google.com/webstore/detail/fortdefend/${extensionId}`,
-      googlePlayUrl: 'https://play.google.com/store/apps/details?id=com.fortdefend.app',
-      appStoreUrl: 'https://apps.apple.com/app/fortdefend/id0000000000',
-      links: {
-        universalEnroll: `${baseUrl}/enroll?token=${enc(tokenUniversal)}&type=universal&org=${enc(orgId)}${groupId ? `&group=${enc(groupId)}` : ''}`,
-        windowsAgent: buildAgentDownloadUrl(baseUrl, tokenWindows, orgId, groupId),
-        windowsMsi: `${baseUrl}/download/fortdefend-setup.msi?${msiQuery.toString()}`,
-        installScript: `${baseUrl}/api/enrollment/install-script?${installScriptParams.toString()}`,
-        android: `${baseUrl}/enroll?token=${enc(tokenAndroid)}&type=android&org=${enc(orgId)}${groupId ? `&group=${enc(groupId)}` : ''}`,
-        ios: `${baseUrl}/enroll?token=${enc(tokenUniversal)}&type=universal&org=${enc(orgId)}${groupId ? `&group=${enc(groupId)}` : ''}`,
-        macPkg: `${baseUrl}/download/fortdefend-mac.pkg?${msiQuery.toString()}`,
-        extensionCrx: `${baseUrl}/download/fortdefend-extension.crx?token=${enc(tokenChrome)}&org=${enc(orgId)}${groupId ? `&group=${enc(groupId)}` : ''}`,
-        apk: `${baseUrl}/download/fortdefend.apk?${msiQuery.toString()}`,
-      },
-      tokens: {
-        windows: tokenWindows,
-        universal: tokenUniversal,
-      },
-      googleAdminPolicyJson: JSON.stringify(googleAdminPolicy, null, 2),
-    });
-  } catch (err) {
-    console.error('Get enrollment context error:', err);
-    res.status(500).json({ error: 'Failed to load enrollment data.' });
-  }
-});
+// GET /api/orgs/me/enrollment — registered in server.js (uses sendMeEnrollmentResponse from routes/enrollment.js)
 
 // ─── PATCH /api/orgs/me ───────────────────────────────────────────────────────
 // Update org name and white-label settings (admin only)

@@ -11,6 +11,7 @@ const { Resend } = require('resend');
 const db = require('../database');
 const { requireAuth } = require('../middleware/auth');
 const { PLANS, isBusinessDomain, getTrialEndDate } = require('../config/plans');
+const { getJwtSecret } = require('../config/jwtSecret');
 
 const resend = new Resend(process.env.RESEND_API_KEY);
 
@@ -37,12 +38,12 @@ function signTokens(user, org) {
   const access = jwt.sign(
     { userId: user.id, orgId: org.id, role: user.role,
       email: user.email, plan: org.plan },
-    process.env.JWT_SECRET,
+    getJwtSecret(),
     { expiresIn: '15m' }
   );
   const refresh = jwt.sign(
     { userId: user.id, type: 'refresh' },
-    process.env.JWT_SECRET,
+    getJwtSecret(),
     { expiresIn: '7d' }
   );
   return { access, refresh };
@@ -165,10 +166,6 @@ router.post('/login', async (req, res, next) => {
     if (!email || !password) {
       return res.status(400).json({ error: 'Email and password required.' });
     }
-    if (!process.env.JWT_SECRET) {
-      return res.status(500).json({ error: 'Server configuration error: JWT secret is missing.' });
-    }
-
     const user = await db('users').where({ email }).first();
     if (!user) return res.status(401).json({ error: 'Invalid email or password.' });
 
@@ -220,7 +217,7 @@ router.post('/login', async (req, res, next) => {
     if (user.totp_enabled) {
       const tempToken = jwt.sign(
         { userId: user.id, type: 'totp_pending' },
-        process.env.JWT_SECRET,
+        getJwtSecret(),
         { expiresIn: '5m' }
       );
       return res.json({ requiresTOTP: true, tempToken });
@@ -259,7 +256,7 @@ router.post('/login/totp', async (req, res, next) => {
     const { tempToken, code } = req.body;
     let payload;
     try {
-      payload = jwt.verify(tempToken, process.env.JWT_SECRET);
+      payload = jwt.verify(tempToken, getJwtSecret());
     } catch {
       return res.status(401).json({ error: 'Session expired. Please log in again.' });
     }
@@ -317,7 +314,7 @@ router.post('/setup-totp', requireAuth, async (req, res, next) => {
     );
     const tempSecret = jwt.sign(
       { secret: secret.base32, backupCodes },
-      process.env.JWT_SECRET,
+      getJwtSecret(),
       { expiresIn: '10m' }
     );
     res.json({ qrCodeDataUrl, backupCodes, tempSecret });
@@ -329,7 +326,7 @@ router.post('/confirm-totp', requireAuth, async (req, res, next) => {
     const { code, tempSecret } = req.body;
     let payload;
     try {
-      payload = jwt.verify(tempSecret, process.env.JWT_SECRET);
+      payload = jwt.verify(tempSecret, getJwtSecret());
     } catch {
       return res.status(400).json({ error: 'Setup session expired. Please start again.' });
     }
@@ -362,7 +359,7 @@ router.post('/refresh', async (req, res, next) => {
 
     let payload;
     try {
-      payload = jwt.verify(token, process.env.JWT_SECRET);
+      payload = jwt.verify(token, getJwtSecret());
     } catch {
       return res.status(401).json({ error: 'Invalid or expired refresh token.' });
     }

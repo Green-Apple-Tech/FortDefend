@@ -9,6 +9,9 @@ const cookieParser = require('cookie-parser');
 
 const db = require('./database');
 const { startTrialMonitor } = require('./agents/trialMonitor');
+const { requireAuth } = require('./middleware/auth');
+const { checkTrialStatus } = require('./middleware/trial');
+const enrollmentModule = require('./routes/enrollment');
 
 const app = express();
 
@@ -90,6 +93,10 @@ app.get('/health', (req, res) => {
 
 // ── API routes ────────────────────────────────────────────────────────────────
 app.use('/api/auth',            require('./routes/auth'));
+// Enroll Devices page — must be registered before /api/orgs mount so this path is not shadowed
+app.get('/api/orgs/me/enrollment', requireAuth, checkTrialStatus, (req, res) => {
+  enrollmentModule.sendMeEnrollmentResponse(req, res);
+});
 app.use('/api/orgs',            require('./routes/orgs'));
 app.use('/api/billing',         require('./routes/billing'));
 app.use('/api/msp',             require('./routes/msp'));

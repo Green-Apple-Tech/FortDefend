@@ -3,6 +3,7 @@ const router = express.Router();
 const db = require('../database');
 const jwt = require('jsonwebtoken');
 const { analyzeSysinternalsResults } = require('../integrations/sysinternals');
+const { getJwtSecret } = require('../config/jwtSecret');
 
 // ── All routes are called BY the Chrome extension — no user auth ───────────────
 // Auth is via device token set during enrollment
@@ -13,7 +14,7 @@ function verifyDeviceToken(req, res, next) {
     return res.status(401).json({ error: 'Device token required.' });
   }
   try {
-    const payload = jwt.verify(authHeader.slice(7), process.env.JWT_SECRET);
+    const payload = jwt.verify(authHeader.slice(7), getJwtSecret());
     if (payload.type !== 'device' && payload.type !== 'enrollment') {
       return res.status(401).json({ error: 'Invalid token type.' });
     }

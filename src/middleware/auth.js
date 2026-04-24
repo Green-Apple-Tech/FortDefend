@@ -1,8 +1,9 @@
 const jwt = require('jsonwebtoken');
 const db = require('../database');
+const { getJwtSecret } = require('../config/jwtSecret');
 
 function signAccessToken(payload) {
-  return jwt.sign(payload, process.env.JWT_SECRET, { expiresIn: '15m' });
+  return jwt.sign(payload, getJwtSecret(), { expiresIn: '15m' });
 }
 
 async function getMspContext(user, payloadOrgId) {
@@ -58,7 +59,7 @@ async function requireAuth(req, res, next) {
     const token = authHeader.split(' ')[1];
     let payload;
     try {
-      payload = jwt.verify(token, process.env.JWT_SECRET);
+      payload = jwt.verify(token, getJwtSecret());
     } catch (err) {
       if (err.name === 'TokenExpiredError') {
         return res.status(401).json({ error: 'Session expired. Please log in again.', code: 'TOKEN_EXPIRED' });

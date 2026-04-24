@@ -1,5 +1,6 @@
 const jwt = require('jsonwebtoken');
 const db = require('../database');
+const { getJwtSecret } = require('../config/jwtSecret');
 
 async function validateAgentToken(req, res, next) {
   try {
@@ -12,7 +13,7 @@ async function validateAgentToken(req, res, next) {
 
     let payload;
     try {
-      payload = jwt.verify(token, process.env.JWT_SECRET);
+      payload = jwt.verify(token, getJwtSecret());
     } catch {
       return res.status(401).json({ error: 'Invalid or expired agent token.' });
     }

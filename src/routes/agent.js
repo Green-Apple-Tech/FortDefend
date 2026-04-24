@@ -5,6 +5,7 @@ const fs = require('fs');
 const jwt = require('jsonwebtoken');
 
 const db = require('../database');
+const { getJwtSecret } = require('../config/jwtSecret');
 
 const router = express.Router();
 
@@ -21,7 +22,7 @@ async function authByToken(token) {
 function tryEnrollmentPayload(token) {
   if (!token) return null;
   try {
-    const payload = jwt.verify(String(token), process.env.JWT_SECRET);
+    const payload = jwt.verify(String(token), getJwtSecret());
     if (payload.type !== 'enrollment' || !payload.orgId) return null;
     return { orgId: payload.orgId, groupId: payload.groupId || null, payload };
   } catch {
@@ -145,7 +146,7 @@ router.get('/download', async (req, res) => {
     if (!token) return res.status(400).json({ error: 'Token required.' });
     let payload;
     try {
-      payload = jwt.verify(String(token), process.env.JWT_SECRET);
+      payload = jwt.verify(String(token), getJwtSecret());
     } catch {
       return res.status(401).json({ error: 'Invalid or expired token.' });
     }

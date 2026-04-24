@@ -6,6 +6,8 @@ const QRCode = require('qrcode');
 const jwt = require('jsonwebtoken');
 const { requireAuth, requireAdmin } = require('../middleware/auth');
 const { checkTrialStatus } = require('../middleware/trial');
+const { getAppUrl } = require('../utils/appUrl');
+const { getJwtSecret } = require('../config/jwtSecret');
 
 // ── Generate enrollment token ─────────────────────────────────────────────────
 // Third arg: expiry string, or { expiresIn, groupId } for org-scoped group enrollment
@@ -15,7 +17,7 @@ function generateEnrollmentToken(orgId, deviceType, expiresInOrOpts = '30d') {
   const groupId = isOpts ? expiresInOrOpts.groupId : undefined;
   const body = { orgId, deviceType, type: 'enrollment' };
   if (groupId) body.groupId = groupId;
-  return jwt.sign(body, process.env.JWT_SECRET, { expiresIn });
+  return jwt.sign(body, getJwtSecret(), { expiresIn });
 }
 
 // ═ Public routes (no user session) — must be registered before admin middleware ═
@@ -25,7 +27,7 @@ router.get('/validate/:token', async (req, res, next) => {
   try {
     let payload;
     try {
-      payload = jwt.verify(req.params.token, process.env.JWT_SECRET);
+      payload = jwt.verify(req.params.token, getJwtSecret());
     } catch {
       return res.status(401).json({ error: 'Invalid or expired enrollment token.' });
     }
@@ -61,7 +63,7 @@ router.post('/register', async (req, res, next) => {
 
     let payload;
     try {
-      payload = jwt.verify(token, process.env.JWT_SECRET);
+      payload = jwt.verify(token, getJwtSecret());
     } catch {
       return res.status(401).json({ error: 'Invalid or expired enrollment token.' });
     }
@@ -114,7 +116,7 @@ router.post('/register', async (req, res, next) => {
 
     const deviceToken = jwt.sign(
       { orgId: org.id, deviceId: resolvedId, type: 'device', platform },
-      process.env.JWT_SECRET,
+      getJwtSecret(),
       { expiresIn: '365d' }
     );
 
@@ -142,6 +144,189 @@ function buildAgentDownloadUrl(baseUrl, token, orgId, groupId) {
   return `${base}/api/agent/download?${p.toString()}`;
 }
 
+/** Full JSON for GET /api/orgs/me/enrollment (see also sendMeEnrollmentResponse). */
+async function buildMeEnrollmentPayload(req) {
+  const org = await db('orgs').where({ id: req.user.orgId }).first();
+  if (!org) {
+    return { _error: { status: 404, body: { error: 'Organization not found.' } } };
+  }
+
+  const { count } = await db('devices').where({ org_id: req.user.orgId }).count('id as count').first();
+  const deviceCount = parseInt(count, 10);
+
+  let baseUrl;
+  try {
+    baseUrl = getAppUrl();
+  } catch {
+    baseUrl = (process.env.APP_URL || '').trim().replace(/\/$/, '') || `${req.protocol}://${req.get('host')}`;
+  }
+
+  const rawGroup = req.query.groupId;
+  let groupId = rawGroup;
+  if (groupId === '' || groupId === undefined || groupId === null) groupId = null;
+  if (groupId) {
+    const g = await db('groups').where({ id: groupId, org_id: req.user.orgId }).first();
+    if (!g) {
+      return { _error: { status: 400, body: { error: 'Group not found.' } } };
+    }
+  }
+
+  const tokenOpts = groupId ? { groupId } : undefined;
+  const tokenWindows = generateEnrollmentToken(req.user.orgId, 'windows', tokenOpts);
+  const tokenAndroid = generateEnrollmentToken(req.user.orgId, 'android', tokenOpts);
+  const tokenChrome = generateEnrollmentToken(req.user.orgId, 'chromebook', tokenOpts);
+  const tokenUniversal = generateEnrollmentToken(req.user.orgId, 'universal', tokenOpts);
+
+  const enc = (t) => encodeURIComponent(t);
+  const orgId = req.user.orgId;
+  const extensionId = 'jpchjpcgcldplgfdjclgfljegdopkphc';
+
+  const googleAdminPolicy = {
+    policies: {
+      ExtensionSettings: {
+        [extensionId]: {
+          installation_mode: 'force_installed',
+          update_url: 'https://clients2.google.com/service/update2/crx',
+          allowed_types: 'extension',
+        },
+      },
+    },
+  };
+
+  const installScriptParams = new URLSearchParams();
+  installScriptParams.set('token', tokenWindows);
+  installScriptParams.set('org', orgId);
+  if (groupId) installScriptParams.set('group', groupId);
+  const msiQuery = new URLSearchParams();
+  msiQuery.set('token', tokenWindows);
+  msiQuery.set('org', orgId);
+  if (groupId) msiQuery.set('group', groupId);
+
+  return {
+    orgId,
+    orgName: org.name,
+    deviceCount,
+    token: orgId,
+    installUrl: `${baseUrl}/install?org=${orgId}`,
+    extensionId,
+    chromeWebStoreUrl: `https://chrome.google.com/webstore/detail/fortdefend/${extensionId}`,
+    googlePlayUrl: 'https://play.google.com/store/apps/details?id=com.fortdefend.app',
+    appStoreUrl: 'https://apps.apple.com/app/fortdefend/id0000000000',
+    links: {
+      universalEnroll: `${baseUrl}/enroll?token=${enc(tokenUniversal)}&type=universal&org=${enc(orgId)}${groupId ? `&group=${enc(groupId)}` : ''}`,
+      windowsAgent: buildAgentDownloadUrl(baseUrl, tokenWindows, orgId, groupId),
+      windowsMsi: `${baseUrl}/download/fortdefend-setup.msi?${msiQuery.toString()}`,
+      installScript: `${baseUrl}/api/enrollment/install-script?${installScriptParams.toString()}`,
+      android: `${baseUrl}/enroll?token=${enc(tokenAndroid)}&type=android&org=${enc(orgId)}${groupId ? `&group=${enc(groupId)}` : ''}`,
+      ios: `${baseUrl}/enroll?token=${enc(tokenUniversal)}&type=universal&org=${enc(orgId)}${groupId ? `&group=${enc(groupId)}` : ''}`,
+      macPkg: `${baseUrl}/download/fortdefend-mac.pkg?${msiQuery.toString()}`,
+      extensionCrx: `${baseUrl}/download/fortdefend-extension.crx?token=${enc(tokenChrome)}&org=${enc(orgId)}${groupId ? `&group=${enc(groupId)}` : ''}`,
+      apk: `${baseUrl}/download/fortdefend.apk?${msiQuery.toString()}`,
+    },
+    tokens: {
+      windows: tokenWindows,
+      universal: tokenUniversal,
+    },
+    googleAdminPolicyJson: JSON.stringify(googleAdminPolicy, null, 2),
+  };
+}
+
+/** Used when the full enrollment payload build throws (e.g. DB hiccup). */
+async function buildMeEnrollmentFallback(req) {
+  const org = await db('orgs').where({ id: req.user.orgId }).first();
+  if (!org) {
+    return { _error: { status: 404, body: { error: 'Organization not found.' } } };
+  }
+
+  let baseUrl;
+  try {
+    baseUrl = getAppUrl();
+  } catch {
+    baseUrl = (process.env.APP_URL || '').trim().replace(/\/$/, '') || `${req.protocol}://${req.get('host')}`;
+  }
+
+  const orgId = org.id;
+  const enc = (t) => encodeURIComponent(t);
+  const tokenWindows = generateEnrollmentToken(orgId, 'windows');
+  const tokenAndroid = generateEnrollmentToken(orgId, 'android');
+  const tokenChrome = generateEnrollmentToken(orgId, 'chromebook');
+  const tokenUniversal = generateEnrollmentToken(orgId, 'universal');
+  const extensionId = 'jpchjpcgcldplgfdjclgfljegdopkphc';
+  const googleAdminPolicy = {
+    policies: {
+      ExtensionSettings: {
+        [extensionId]: {
+          installation_mode: 'force_installed',
+          update_url: 'https://clients2.google.com/service/update2/crx',
+          allowed_types: 'extension',
+        },
+      },
+    },
+  };
+
+  let deviceCount = 0;
+  try {
+    const row = await db('devices').where({ org_id: orgId }).count('id as count').first();
+    deviceCount = parseInt(row.count, 10);
+  } catch {
+    deviceCount = 0;
+  }
+
+  const installScriptParams = new URLSearchParams();
+  installScriptParams.set('token', tokenWindows);
+  installScriptParams.set('org', orgId);
+
+  return {
+    orgId,
+    orgName: org.name,
+    deviceCount,
+    token: orgId,
+    installUrl: `${baseUrl}/install?org=${orgId}`,
+    extensionId,
+    chromeWebStoreUrl: `https://chrome.google.com/webstore/detail/fortdefend/${extensionId}`,
+    googlePlayUrl: 'https://play.google.com/store/apps/details?id=com.fortdefend.app',
+    appStoreUrl: 'https://apps.apple.com/app/fortdefend/id0000000000',
+    links: {
+      universalEnroll: `${baseUrl}/enroll?token=${enc(tokenUniversal)}&type=universal&org=${enc(orgId)}`,
+      windowsAgent: buildAgentDownloadUrl(baseUrl, tokenWindows, orgId, null),
+      windowsMsi: `${baseUrl}/download/fortdefend-setup.msi?token=${enc(tokenWindows)}&org=${enc(orgId)}`,
+      installScript: `${baseUrl}/api/enrollment/install-script?${installScriptParams.toString()}`,
+      android: `${baseUrl}/enroll?token=${enc(tokenAndroid)}&type=android&org=${enc(orgId)}`,
+      ios: `${baseUrl}/enroll?token=${enc(tokenUniversal)}&type=universal&org=${enc(orgId)}`,
+      macPkg: `${baseUrl}/download/fortdefend-mac.pkg?token=${enc(tokenUniversal)}&org=${enc(orgId)}`,
+      extensionCrx: `${baseUrl}/download/fortdefend-extension.crx?token=${enc(tokenChrome)}&org=${enc(orgId)}`,
+      apk: `${baseUrl}/download/fortdefend.apk?token=${enc(tokenAndroid)}&org=${enc(orgId)}`,
+    },
+    tokens: {
+      windows: tokenWindows,
+      universal: tokenUniversal,
+    },
+    googleAdminPolicyJson: JSON.stringify(googleAdminPolicy, null, 2),
+  };
+}
+
+async function sendMeEnrollmentResponse(req, res) {
+  try {
+    const payload = await buildMeEnrollmentPayload(req);
+    if (payload._error) {
+      return res.status(payload._error.status).json(payload._error.body);
+    }
+    return res.json(payload);
+  } catch (err) {
+    console.error('Get enrollment context error:', err);
+    try {
+      const fallback = await buildMeEnrollmentFallback(req);
+      if (fallback._error) {
+        return res.status(fallback._error.status).json(fallback._error.body);
+      }
+      return res.json(fallback);
+    } catch (err2) {
+      console.error('Enrollment fallback error:', err2);
+      return res.status(500).json({ error: 'Failed to load enrollment data.' });
+    }
+  }
+}
+
 // GET /api/enrollment/install-script — returns PS1 (token in query; used on enrolled PCs)
 router.get('/install-script', async (req, res, next) => {
   try {
@@ -150,7 +335,7 @@ router.get('/install-script', async (req, res, next) => {
 
     let payload;
     try {
-      payload = jwt.verify(String(token), process.env.JWT_SECRET);
+      payload = jwt.verify(String(token), getJwtSecret());
     } catch {
       return res.status(401).json({ error: 'Invalid or expired token.' });
     }
@@ -348,3 +533,4 @@ router.post('/qr', async (req, res, next) => {
 module.exports = router;
 module.exports.generateEnrollmentToken = generateEnrollmentToken;
 module.exports.buildAgentDownloadUrl = buildAgentDownloadUrl;
+module.exports.sendMeEnrollmentResponse = sendMeEnrollmentResponse;

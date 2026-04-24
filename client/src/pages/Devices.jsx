@@ -199,6 +199,125 @@ function GroupTreeRows({ nodes, depth, groupParam, smartParam, onSelectGroup }) 
   );
 }
 
+function ScopeMenuPanel({
+  onDismiss,
+  groupParam,
+  smartParam,
+  selectScope,
+  allCount,
+  ungroupedCount,
+  smartCounts,
+  groupsLoading,
+  groupsTree,
+  onNewGroup,
+}) {
+  const isAll = !groupParam && !smartParam;
+  const isUngrouped = groupParam === 'ungrouped' && !smartParam;
+
+  const run = (fn) => () => {
+    fn();
+    onDismiss();
+  };
+
+  const itemCls = (active) =>
+    `flex w-full items-center justify-between gap-2 rounded-md px-2 py-2 text-left text-sm ${
+      active ? 'bg-brand/15 font-semibold text-brand' : 'text-slate-800 hover:bg-slate-50 dark:text-slate-200 dark:hover:bg-slate-800'
+    }`;
+
+  const sectionLabel = (text) => (
+    <>
+      <div className="mx-2 my-1 border-t border-fds-border dark:border-slate-700" />
+      <div className="px-3 py-1.5">
+        <p className="text-center text-[10px] font-semibold uppercase tracking-wide text-slate-400 dark:text-slate-500">{text}</p>
+      </div>
+    </>
+  );
+
+  return (
+    <div
+      className="absolute left-0 top-full z-50 mt-1 max-h-[min(70vh,520px)] w-[min(100vw-2rem,20rem)] overflow-y-auto rounded-xl border border-fds-border bg-white py-1 shadow-lg dark:border-slate-700 dark:bg-slate-900"
+      role="menu"
+    >
+      <button type="button" role="menuitem" className={itemCls(isAll)} onClick={run(() => selectScope({ type: 'all' }))}>
+        <span>All Devices</span>
+        <span className="shrink-0 tabular-nums text-slate-500">{allCount}</span>
+      </button>
+      <button
+        type="button"
+        role="menuitem"
+        className={itemCls(isUngrouped)}
+        onClick={run(() => selectScope({ type: 'ungrouped' }))}
+      >
+        <span>Ungrouped</span>
+        <span className="shrink-0 tabular-nums text-slate-500">{ungroupedCount}</span>
+      </button>
+      {sectionLabel('Smart groups')}
+      <button
+        type="button"
+        role="menuitem"
+        className={itemCls(smartParam === 'online')}
+        onClick={run(() => selectScope({ type: 'smart', smart: 'online' }))}
+      >
+        <span>Online Devices</span>
+        <span className="shrink-0 tabular-nums text-slate-500">{smartCounts.online}</span>
+      </button>
+      <button
+        type="button"
+        role="menuitem"
+        className={itemCls(smartParam === 'offline')}
+        onClick={run(() => selectScope({ type: 'smart', smart: 'offline' }))}
+      >
+        <span>Offline Devices</span>
+        <span className="shrink-0 tabular-nums text-slate-500">{smartCounts.offline}</span>
+      </button>
+      <button
+        type="button"
+        role="menuitem"
+        className={itemCls(smartParam === 'updates')}
+        onClick={run(() => selectScope({ type: 'smart', smart: 'updates' }))}
+      >
+        <span>Needs Updates</span>
+        <span className="shrink-0 tabular-nums text-slate-500">{smartCounts.updates}</span>
+      </button>
+      <button
+        type="button"
+        role="menuitem"
+        className={itemCls(smartParam === 'risk')}
+        onClick={run(() => selectScope({ type: 'smart', smart: 'risk' }))}
+      >
+        <span>High Risk</span>
+        <span className="shrink-0 tabular-nums text-slate-500">{smartCounts.risk}</span>
+      </button>
+      {sectionLabel('My groups')}
+      {groupsLoading ? (
+        <p className="px-3 py-2 text-sm text-slate-500">Loading…</p>
+      ) : (
+        <div className="px-1 pb-1">
+          <GroupTreeRows
+            nodes={groupsTree}
+            depth={0}
+            groupParam={groupParam}
+            smartParam={smartParam}
+            onSelectGroup={(id) => {
+              selectScope({ type: 'group', id });
+              onDismiss();
+            }}
+          />
+        </div>
+      )}
+      <div className="border-t border-fds-border p-1">
+        <button
+          type="button"
+          className="flex w-full items-center justify-center gap-1 rounded-md py-2 text-sm font-medium text-brand hover:bg-brand/10"
+          onClick={run(() => onNewGroup())}
+        >
+          + New Group
+        </button>
+      </div>
+    </div>
+  );
+}
+
 const SORT_KEYS = {
   device: (d) => (d.name || d.id || '').toLowerCase(),
   os: (d) => `${normalizeOs(d)} ${osVersionOf(d) || ''}`.toLowerCase(),
@@ -313,6 +432,8 @@ export default function Devices() {
   const [draggedColumn, setDraggedColumn] = useState(null);
   const menuRef = useRef(null);
   const panelHeaderMenuRef = useRef(null);
+  const scopeDropdownRef = useRef(null);
+  const [scopeMenuOpen, setScopeMenuOpen] = useState(false);
 
   const loadDevices = useCallback(async (opts = { showLoading: false }) => {
     if (opts.showLoading) setLoading(true);
@@ -436,6 +557,17 @@ export default function Devices() {
     document.addEventListener('mousedown', onDoc);
     return () => document.removeEventListener('mousedown', onDoc);
   }, [openMenu]);
+
+  useEffect(() => {
+    if (!scopeMenuOpen) return undefined;
+    function onDoc(e) {
+      if (scopeDropdownRef.current && !scopeDropdownRef.current.contains(e.target)) {
+        setScopeMenuOpen(false);
+      }
+    }
+    document.addEventListener('mousedown', onDoc);
+    return () => document.removeEventListener('mousedown', onDoc);
+  }, [scopeMenuOpen]);
 
   useEffect(() => {
     function onDoc(e) {
@@ -849,101 +981,58 @@ export default function Devices() {
 
   return (
     <>
-    <div className="flex w-full max-w-full flex-1 flex-col gap-0 lg:flex-row">
-      <aside className="flex max-h-[40vh] w-full shrink-0 flex-col overflow-hidden border-b border-fds-border bg-fds-sidebar lg:max-h-none lg:w-[250px] lg:border-b-0 lg:border-r">
-        <div className="flex items-center justify-between border-b border-fds-border px-2 py-2">
-          <span className="text-[10px] font-bold uppercase tracking-wide text-slate-500">Scope</span>
-          <button type="button" className="text-lg leading-none text-brand" title="New group" onClick={() => setNewGroupOpen(true)}>
-            +
+    <div className="flex min-h-0 min-w-0 w-full max-w-full flex-1 flex-col">
+      <div className="flex flex-wrap items-center gap-2 border-b border-fds-border bg-fds-card px-2 py-2">
+        <div className="relative shrink-0" ref={scopeDropdownRef}>
+          <button
+            type="button"
+            aria-expanded={scopeMenuOpen}
+            aria-haspopup="menu"
+            onClick={() => setScopeMenuOpen((o) => !o)}
+            className="inline-flex h-9 max-w-[14rem] items-center gap-2 rounded-lg border border-fds-border bg-white px-3 text-sm font-medium text-slate-800 shadow-sm hover:bg-slate-50 dark:bg-slate-900 dark:text-slate-100 dark:hover:bg-slate-800"
+          >
+            <span className="min-w-0 truncate">{scopeTitle}</span>
+            <span className="shrink-0 text-xs tabular-nums text-slate-500">({scopeFiltered.length})</span>
+            <svg className="h-4 w-4 shrink-0 text-slate-500" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden>
+              <path d="M6 9l6 6 6-6" strokeLinecap="round" strokeLinejoin="round" />
+            </svg>
           </button>
+          {scopeMenuOpen && (
+            <ScopeMenuPanel
+              onDismiss={() => setScopeMenuOpen(false)}
+              groupParam={groupParam}
+              smartParam={smartParam}
+              selectScope={selectScope}
+              allCount={rows.length}
+              ungroupedCount={ungroupedCount}
+              smartCounts={smartCounts}
+              groupsLoading={groupsLoading}
+              groupsTree={groupsTree}
+              onNewGroup={() => setNewGroupOpen(true)}
+            />
+          )}
         </div>
-        <div className="min-h-0 flex-1 space-y-2 overflow-y-auto px-1 py-2 text-xs">
-          <button
-            type="button"
-            onClick={() => selectScope({ type: 'all' })}
-            className={`flex w-full items-center justify-between rounded px-2 py-1.5 text-left ${
-              !groupParam && !smartParam ? 'bg-brand/15 font-semibold text-brand' : 'hover:bg-slate-100 dark:hover:bg-slate-800'
-            }`}
-          >
-            <span>All Devices</span>
-            <span className="rounded bg-slate-100 px-1.5 py-0.5 text-[10px] font-medium dark:bg-slate-700">{rows.length}</span>
-          </button>
-          <button
-            type="button"
-            onClick={() => selectScope({ type: 'ungrouped' })}
-            className={`flex w-full items-center justify-between rounded px-2 py-1.5 text-left ${
-              groupParam === 'ungrouped' && !smartParam ? 'bg-brand/15 font-semibold text-brand' : 'hover:bg-slate-100 dark:hover:bg-slate-800'
-            }`}
-          >
-            <span>Ungrouped</span>
-            <span className="rounded bg-slate-100 px-1.5 py-0.5 text-[10px] font-medium dark:bg-slate-700">{ungroupedCount}</span>
-          </button>
-          <div className="pt-1">
-            <p className="mb-1 px-1 text-[10px] font-bold uppercase text-slate-400">Smart groups</p>
+        <div className="flex flex-wrap gap-1 border-fds-border sm:border-l sm:pl-2">
+          {TAB_IDS.map((tid) => (
             <button
+              key={tid}
               type="button"
-              onClick={() => selectScope({ type: 'smart', smart: 'online' })}
-              className={`flex w-full justify-between rounded px-2 py-1 text-left ${smartParam === 'online' ? 'bg-brand/15 font-semibold text-brand' : 'hover:bg-slate-100 dark:hover:bg-slate-800'}`}
+              onClick={() => setTab(tid)}
+              className={`rounded-md px-3 py-1.5 text-xs font-medium capitalize ${
+                tab === tid ? 'bg-brand text-white' : 'text-slate-600 hover:bg-slate-100 dark:text-slate-300 dark:hover:bg-slate-800'
+              }`}
             >
-              <span>Online Devices</span>
-              <span className="text-[10px] text-slate-500">{smartCounts.online}</span>
+              {tid}
             </button>
-            <button
-              type="button"
-              onClick={() => selectScope({ type: 'smart', smart: 'offline' })}
-              className={`flex w-full justify-between rounded px-2 py-1 text-left ${smartParam === 'offline' ? 'bg-brand/15 font-semibold text-brand' : 'hover:bg-slate-100 dark:hover:bg-slate-800'}`}
-            >
-              <span>Offline Devices</span>
-              <span className="text-[10px] text-slate-500">{smartCounts.offline}</span>
-            </button>
-            <button
-              type="button"
-              onClick={() => selectScope({ type: 'smart', smart: 'updates' })}
-              className={`flex w-full justify-between rounded px-2 py-1 text-left ${smartParam === 'updates' ? 'bg-brand/15 font-semibold text-brand' : 'hover:bg-slate-100 dark:hover:bg-slate-800'}`}
-            >
-              <span>Needs Updates</span>
-              <span className="text-[10px] text-slate-500">{smartCounts.updates}</span>
-            </button>
-            <button
-              type="button"
-              onClick={() => selectScope({ type: 'smart', smart: 'risk' })}
-              className={`flex w-full justify-between rounded px-2 py-1 text-left ${smartParam === 'risk' ? 'bg-brand/15 font-semibold text-brand' : 'hover:bg-slate-100 dark:hover:bg-slate-800'}`}
-            >
-              <span>High Risk</span>
-              <span className="text-[10px] text-slate-500">{smartCounts.risk}</span>
-            </button>
-          </div>
-          <div className="pt-1">
-            <p className="mb-1 px-1 text-[10px] font-bold uppercase text-slate-400">My groups</p>
-            {groupsLoading ? (
-              <p className="px-2 text-slate-500">Loading…</p>
-            ) : (
-              <GroupTreeRows nodes={groupsTree} depth={0} groupParam={groupParam} smartParam={smartParam} onSelectGroup={(id) => selectScope({ type: 'group', id })} />
-            )}
-          </div>
-          <button
-            type="button"
-            className="mt-1 w-full rounded border border-dashed border-slate-300 py-1.5 text-xs text-slate-600 hover:bg-slate-50 dark:hover:bg-slate-800"
-            onClick={() => setNewGroupOpen(true)}
-          >
-            New Group
-          </button>
+          ))}
         </div>
-      </aside>
-      <div className="flex min-h-0 min-w-0 flex-1 flex-col">
-        <div className="flex flex-wrap items-center gap-2 border-b border-fds-border bg-fds-card px-2 py-2">
-          <div className="min-w-0 flex-1">
-            <p className="truncate text-xs font-medium text-slate-500 dark:text-slate-400">{scopeTitle}</p>
-            <p className="truncate text-[11px] text-slate-400">
-              {scopeFiltered.length} device{scopeFiltered.length === 1 ? '' : 's'}
-            </p>
-          </div>
+        <div className="flex min-w-0 flex-1 flex-wrap items-center justify-end gap-2 sm:min-w-[12rem]">
           <input
             type="search"
             value={q}
             onChange={(e) => setQ(e.target.value)}
             placeholder="Search…"
-            className="h-8 w-36 rounded-md border border-fds-border bg-white px-2 text-sm dark:bg-slate-900 lg:w-48"
+            className="h-8 w-full min-w-0 max-w-xs rounded-md border border-fds-border bg-white px-2 text-sm dark:bg-slate-900 sm:w-48"
           />
           <Link to="/install">
             <Button variant="outline" className="h-8 text-xs">
@@ -961,21 +1050,8 @@ export default function Devices() {
             Deploy Apps
           </Button>
         </div>
-        <div className="flex flex-wrap gap-1 border-b border-fds-border bg-fds-muted-surface/50 px-2 py-1 dark:bg-slate-900/40">
-          {TAB_IDS.map((tid) => (
-            <button
-              key={tid}
-              type="button"
-              onClick={() => setTab(tid)}
-              className={`rounded-md px-3 py-1.5 text-xs font-medium capitalize ${
-                tab === tid ? 'bg-brand text-white' : 'text-slate-600 hover:bg-slate-100 dark:text-slate-300 dark:hover:bg-slate-800'
-              }`}
-            >
-              {tid}
-            </button>
-          ))}
-        </div>
-        <div className="min-h-0 flex-1 space-y-3 overflow-y-auto p-2 sm:p-3">
+      </div>
+      <div className="min-h-0 flex-1 space-y-3 overflow-y-auto p-2 sm:p-3">
           {tab === 'devices' && (
             <>
       {integrationErrors && Object.keys(integrationErrors).length > 0 && (
@@ -1391,7 +1467,6 @@ export default function Devices() {
             </Card>
           )}
         </div>
-      </div>
     </div>
 
       {panelDevice && (

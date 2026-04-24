@@ -23,7 +23,7 @@ const nav = [
   { to: '/alerts', label: 'Alerts' },
   { to: '/billing', label: 'Billing' },
   { to: '/integrations', label: 'Integrations' },
-  { to: '/install', label: 'Install' },
+  { to: '/install', label: 'Enroll Devices' },
   { to: '/scripts', label: 'Scripts' },
   { to: '/reboot-policies', label: 'Reboot Policies' },
   { to: '/settings', label: 'Settings' },

@@ -19,7 +19,7 @@ app.use(helmet({
       defaultSrc: ["'self'"],
       scriptSrc: ["'self'"],
       styleSrc: ["'self'", "'unsafe-inline'"],
-      imgSrc: ["'self'", 'data:'],
+      imgSrc: ["'self'", 'data:', 'https://api.qrserver.com'],
       connectSrc: ["'self'"],
       frameSrc: ["'none'"],
       objectSrc: ["'none'"],
@@ -106,14 +106,33 @@ app.use('/api/reboot-policies', require('./routes/rebootPolicies'));
 app.use('/api/groups',          require('./routes/groups'));
 app.use('/api/software',        require('./routes/softwareManager'));
 
-// ── Agent binary download ─────────────────────────────────────────────────────
-app.get('/download/agent.exe', (req, res) => {
-  const p = path.join(__dirname, '..', 'agent', 'agent.exe');
+// ── Agent / installer downloads (token query param is for your tracking; optional) ─
+const agentDir = path.join(__dirname, '..', 'agent');
+function agentExePath() {
+  return path.join(agentDir, 'agent.exe');
+}
+function downloadIfExists(res, diskName, downloadName) {
+  const p = path.join(agentDir, diskName);
   if (!fs.existsSync(p)) {
-    return res.status(404).json({ error: 'agent.exe not found.' });
+    return res.status(404).json({
+      error: `${downloadName} is not available on this server. Use the PowerShell installer or contact support.`,
+    });
   }
-  return res.download(p, 'agent.exe');
+  return res.download(p, downloadName);
+}
+
+app.get('/download/agent.exe', (req, res) => downloadIfExists(res, 'agent.exe', 'agent.exe'));
+app.get('/download/fortdefend-agent.exe', (req, res) => {
+  const p = agentExePath();
+  if (!fs.existsSync(p)) {
+    return res.status(404).json({ error: 'Agent binary not found.' });
+  }
+  return res.download(p, 'fortdefend-agent.exe');
 });
+app.get('/download/fortdefend-setup.msi', (req, res) => downloadIfExists(res, 'fortdefend-setup.msi', 'fortdefend-setup.msi'));
+app.get('/download/fortdefend-extension.crx', (req, res) => downloadIfExists(res, 'fortdefend-extension.crx', 'fortdefend-extension.crx'));
+app.get('/download/fortdefend.apk', (req, res) => downloadIfExists(res, 'fortdefend.apk', 'fortdefend.apk'));
+app.get('/download/fortdefend-mac.pkg', (req, res) => downloadIfExists(res, 'fortdefend-mac.pkg', 'fortdefend-mac.pkg'));
 
 // ── Serve React frontend ──────────────────────────────────────────────────────
 const clientBuild = path.join(__dirname, '..', 'client', 'dist');

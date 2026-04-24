@@ -7,81 +7,20 @@ const jwt = require('jsonwebtoken');
 const { requireAuth, requireAdmin } = require('../middleware/auth');
 const { checkTrialStatus } = require('../middleware/trial');
 
-router.use(requireAuth, requireAdmin, checkTrialStatus);
-
 // ── Generate enrollment token ─────────────────────────────────────────────────
-function generateEnrollmentToken(orgId, deviceType, expiresIn = '30d') {
-  return jwt.sign(
-    { orgId, deviceType, type: 'enrollment' },
-    process.env.JWT_SECRET,
-    { expiresIn }
-  );
+// Third arg: expiry string, or { expiresIn, groupId } for org-scoped group enrollment
+function generateEnrollmentToken(orgId, deviceType, expiresInOrOpts = '30d') {
+  const isOpts = expiresInOrOpts && typeof expiresInOrOpts === 'object' && !Array.isArray(expiresInOrOpts);
+  const expiresIn = isOpts ? (expiresInOrOpts.expiresIn || '30d') : expiresInOrOpts;
+  const groupId = isOpts ? expiresInOrOpts.groupId : undefined;
+  const body = { orgId, deviceType, type: 'enrollment' };
+  if (groupId) body.groupId = groupId;
+  return jwt.sign(body, process.env.JWT_SECRET, { expiresIn });
 }
 
-// ── GET /api/enrollment/links — get all enrollment links for org ───────────────
-router.get('/links', async (req, res, next) => {
-  try {
-    const org = await db('orgs').where({ id: req.user.orgId }).first();
-    const baseUrl = process.env.APP_URL || 'https://app.fortdefend.com';
+// ═ Public routes (no user session) — must be registered before admin middleware ═
 
-    const links = {
-      chromebook: {
-        type: 'chromebook',
-        url: `${baseUrl}/enroll?token=${generateEnrollmentToken(org.id, 'chromebook')}&type=chromebook`,
-        description: 'Send to users or deploy via Google Admin',
-        installMethod: 'Chrome extension auto-installs when user visits link',
-      },
-      android: {
-        type: 'android',
-        url: `${baseUrl}/enroll?token=${generateEnrollmentToken(org.id, 'android')}&type=android`,
-        description: 'Send via SMS, email, or QR code',
-        installMethod: 'Opens Play Store to FortDefend app with org pre-linked',
-      },
-      windows: {
-        type: 'windows',
-        url: `${baseUrl}/enroll?token=${generateEnrollmentToken(org.id, 'windows')}&type=windows`,
-        description: 'Send to Windows PC users or deploy via Intune',
-        installMethod: 'Downloads and runs FortDefend agent installer',
-      },
-      universal: {
-        type: 'universal',
-        url: `${baseUrl}/enroll?token=${generateEnrollmentToken(org.id, 'universal')}&type=universal`,
-        description: 'One link for all device types — auto-detects platform',
-        installMethod: 'Detects device type and shows correct install method',
-      },
-    };
-
-    res.json({ links, orgName: org.name });
-  } catch (err) { next(err); }
-});
-
-// ── POST /api/enrollment/qr — generate QR code for enrollment ────────────────
-router.post('/qr', async (req, res, next) => {
-  try {
-    const { deviceType = 'universal', size = 300 } = req.body;
-    const org = await db('orgs').where({ id: req.user.orgId }).first();
-    const baseUrl = process.env.APP_URL || 'https://app.fortdefend.com';
-    const token = generateEnrollmentToken(org.id, deviceType);
-    const url = `${baseUrl}/enroll?token=${token}&type=${deviceType}`;
-
-    const qrDataUrl = await QRCode.toDataURL(url, {
-      width: size,
-      margin: 2,
-      color: { dark: '#185FA5', light: '#FFFFFF' },
-    });
-
-    res.json({
-      qrDataUrl,
-      url,
-      deviceType,
-      orgName: org.name,
-      expiresIn: '30 days',
-    });
-  } catch (err) { next(err); }
-});
-
-// ── GET /api/enrollment/validate/:token — validate enrollment token ───────────
-// Public endpoint — no auth required
+// GET /api/enrollment/validate/:token — validate enrollment token
 router.get('/validate/:token', async (req, res, next) => {
   try {
     let payload;
@@ -107,13 +46,13 @@ router.get('/validate/:token', async (req, res, next) => {
       orgId: org.id,
       orgName: org.name,
       deviceType: payload.deviceType,
+      groupId: payload.groupId || null,
       plan: org.plan,
     });
   } catch (err) { next(err); }
 });
 
-// ── POST /api/enrollment/register — register device after install ─────────────
-// Called by extension/app/agent after install with enrollment token
+// POST /api/enrollment/register — register device after install
 router.post('/register', async (req, res, next) => {
   try {
     const { token, deviceName, deviceType, platform, osVersion, serialNumber } = req.body;
@@ -130,7 +69,6 @@ router.post('/register', async (req, res, next) => {
     const org = await db('orgs').where({ id: payload.orgId }).first();
     if (!org) return res.status(404).json({ error: 'Organisation not found.' });
 
-    // Check device limit
     const { n } = await db('devices')
       .where({ org_id: org.id }).count('id as n').first();
     if (parseInt(n, 10) >= (org.device_limit || 5)) {
@@ -140,13 +78,13 @@ router.post('/register', async (req, res, next) => {
       });
     }
 
-    // Register device
     const deviceId = uuidv4();
+    const serial = serialNumber || deviceId;
     await db('devices').insert({
       id: deviceId,
       org_id: org.id,
       name: deviceName || `${platform} Device`,
-      serial: serialNumber || deviceId,
+      serial,
       os: platform || deviceType,
       os_version: osVersion || 'Unknown',
       source: 'agent',
@@ -162,32 +100,75 @@ router.post('/register', async (req, res, next) => {
       updated_at: new Date(),
     });
 
-    // Generate device JWT for ongoing API calls
+    const deviceRow = await db('devices').where({ org_id: org.id, serial }).first();
+    const resolvedId = deviceRow?.id || deviceId;
+    if (payload.groupId) {
+      const g = await db('groups').where({ id: payload.groupId, org_id: org.id }).first();
+      if (g) {
+        await db('device_groups')
+          .insert({ device_id: resolvedId, group_id: g.id })
+          .onConflict(['device_id', 'group_id'])
+          .ignore();
+      }
+    }
+
     const deviceToken = jwt.sign(
-      { orgId: org.id, deviceId, type: 'device', platform },
+      { orgId: org.id, deviceId: resolvedId, type: 'device', platform },
       process.env.JWT_SECRET,
       { expiresIn: '365d' }
     );
 
     res.json({
       success: true,
-      deviceId,
+      deviceId: resolvedId,
       deviceToken,
       orgName: org.name,
       apiUrl: process.env.APP_URL,
-      checkInterval: platform === 'android' ? 360 : 240, // minutes
+      checkInterval: platform === 'android' ? 360 : 240,
     });
   } catch (err) { next(err); }
 });
 
-// ── GET /api/enrollment/install-script — returns PS1 installer for Windows ───
+function escapePsSingle(s) {
+  return String(s).replace(/'/g, "''");
+}
+
+function buildAgentDownloadUrl(baseUrl, token, orgId, groupId) {
+  const base = String(baseUrl || '').replace(/\/$/, '');
+  const p = new URLSearchParams();
+  p.set('token', String(token));
+  p.set('org', String(orgId));
+  if (groupId) p.set('group', String(groupId));
+  return `${base}/api/agent/download?${p.toString()}`;
+}
+
+// GET /api/enrollment/install-script — returns PS1 (token in query; used on enrolled PCs)
 router.get('/install-script', async (req, res, next) => {
   try {
-    const { token } = req.query;
+    const { token, org, group } = req.query;
     if (!token) return res.status(400).json({ error: 'Token required.' });
 
-    const appUrl = process.env.APP_URL || 'https://app.fortdefend.com';
-    const script = generateWindowsInstallScript(token, appUrl);
+    let payload;
+    try {
+      payload = jwt.verify(String(token), process.env.JWT_SECRET);
+    } catch {
+      return res.status(401).json({ error: 'Invalid or expired token.' });
+    }
+    if (payload.type !== 'enrollment' || !payload.orgId) {
+      return res.status(401).json({ error: 'Invalid token type.' });
+    }
+    if (org && org !== payload.orgId) {
+      return res.status(400).json({ error: 'Invalid org in URL.' });
+    }
+    if (group && (payload.groupId || '') !== String(group)) {
+      return res.status(400).json({ error: 'Invalid group in URL.' });
+    }
+
+    const appUrl = (process.env.APP_URL || 'https://app.fortdefend.com').replace(/\/$/, '');
+    const orgId = org || payload.orgId;
+    const groupId = (group || payload.groupId) || null;
+    const downloadUrl = buildAgentDownloadUrl(appUrl, String(token), orgId, groupId);
+    const script = generateWindowsInstallScript({ appUrl, token, orgId, groupId, downloadUrl });
 
     res.setHeader('Content-Type', 'text/plain');
     res.setHeader('Content-Disposition', 'attachment; filename="fortdefend-install.ps1"');
@@ -195,13 +176,17 @@ router.get('/install-script', async (req, res, next) => {
   } catch (err) { next(err); }
 });
 
-function generateWindowsInstallScript(token, appUrl) {
+function generateWindowsInstallScript({ appUrl, token, downloadUrl }) {
+  const a = escapePsSingle(appUrl);
+  const t = escapePsSingle(token);
+  const d = escapePsSingle(downloadUrl);
   return `# FortDefend Windows Agent Installer
 # Run as Administrator in PowerShell
 
 $ErrorActionPreference = 'Stop'
-$AppUrl = '${appUrl}'
-$Token = '${token}'
+$AppUrl = '${a}'
+$EnrollToken = '${t}'
+$AgentDownloadUrl = '${d}'
 $InstallDir = 'C:\\ProgramData\\FortDefend'
 $AgentExe = Join-Path $InstallDir 'fortdefend-agent.exe'
 $NssmExe = Join-Path $InstallDir 'nssm.exe'
@@ -222,7 +207,7 @@ Write-Host "Created install directory" -ForegroundColor Green
 # Download agent
 Write-Host "Downloading FortDefend agent..." -ForegroundColor Yellow
 try {
-    Invoke-WebRequest -Uri "$AppUrl/download/agent.exe" -OutFile $AgentExe -UseBasicParsing
+    Invoke-WebRequest -Uri $AgentDownloadUrl -OutFile $AgentExe -UseBasicParsing
     Write-Host "Agent downloaded" -ForegroundColor Green
 } catch {
     Write-Error "Failed to download agent: $_"
@@ -244,7 +229,7 @@ try {
 # Store enrollment token in registry
 $RegPath = 'HKLM:\\SOFTWARE\\FortDefend'
 New-Item -Path $RegPath -Force | Out-Null
-Set-ItemProperty -Path $RegPath -Name 'Token' -Value $Token
+Set-ItemProperty -Path $RegPath -Name 'Token' -Value $EnrollToken
 Set-ItemProperty -Path $RegPath -Name 'ApiUrl' -Value $AppUrl
 Set-ItemProperty -Path $RegPath -Name 'InstallDate' -Value (Get-Date -Format 'yyyy-MM-dd')
 Write-Host "Configuration saved to registry" -ForegroundColor Green
@@ -295,4 +280,71 @@ Write-Host "================================" -ForegroundColor Blue
 `;
 }
 
+// ═ Admin-only enrollment management ═
+router.use(requireAuth, requireAdmin, checkTrialStatus);
+
+// GET /api/enrollment/links — get all enrollment links for org
+router.get('/links', async (req, res, next) => {
+  try {
+    const org = await db('orgs').where({ id: req.user.orgId }).first();
+    const baseUrl = process.env.APP_URL || 'https://app.fortdefend.com';
+
+    const links = {
+      chromebook: {
+        type: 'chromebook',
+        url: `${baseUrl}/enroll?token=${generateEnrollmentToken(org.id, 'chromebook')}&type=chromebook`,
+        description: 'Send to users or deploy via Google Admin',
+        installMethod: 'Chrome extension auto-installs when user visits link',
+      },
+      android: {
+        type: 'android',
+        url: `${baseUrl}/enroll?token=${generateEnrollmentToken(org.id, 'android')}&type=android`,
+        description: 'Send via SMS, email, or QR code',
+        installMethod: 'Opens Play Store to FortDefend app with org pre-linked',
+      },
+      windows: {
+        type: 'windows',
+        url: `${baseUrl}/enroll?token=${generateEnrollmentToken(org.id, 'windows')}&type=windows`,
+        description: 'Send to Windows PC users or deploy via Intune',
+        installMethod: 'Downloads and runs FortDefend agent installer',
+      },
+      universal: {
+        type: 'universal',
+        url: `${baseUrl}/enroll?token=${generateEnrollmentToken(org.id, 'universal')}&type=universal`,
+        description: 'One link for all device types — auto-detects platform',
+        installMethod: 'Detects device type and shows correct install method',
+      },
+    };
+
+    res.json({ links, orgName: org.name });
+  } catch (err) { next(err); }
+});
+
+// POST /api/enrollment/qr — generate QR code for enrollment
+router.post('/qr', async (req, res, next) => {
+  try {
+    const { deviceType = 'universal', size = 300 } = req.body;
+    const org = await db('orgs').where({ id: req.user.orgId }).first();
+    const baseUrl = process.env.APP_URL || 'https://app.fortdefend.com';
+    const token = generateEnrollmentToken(org.id, deviceType);
+    const url = `${baseUrl}/enroll?token=${token}&type=${deviceType}`;
+
+    const qrDataUrl = await QRCode.toDataURL(url, {
+      width: size,
+      margin: 2,
+      color: { dark: '#185FA5', light: '#FFFFFF' },
+    });
+
+    res.json({
+      qrDataUrl,
+      url,
+      deviceType,
+      orgName: org.name,
+      expiresIn: '30 days',
+    });
+  } catch (err) { next(err); }
+});
+
 module.exports = router;
+module.exports.generateEnrollmentToken = generateEnrollmentToken;
+module.exports.buildAgentDownloadUrl = buildAgentDownloadUrl;

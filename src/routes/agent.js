@@ -2,6 +2,7 @@ const express = require('express');
 const crypto = require('crypto');
 const path = require('path');
 const fs = require('fs');
+const jwt = require('jsonwebtoken');
 
 const db = require('../database');
 
@@ -17,20 +18,59 @@ async function authByToken(token) {
   return key || null;
 }
 
-router.post('/agent/heartbeat', async (req, res) => {
+function tryEnrollmentPayload(token) {
+  if (!token) return null;
+  try {
+    const payload = jwt.verify(String(token), process.env.JWT_SECRET);
+    if (payload.type !== 'enrollment' || !payload.orgId) return null;
+    return { orgId: payload.orgId, groupId: payload.groupId || null, payload };
+  } catch {
+    return null;
+  }
+}
+
+async function authAgentRequest(token) {
+  const fromApi = await authByToken(token);
+  if (fromApi) return { kind: 'apiKey', orgId: fromApi.org_id, apiKey: fromApi };
+  const enr = tryEnrollmentPayload(token);
+  if (enr) {
+    const org = await db('orgs').where({ id: enr.orgId }).first();
+    if (!org) return null;
+    if (org.subscription_status === 'canceled') return { kind: 'enrollment', rejected: 'subscription' };
+    return { kind: 'enrollment', orgId: enr.orgId, groupId: enr.groupId, org };
+  }
+  return null;
+}
+
+async function addDeviceToGroupIfValid(deviceId, orgId, groupId) {
+  if (!groupId) return;
+  const g = await db('groups').where({ id: groupId, org_id: orgId }).first();
+  if (!g) return;
+  await db('device_groups')
+    .insert({ device_id: deviceId, group_id: g.id })
+    .onConflict(['device_id', 'group_id'])
+    .ignore();
+}
+
+// POST /api/agent/heartbeat
+router.post('/heartbeat', async (req, res) => {
   try {
     const token = req.headers['x-org-token'] || req.body?.orgToken;
-    const auth = await authByToken(token);
+    const auth = await authAgentRequest(token);
     if (!auth) return res.status(401).json({ error: 'Invalid org token.' });
+    if (auth.rejected === 'subscription') {
+      return res.status(402).json({ error: 'Subscription inactive.' });
+    }
 
     const payload = req.body || {};
     const telemetry = payload.telemetry || {};
     const deviceName = payload.deviceName || payload.hostname || 'Unknown Device';
     const externalId = payload.deviceId || payload.machineGuid || payload.hostname || crypto.randomUUID();
     const source = 'agent';
+    const orgId = auth.orgId;
 
     const existing = await db('devices')
-      .where({ org_id: auth.org_id, source, external_id: externalId })
+      .where({ org_id: orgId, source, external_id: externalId })
       .first();
     let deviceId = existing?.id;
     const rebootRequiredReason = ['windows_update', 'patch', 'pending_file_ops'].includes(telemetry.rebootRequiredReason)
@@ -60,7 +100,7 @@ router.post('/agent/heartbeat', async (req, res) => {
       const [row] = await db('devices')
         .insert({
           id: db.raw('gen_random_uuid()'),
-          org_id: auth.org_id,
+          org_id: orgId,
           name: deviceName,
           source,
           external_id: externalId,
@@ -69,6 +109,9 @@ router.post('/agent/heartbeat', async (req, res) => {
         })
         .returning(['id']);
       deviceId = row.id;
+      if (auth.kind === 'enrollment' && auth.groupId) {
+        await addDeviceToGroupIfValid(deviceId, orgId, auth.groupId);
+      }
     } else {
       await db('devices')
         .where('id', existing.id)
@@ -77,7 +120,7 @@ router.post('/agent/heartbeat', async (req, res) => {
 
     await db('scan_results').insert({
       id: db.raw('gen_random_uuid()'),
-      org_id: auth.org_id,
+      org_id: orgId,
       device_id: deviceId,
       agent_name: 'fortdefend_windows_agent',
       result: payload,
@@ -85,7 +128,9 @@ router.post('/agent/heartbeat', async (req, res) => {
       ai_summary: 'Device check-in received successfully.',
     });
 
-    await db('api_keys').where('id', auth.id).update({ last_used_at: new Date() });
+    if (auth.kind === 'apiKey') {
+      await db('api_keys').where('id', auth.apiKey.id).update({ last_used_at: new Date() });
+    }
     return res.json({ ok: true, commands: [] });
   } catch (err) {
     console.error('Agent heartbeat error:', err);
@@ -93,12 +138,36 @@ router.post('/agent/heartbeat', async (req, res) => {
   }
 });
 
-router.get('/agent/download', async (req, res) => {
-  const p = path.join(__dirname, '..', '..', 'agent', 'agent.exe');
-  if (!fs.existsSync(p)) return res.status(404).json({ error: 'agent.exe not found.' });
-  return res.download(p, 'agent.exe');
+// GET /api/agent/download — enrollment JWT; optional &group= must match token when present
+router.get('/download', async (req, res) => {
+  try {
+    const { token, org, group } = req.query;
+    if (!token) return res.status(400).json({ error: 'Token required.' });
+    let payload;
+    try {
+      payload = jwt.verify(String(token), process.env.JWT_SECRET);
+    } catch {
+      return res.status(401).json({ error: 'Invalid or expired token.' });
+    }
+    if (payload.type !== 'enrollment' || !payload.orgId) {
+      return res.status(401).json({ error: 'Invalid token type.' });
+    }
+    if (org && org !== payload.orgId) {
+      return res.status(400).json({ error: 'Invalid org in URL.' });
+    }
+    if (group && (payload.groupId || '') !== String(group)) {
+      return res.status(400).json({ error: 'Invalid group in URL.' });
+    }
+    const p = path.join(__dirname, '..', '..', 'agent', 'agent.exe');
+    if (!fs.existsSync(p)) return res.status(404).json({ error: 'agent.exe not found.' });
+    return res.download(p, 'agent.exe');
+  } catch (err) {
+    console.error('Agent download error:', err);
+    return res.status(500).json({ error: 'Failed to download agent.' });
+  }
 });
 
+// GET /api/agent/install — local install.ps1 (token substituted)
 router.get('/install', async (req, res) => {
   const p = path.join(__dirname, '..', '..', 'agent', 'install.ps1');
   if (!fs.existsSync(p)) return res.status(404).json({ error: 'install.ps1 not found.' });

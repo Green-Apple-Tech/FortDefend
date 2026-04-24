@@ -199,8 +199,8 @@ export function AppLayout() {
       <Banner2FA />
       <div className="flex min-h-screen">
         <aside className="fixed inset-y-0 left-0 z-40 hidden w-[220px] shrink-0 flex-col border-r border-fds-border bg-fds-sidebar shadow-sm md:flex">
-          <div className="flex h-full flex-col px-3 py-5">
-            <Link to="/dashboard" className="mb-8 flex items-center gap-2.5 px-2 text-slate-900 dark:text-slate-50">
+          <div className="flex h-full flex-col px-3 py-3">
+            <Link to="/dashboard" className="mb-4 flex items-center gap-2.5 px-2 text-slate-900 dark:text-slate-50">
               <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-brand text-white" aria-hidden>
                 <svg className="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
                   <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z" />
@@ -209,7 +209,7 @@ export function AppLayout() {
               <span className="text-lg font-bold tracking-tight text-slate-900 dark:text-slate-50">FortDefend</span>
             </Link>
 
-            <nav className="flex flex-1 flex-col gap-6 overflow-y-auto">
+            <nav className="flex flex-1 flex-col gap-3 overflow-y-auto">
               {sections.map((section) => {
                 const items = section.items.filter((item) => {
                   if (item.to.startsWith('/msp') && !isMsp) return false;
@@ -218,7 +218,7 @@ export function AppLayout() {
                 if (!items.length) return null;
                 return (
                   <div key={section.label}>
-                    <p className="mb-2 px-2 text-[10px] font-semibold uppercase tracking-wider text-brand dark:text-blue-400">
+                    <p className="mb-1 px-2 text-[10px] font-semibold uppercase tracking-wider text-brand dark:text-blue-400">
                       {section.label}
                     </p>
                     <div className="flex flex-col gap-0.5">
@@ -227,7 +227,7 @@ export function AppLayout() {
                           key={to}
                           to={to}
                           className={({ isActive }) =>
-                            `flex items-center gap-3 rounded-lg border-l-[3px] px-3 py-2 text-sm font-medium transition ${
+                            `flex items-center gap-3 rounded-lg border-l-[3px] px-3 py-1.5 text-sm font-medium transition ${
                               isActive
                                 ? 'border-brand bg-blue-50/80 text-brand dark:bg-blue-950/50 dark:text-blue-300'
                                 : 'border-transparent text-slate-600 hover:bg-blue-50/60 hover:text-slate-900 dark:text-slate-300 dark:hover:bg-slate-800/60 dark:hover:text-slate-50'
@@ -244,7 +244,7 @@ export function AppLayout() {
               })}
             </nav>
 
-            <div className="mt-auto border-t border-fds-border pt-4">
+            <div className="mt-auto border-t border-fds-border pt-2">
               <div className="flex items-center gap-3 px-2">
                 <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-brand text-xs font-bold text-white">
                   {(user?.email || '?').charAt(0).toUpperCase()}

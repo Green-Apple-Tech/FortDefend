@@ -202,7 +202,7 @@ router.get('/devices/:id/winget-status', async (req, res, next) => {
 // POST /api/software/commands
 router.post('/commands', async (req, res, next) => {
   try {
-    const { deviceIds, wingetId, commandType } = req.body || {};
+    const { deviceIds, wingetId, wingetIds, commandType } = req.body || {};
     const normalizedType = normalizeCommandType(commandType);
 
     if (!Array.isArray(deviceIds) || deviceIds.length === 0) {
@@ -211,8 +211,15 @@ router.post('/commands', async (req, res, next) => {
     if (!isValidCommandType(normalizedType)) {
       return res.status(400).json({ error: 'commandType must be one of install, update, uninstall, update_all.' });
     }
-    if (!wingetId || typeof wingetId !== 'string') {
-      return res.status(400).json({ error: 'wingetId is required.' });
+
+    let uniqueWingetIds = [];
+    if (Array.isArray(wingetIds) && wingetIds.length > 0) {
+      uniqueWingetIds = [...new Set(wingetIds.map((w) => String(w).trim()).filter(Boolean))];
+    } else if (wingetId && typeof wingetId === 'string') {
+      uniqueWingetIds = [String(wingetId).trim()].filter(Boolean);
+    }
+    if (uniqueWingetIds.length === 0) {
+      return res.status(400).json({ error: 'wingetId or wingetIds (non-empty) is required.' });
     }
 
     const uniqueDeviceIds = [...new Set(deviceIds.map((id) => String(id).trim()).filter(Boolean))];
@@ -229,16 +236,21 @@ router.post('/commands', async (req, res, next) => {
       return res.status(400).json({ error: 'No valid devices found in your organization.' });
     }
 
-    const rows = orgDevices.map((device) => ({
-      org_id: req.user.orgId,
-      device_id: device.id,
-      winget_id: String(wingetId).trim(),
-      command_type: normalizedType,
-      status: 'pending',
-      initiated_by: req.user.id,
-      created_at: new Date(),
-      updated_at: new Date(),
-    }));
+    const rows = [];
+    for (const wid of uniqueWingetIds) {
+      for (const device of orgDevices) {
+        rows.push({
+          org_id: req.user.orgId,
+          device_id: device.id,
+          winget_id: wid,
+          command_type: normalizedType,
+          status: 'pending',
+          initiated_by: req.user.id,
+          created_at: new Date(),
+          updated_at: new Date(),
+        });
+      }
+    }
 
     const inserted = await db('sm_commands')
       .insert(rows)

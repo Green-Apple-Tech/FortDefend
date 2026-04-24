@@ -6,4 +6,7 @@
   html {
     scroll-behavior: smooth;
   }
+  body {
+    @apply bg-fds-page text-slate-900 antialiased;
+  }
 }

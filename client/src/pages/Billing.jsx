@@ -3,6 +3,7 @@ import { Link } from 'react-router-dom';
 import { api } from '../lib/api';
 import { PLANS } from '../constants/pricing';
 import { Card, Button, Input } from '../components/ui';
+import { SectionHeader } from '../components/fds';
 
 export default function Billing() {
   const [data, setData] = useState(null);
@@ -55,10 +56,7 @@ export default function Billing() {
 
   return (
     <div className="space-y-6">
-      <div>
-        <h1 className="text-2xl font-bold text-gray-900">Billing</h1>
-        <p className="text-sm text-gray-600">Plan, usage, and upgrades.</p>
-      </div>
+      <SectionHeader title="Billing" description="Plan, usage, and Stripe customer portal." />
 
       {loading && <p className="text-sm text-gray-500">Loading…</p>}
       {error && <div className="rounded-lg bg-red-50 px-3 py-2 text-sm text-red-700">{error}</div>}

@@ -2,10 +2,10 @@ export function Button({ children, className = '', variant = 'primary', type = '
   const base =
     'inline-flex items-center justify-center rounded-lg px-4 py-2.5 text-sm font-semibold transition focus:outline-none focus:ring-2 focus:ring-brand focus:ring-offset-2 disabled:opacity-50';
   const variants = {
-    primary: 'bg-brand text-white hover:bg-brand-dark',
+    primary: 'bg-brand text-white shadow-sm hover:bg-brand-dark',
     secondary: 'bg-brand-light text-brand hover:bg-blue-100',
-    outline: 'border border-gray-300 bg-white text-gray-800 hover:bg-gray-50',
-    danger: 'bg-red-600 text-white hover:bg-red-700',
+    outline: 'border border-fds-border bg-white text-slate-800 shadow-sm hover:bg-slate-50',
+    danger: 'bg-danger text-white shadow-sm hover:bg-red-600',
   };
   return (
     <button type={type} className={`${base} ${variants[variant] || variants.primary} ${className}`} {...props}>
@@ -19,11 +19,11 @@ export function Input({ label, className = '', id, ...props }) {
   return (
     <label className="block">
       {label && (
-        <span className="mb-1 block text-sm font-medium text-gray-700">{label}</span>
+        <span className="mb-1 block text-sm font-medium text-slate-700">{label}</span>
       )}
       <input
         id={inputId}
-        className={`w-full rounded-lg border border-gray-300 px-3 py-2.5 text-sm shadow-sm focus:border-brand focus:outline-none focus:ring-1 focus:ring-brand ${className}`}
+        className={`w-full rounded-lg border border-fds-border bg-white px-3 py-2.5 text-sm text-slate-900 shadow-sm placeholder:text-slate-400 focus:border-brand focus:outline-none focus:ring-2 focus:ring-brand/20 ${className}`}
         {...props}
       />
     </label>
@@ -31,16 +31,23 @@ export function Input({ label, className = '', id, ...props }) {
 }
 
 export function Card({ children, className = '', ...props }) {
-  return <div className={`rounded-xl border border-gray-200 bg-white p-6 shadow-sm ${className}`} {...props}>{children}</div>;
+  return (
+    <div
+      className={`rounded-xl border border-fds-border bg-white p-6 shadow-sm ring-1 ring-slate-950/5 ${className}`}
+      {...props}
+    >
+      {children}
+    </div>
+  );
 }
 
 export function Badge({ children, tone = 'default' }) {
   const tones = {
-    default: 'bg-gray-100 text-gray-800',
-    success: 'bg-emerald-100 text-emerald-800',
-    warning: 'bg-amber-100 text-amber-900',
-    danger: 'bg-red-100 text-red-800',
-    brand: 'bg-brand-light text-brand',
+    default: 'bg-slate-100 text-slate-800 ring-1 ring-slate-200',
+    success: 'bg-emerald-50 text-emerald-800 ring-1 ring-emerald-200',
+    warning: 'bg-amber-50 text-amber-900 ring-1 ring-amber-200',
+    danger: 'bg-red-50 text-red-800 ring-1 ring-red-200',
+    brand: 'bg-brand-light text-brand ring-1 ring-blue-200',
   };
   return (
     <span className={`inline-flex rounded-full px-2.5 py-0.5 text-xs font-medium ${tones[tone]}`}>{children}</span>

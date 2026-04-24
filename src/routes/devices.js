@@ -60,6 +60,60 @@ router.get('/summary', async (req, res, next) => {
   } catch (err) { next(err); }
 });
 
+// GET /api/devices/:id/apps — installed apps inventory (sm_device_apps)
+router.get('/:id/apps', async (req, res, next) => {
+  try {
+    const device = await db('devices')
+      .where({ id: req.params.id, org_id: req.user.orgId })
+      .first();
+    if (!device) return res.status(404).json({ error: 'Device not found.' });
+
+    const hasTable = await db.schema.hasTable('sm_device_apps');
+    if (!hasTable) {
+      return res.json({ applications: [], total: 0 });
+    }
+
+    const applications = await db('sm_device_apps')
+      .where({ org_id: req.user.orgId, device_id: device.id })
+      .select(
+        'app_name',
+        'winget_id',
+        'installed_version',
+        'latest_version',
+        'update_available',
+        'last_scanned_at',
+        'created_at',
+        'updated_at',
+      )
+      .orderBy('app_name', 'asc');
+
+    res.json({ applications, total: applications.length });
+  } catch (err) {
+    next(err);
+  }
+});
+
+// GET /api/devices/:id/script-history — run_script command rows for this device
+router.get('/:id/script-history', async (req, res, next) => {
+  try {
+    const device = await db('devices')
+      .where({ id: req.params.id, org_id: req.user.orgId })
+      .first();
+    if (!device) return res.status(404).json({ error: 'Device not found.' });
+
+    const history = await db('sm_commands')
+      .where({ org_id: req.user.orgId, device_id: device.id })
+      .whereIn('command_type', ['run_script'])
+      .orderBy('created_at', 'desc')
+      .limit(100)
+      .select('id', 'status', 'command_payload', 'output', 'error_message', 'created_at', 'updated_at', 'completed_at');
+
+    res.json({ history });
+  } catch (err) {
+    next(err);
+  }
+});
+
 // GET /api/devices/:id — single device detail
 router.get('/:id', async (req, res, next) => {
   try {
@@ -74,12 +128,34 @@ router.get('/:id', async (req, res, next) => {
       .limit(10);
 
     const alerts = await db('alerts')
-      .where({ org_id: req.user.orgId, resolved: false })
+      .where({ org_id: req.user.orgId, device_id: device.id, resolved: false })
       .orderBy('created_at', 'desc')
-      .limit(20);
+      .limit(50);
 
     res.json({ device, scanResults, alerts });
   } catch (err) { next(err); }
+});
+
+// PATCH /api/devices/:id — update device display name
+router.patch('/:id', async (req, res, next) => {
+  try {
+    const device = await db('devices')
+      .where({ id: req.params.id, org_id: req.user.orgId })
+      .first();
+    if (!device) return res.status(404).json({ error: 'Device not found.' });
+
+    if (req.body?.name == null) {
+      return res.status(400).json({ error: 'name is required.' });
+    }
+    const name = String(req.body.name).trim();
+    if (!name) return res.status(400).json({ error: 'name cannot be empty.' });
+
+    await db('devices').where({ id: device.id }).update({ name, updated_at: new Date() });
+    const updated = await db('devices').where({ id: device.id }).first();
+    res.json({ device: updated });
+  } catch (err) {
+    next(err);
+  }
 });
 
 // DELETE /api/devices/:id — remove device

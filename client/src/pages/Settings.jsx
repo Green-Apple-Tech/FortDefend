@@ -2,17 +2,51 @@ import { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { api } from '../lib/api';
 import { Card, Button, Input } from '../components/ui';
+import { SectionHeader, ToggleCard } from '../components/fds';
+
+const LS_PREFIX = 'fds_settings_v1_';
+
+function loadBool(key, fallback) {
+  try {
+    const v = localStorage.getItem(LS_PREFIX + key);
+    if (v === null) return fallback;
+    return v === 'true';
+  } catch {
+    return fallback;
+  }
+}
+
+function saveBool(key, val) {
+  try {
+    localStorage.setItem(LS_PREFIX + key, val ? 'true' : 'false');
+  } catch {
+    /* ignore */
+  }
+}
 
 export default function Settings() {
   const [orgName, setOrgName] = useState('');
-  const [cpu, setCpu] = useState(90);
-  const [diskGb, setDiskGb] = useState(5);
-  const [scanCron, setScanCron] = useState('0 2 * * *');
-  const [slack, setSlack] = useState('');
-  const [teams, setTeams] = useState('');
-  const [emailAlerts, setEmailAlerts] = useState(true);
   const [msg, setMsg] = useState('');
   const [loading, setLoading] = useState(true);
+  const [advancedOpen, setAdvancedOpen] = useState(false);
+  const [rawJson, setRawJson] = useState('{}');
+  const [jsonError, setJsonError] = useState('');
+
+  const [require2fa, setRequire2fa] = useState(() => loadBool('require2fa', true));
+  const [autoLock, setAutoLock] = useState(() => loadBool('autoLock', true));
+  const [blockUsb, setBlockUsb] = useState(() => loadBool('blockUsb', false));
+
+  const [autoCritical, setAutoCritical] = useState(() => loadBool('autoCritical', true));
+  const [autoSecurity, setAutoSecurity] = useState(() => loadBool('autoSecurity', true));
+  const [notifyPatch, setNotifyPatch] = useState(() => loadBool('notifyPatch', true));
+
+  const [emailAlerts, setEmailAlerts] = useState(() => loadBool('emailAlerts', true));
+  const [weeklyDigest, setWeeklyDigest] = useState(() => loadBool('weeklyDigest', false));
+  const [enrollNotify, setEnrollNotify] = useState(() => loadBool('enrollNotify', true));
+
+  const [heartbeat30, setHeartbeat30] = useState(() => loadBool('heartbeat30', true));
+  const [autoUpdateAgent, setAutoUpdateAgent] = useState(() => loadBool('autoUpdateAgent', true));
+  const [fullInventory, setFullInventory] = useState(() => loadBool('fullInventory', true));
 
   useEffect(() => {
     let cancelled = false;
@@ -31,6 +65,20 @@ export default function Settings() {
     };
   }, []);
 
+  function buildSnapshot() {
+    return {
+      security: { require2fa, autoLock15m: autoLock, blockUsb },
+      patch: { autoCritical, autoSecurity, notifyBefore: notifyPatch },
+      notifications: { emailAlerts, weeklyDigest, enrollNotify },
+      agent: { heartbeat30s: heartbeat30, autoUpdateAgent, fullInventory },
+    };
+  }
+
+  function refreshAdvancedJson() {
+    setRawJson(JSON.stringify(buildSnapshot(), null, 2));
+    setJsonError('');
+  }
+
   async function saveOrg(e) {
     e.preventDefault();
     setMsg('');
@@ -42,17 +90,60 @@ export default function Settings() {
     }
   }
 
+  function applyJson() {
+    setJsonError('');
+    try {
+      const o = JSON.parse(rawJson);
+      if (o.security) {
+        if (typeof o.security.require2fa === 'boolean') setRequire2fa(o.security.require2fa);
+        if (typeof o.security.autoLock15m === 'boolean') setAutoLock(o.security.autoLock15m);
+        if (typeof o.security.blockUsb === 'boolean') setBlockUsb(o.security.blockUsb);
+      }
+      if (o.patch) {
+        if (typeof o.patch.autoCritical === 'boolean') setAutoCritical(o.patch.autoCritical);
+        if (typeof o.patch.autoSecurity === 'boolean') setAutoSecurity(o.patch.autoSecurity);
+        if (typeof o.patch.notifyBefore === 'boolean') setNotifyPatch(o.patch.notifyBefore);
+      }
+      if (o.notifications) {
+        if (typeof o.notifications.emailAlerts === 'boolean') setEmailAlerts(o.notifications.emailAlerts);
+        if (typeof o.notifications.weeklyDigest === 'boolean') setWeeklyDigest(o.notifications.weeklyDigest);
+        if (typeof o.notifications.enrollNotify === 'boolean') setEnrollNotify(o.notifications.enrollNotify);
+      }
+      if (o.agent) {
+        if (typeof o.agent.heartbeat30s === 'boolean') setHeartbeat30(o.agent.heartbeat30s);
+        if (typeof o.agent.autoUpdateAgent === 'boolean') setAutoUpdateAgent(o.agent.autoUpdateAgent);
+        if (typeof o.agent.fullInventory === 'boolean') setFullInventory(o.agent.fullInventory);
+      }
+      setMsg('Applied JSON to toggles (saved locally).');
+    } catch {
+      setJsonError('Invalid JSON — fix syntax and try again.');
+    }
+  }
+
+  const section = (title, desc, children) => (
+    <div className="space-y-3">
+      <div>
+        <h2 className="text-xs font-bold uppercase tracking-wide text-slate-500">{title}</h2>
+        {desc && <p className="mt-1 text-sm text-slate-600">{desc}</p>}
+      </div>
+      <div className="space-y-3">{children}</div>
+    </div>
+  );
+
   return (
     <div className="mx-auto max-w-3xl space-y-8">
-      <div>
-        <h1 className="text-2xl font-bold text-gray-900">Settings</h1>
-        <p className="text-sm text-gray-600">Schedules, thresholds, 2FA, team, and integrations.</p>
-      </div>
+      <SectionHeader
+        title="Settings"
+        description="Set policies once with large toggles. Values below are stored in this browser until your org API persists them."
+      />
 
-      {msg && <div className="rounded-lg bg-brand-light px-3 py-2 text-sm text-brand">{msg}</div>}
+      {msg && (
+        <div className="rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-2 text-sm text-emerald-900">{msg}</div>
+      )}
 
       <Card>
-        <h2 className="font-semibold text-gray-900">Organization</h2>
+        <h2 className="text-sm font-semibold text-slate-900">Organization</h2>
+        <p className="mt-1 text-sm text-slate-600">Display name used across FortDefend and reports.</p>
         <form onSubmit={saveOrg} className="mt-4 space-y-4">
           <Input label="Organization name" value={orgName} onChange={(e) => setOrgName(e.target.value)} />
           <Button type="submit" disabled={loading}>
@@ -61,56 +152,208 @@ export default function Settings() {
         </form>
       </Card>
 
-      <Card>
-        <h2 className="font-semibold text-gray-900">Scan schedule</h2>
-        <p className="mt-1 text-sm text-gray-600">Cron expression for fleet scans (stored client-side until API persists).</p>
-        <Input className="mt-3" label="Cron" value={scanCron} onChange={(e) => setScanCron(e.target.value)} />
+      <Card className="space-y-8">
+        {section(
+          'Security policies',
+          'Baseline protections for every admin session and managed endpoint.',
+          <>
+            <ToggleCard
+              icon="🔐"
+              title="Require 2FA"
+              description="Require two-factor authentication for all org users."
+              on={require2fa}
+              onChange={(v) => {
+                setRequire2fa(v);
+                saveBool('require2fa', v);
+              }}
+            />
+            <ToggleCard
+              icon="⏱"
+              title="Auto-lock after 15 minutes"
+              description="Lock the FortDefend console when idle."
+              on={autoLock}
+              onChange={(v) => {
+                setAutoLock(v);
+                saveBool('autoLock', v);
+              }}
+            />
+            <ToggleCard
+              icon="💾"
+              title="Block USB storage"
+              description="Prevent mass storage on managed devices (agent policy)."
+              on={blockUsb}
+              onChange={(v) => {
+                setBlockUsb(v);
+                saveBool('blockUsb', v);
+              }}
+            />
+            <p className="text-xs text-slate-500">
+              2FA enrollment:{' '}
+              <Link to="/setup-2fa" className="font-semibold text-brand hover:underline">
+                Open 2FA setup
+              </Link>
+            </p>
+          </>,
+        )}
+
+        {section(
+          'Patch management',
+          'Control how aggressive automatic patching should be.',
+          <>
+            <ToggleCard
+              icon="🛡"
+              title="Auto-approve critical patches"
+              description="Queue critical updates without manual approval."
+              on={autoCritical}
+              onChange={(v) => {
+                setAutoCritical(v);
+                saveBool('autoCritical', v);
+              }}
+            />
+            <ToggleCard
+              icon="🔒"
+              title="Auto-approve security patches"
+              description="Security-class updates roll out on the next maintenance window."
+              on={autoSecurity}
+              onChange={(v) => {
+                setAutoSecurity(v);
+                saveBool('autoSecurity', v);
+              }}
+            />
+            <ToggleCard
+              icon="📣"
+              title="Notify before patching"
+              description="Send a heads-up before installs run on user machines."
+              on={notifyPatch}
+              onChange={(v) => {
+                setNotifyPatch(v);
+                saveBool('notifyPatch', v);
+              }}
+            />
+          </>,
+        )}
+
+        {section(
+          'Notifications',
+          'Stay informed without drowning in noise.',
+          <>
+            <ToggleCard
+              icon="✉️"
+              title="Email alerts"
+              description="Send email when new alerts are raised."
+              on={emailAlerts}
+              onChange={(v) => {
+                setEmailAlerts(v);
+                saveBool('emailAlerts', v);
+              }}
+            />
+            <ToggleCard
+              icon="📅"
+              title="Weekly digest"
+              description="Summary of fleet posture every Monday."
+              on={weeklyDigest}
+              onChange={(v) => {
+                setWeeklyDigest(v);
+                saveBool('weeklyDigest', v);
+              }}
+            />
+            <ToggleCard
+              icon="📱"
+              title="Alert on new device enrollment"
+              description="Ping admins when a new device joins the org."
+              on={enrollNotify}
+              onChange={(v) => {
+                setEnrollNotify(v);
+                saveBool('enrollNotify', v);
+              }}
+            />
+          </>,
+        )}
+
+        {section(
+          'Agent',
+          'How often endpoints check in and what they collect.',
+          <>
+            <ToggleCard
+              icon="💓"
+              title="30-second heartbeat"
+              description="Faster command delivery; slightly more traffic."
+              on={heartbeat30}
+              onChange={(v) => {
+                setHeartbeat30(v);
+                saveBool('heartbeat30', v);
+              }}
+            />
+            <ToggleCard
+              icon="⬆️"
+              title="Auto-update agent"
+              description="Silently upgrade the FortDefend agent when a new build ships."
+              on={autoUpdateAgent}
+              onChange={(v) => {
+                setAutoUpdateAgent(v);
+                saveBool('autoUpdateAgent', v);
+              }}
+            />
+            <ToggleCard
+              icon="📋"
+              title="Collect full inventory"
+              description="Include detailed hardware and software lists in each scan."
+              on={fullInventory}
+              onChange={(v) => {
+                setFullInventory(v);
+                saveBool('fullInventory', v);
+              }}
+            />
+          </>,
+        )}
       </Card>
 
       <Card>
-        <h2 className="font-semibold text-gray-900">Alert thresholds</h2>
-        <div className="mt-4 grid gap-4 sm:grid-cols-2">
-          <Input label="CPU warn %" type="number" value={cpu} onChange={(e) => setCpu(Number(e.target.value))} />
-          <Input label="Min free disk (GB)" type="number" value={diskGb} onChange={(e) => setDiskGb(Number(e.target.value))} />
-        </div>
-        <p className="mt-2 text-xs text-gray-500">Agent will use these when reporting (requires agent config sync).</p>
-      </Card>
-
-      <Card>
-        <h2 className="font-semibold text-gray-900">Two-factor authentication</h2>
-        <p className="mt-1 text-sm text-gray-600">Manage 2FA from the dedicated setup page.</p>
-        <Link to="/setup-2fa" className="mt-3 inline-block text-sm font-medium text-brand hover:underline">
-          Open 2FA setup →
-        </Link>
-      </Card>
-
-      <Card>
-        <h2 className="font-semibold text-gray-900">Team</h2>
-        <p className="mt-1 text-sm text-gray-600">Invite and manage users in the FortDefend API (`POST /api/orgs/invite`).</p>
-      </Card>
-
-      <Card>
-        <h2 className="font-semibold text-gray-900">Notifications</h2>
-        <p className="mt-1 text-sm text-gray-600">Slack / Teams webhooks (extend `PATCH` on org integrations to persist).</p>
-        <div className="mt-4 space-y-3">
-          <Input label="Slack webhook URL" value={slack} onChange={(e) => setSlack(e.target.value)} placeholder="https://hooks.slack.com/..." />
-          <Input label="Teams webhook URL" value={teams} onChange={(e) => setTeams(e.target.value)} />
-          <label className="flex items-center gap-2 text-sm">
-            <input type="checkbox" checked={emailAlerts} onChange={(e) => setEmailAlerts(e.target.checked)} />
-            Email alerts enabled
-          </label>
-          <Button type="button" variant="outline" onClick={() => setMsg('Webhook save API not wired yet.')}>
-            Save notifications
-          </Button>
-        </div>
-      </Card>
-
-      <Card>
-        <h2 className="font-semibold text-gray-900">Integrations</h2>
-        <p className="mt-1 text-sm text-gray-600">Connect Intune and Google Admin from the Integrations page.</p>
-        <Link to="/integrations" className="mt-2 inline-block text-sm font-medium text-brand hover:underline">
+        <h2 className="text-sm font-semibold text-slate-900">Integrations</h2>
+        <p className="mt-1 text-sm text-slate-600">Connect Intune, Google Admin, and webhooks from the Integrations hub.</p>
+        <Link to="/integrations" className="mt-3 inline-block text-sm font-semibold text-brand hover:underline">
           Open integrations →
         </Link>
+      </Card>
+
+      <Card>
+        <button
+          type="button"
+          onClick={() => {
+            setAdvancedOpen((o) => {
+              const next = !o;
+              if (next) refreshAdvancedJson();
+              return next;
+            });
+          }}
+          className="flex w-full items-center justify-between text-left"
+        >
+          <div>
+            <h2 className="text-sm font-semibold text-slate-900">Advanced</h2>
+            <p className="mt-1 text-sm text-slate-600">Raw JSON mirror of the toggles above — power users only.</p>
+          </div>
+          <span className="text-slate-400">{advancedOpen ? '▼' : '▶'}</span>
+        </button>
+        {advancedOpen && (
+          <div className="mt-4 space-y-3 border-t border-fds-border pt-4">
+            <label className="block text-xs font-bold uppercase tracking-wide text-slate-500">Configuration JSON</label>
+            <textarea
+              value={rawJson}
+              onChange={(e) => setRawJson(e.target.value)}
+              rows={14}
+              className="w-full rounded-lg border border-fds-border bg-slate-50 px-3 py-2 font-mono text-xs text-slate-900 shadow-inner focus:border-brand focus:outline-none focus:ring-1 focus:ring-brand"
+            />
+            {jsonError && <p className="text-sm text-red-600">{jsonError}</p>}
+            <div className="flex flex-wrap gap-2">
+              <Button type="button" variant="outline" onClick={refreshAdvancedJson}>
+                Sync from toggles
+              </Button>
+              <Button type="button" variant="outline" onClick={applyJson}>
+                Apply JSON to toggles
+              </Button>
+            </div>
+          </div>
+        )}
       </Card>
     </div>
   );

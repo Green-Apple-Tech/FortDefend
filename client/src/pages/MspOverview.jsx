@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { api } from '../lib/api';
 import { useAuth } from '../context/AuthContext';
 import { Card, Spinner } from '../components/ui';
+import { SectionHeader } from '../components/fds';
 
 export default function MspOverview() {
   const { user, isLoading } = useAuth();
@@ -49,10 +50,10 @@ export default function MspOverview() {
 
   return (
     <div className="space-y-6">
-      <div>
-        <h1 className="text-2xl font-bold text-gray-900">MSP Overview</h1>
-        <p className="text-sm text-gray-600">Aggregate security posture across all managed clients.</p>
-      </div>
+      <SectionHeader
+        title="MSP overview"
+        description="Aggregate security posture across all managed clients."
+      />
 
       {error && <div className="rounded-lg bg-red-50 px-3 py-2 text-sm text-red-700">{error}</div>}
 

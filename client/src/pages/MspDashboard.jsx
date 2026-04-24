@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { api, setAccessToken } from '../lib/api';
 import { useAuth } from '../context/AuthContext';
 import { Button, Card, Input, Spinner } from '../components/ui';
+import { SectionHeader } from '../components/fds';
 
 export default function MspDashboard() {
   const { user, isLoading, refreshOrg } = useAuth();
@@ -69,11 +70,12 @@ export default function MspDashboard() {
 
   return (
     <div className="space-y-6">
-      <div className="flex flex-wrap items-start justify-between gap-3">
-        <div>
-        <h1 className="text-2xl font-bold text-gray-900">MSP Dashboard</h1>
-        <p className="text-sm text-gray-600">Multi-tenant security view across all your managed clients.</p>
-        </div>
+      <div className="flex flex-wrap items-end justify-between gap-3">
+        <SectionHeader
+          className="mb-0"
+          title="MSP dashboard"
+          description="Multi-tenant security view across all your managed clients."
+        />
         <Button onClick={() => document.getElementById('add-client-form')?.scrollIntoView({ behavior: 'smooth', block: 'start' })}>
           Add New Client
         </Button>

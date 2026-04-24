@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { api } from '../lib/api';
 import { Card, Button, Input } from '../components/ui';
+import { SectionHeader } from '../components/fds';
 
 const steps = ['Policy type', 'Schedule', 'Notification', 'Devices', 'Review'];
 const types = [
@@ -63,12 +64,13 @@ export default function RebootPolicies() {
 
   return (
     <div className="space-y-6">
-      <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-2xl font-bold text-gray-900">Reboot Policies</h1>
-          <p className="text-sm text-gray-600">Set restart rules that protect business hours and keep updates moving.</p>
-        </div>
-        <Button onClick={() => setOpen(true)}>Create Policy</Button>
+      <div className="flex flex-wrap items-end justify-between gap-3">
+        <SectionHeader
+          className="mb-0"
+          title="Reboot policies"
+          description="Set restart rules that protect business hours and keep updates moving."
+        />
+        <Button onClick={() => setOpen(true)}>Create policy</Button>
       </div>
 
       <Card className="overflow-x-auto p-0">

@@ -288,6 +288,10 @@ export default function Install() {
         <Card>
           <h2 className="text-lg font-semibold text-gray-900">Android</h2>
           <p className="mt-1 text-sm text-gray-600">Install on Android 8.0 and above.</p>
+          <p className="mt-2 text-sm text-gray-600">
+            Enable push notifications when prompted for fastest response time. FortDefend uses Firebase
+            Cloud Messaging (FCM) for near-instant command delivery to enrolled devices.
+          </p>
           <div className="mt-4 flex flex-wrap gap-3">
             <a href={links.apk || '#'} className={!links.apk ? `${btnPrimary} pointer-events-none opacity-50` : btnPrimary}>
               Download Android App (.apk)

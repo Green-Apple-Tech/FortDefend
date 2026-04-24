@@ -1,5 +1,6 @@
 const express = require('express');
 const db = require('../database');
+const fcm = require('../utils/fcm');
 const { requireAuth, requireAdmin } = require('../middleware/auth');
 
 const router = express.Router();
@@ -138,7 +139,36 @@ router.post('/commands', async (req, res, next) => {
       updated_at: new Date(),
     }));
 
-    await db('sm_commands').insert(rows);
+    const inserted = await db('sm_commands')
+      .insert(rows)
+      .returning(['id', 'device_id', 'org_id', 'winget_id', 'command_type', 'created_at']);
+
+    const insertedDeviceIds = [...new Set(inserted.map((r) => r.device_id))];
+    const devices = await db('devices')
+      .whereIn('id', insertedDeviceIds)
+      .select('id', 'os', 'fcm_token');
+    const deviceById = new Map(devices.map((d) => [d.id, d]));
+
+    for (const row of inserted) {
+      const d = deviceById.get(row.device_id);
+      if (!d || d.os !== 'android' || !d.fcm_token) continue;
+      const created = row.created_at ? new Date(row.created_at) : new Date();
+      const expires = new Date(created.getTime() + 7 * 24 * 60 * 60 * 1000);
+      const out = await fcm.sendCommand(d.fcm_token, {
+        type: 'sm_command',
+        commandId: row.id,
+        issuedAt: created.toISOString(),
+        expiresAt: expires.toISOString(),
+        payload: {
+          wingetId: row.winget_id,
+          commandType: row.command_type,
+        },
+      });
+      if (!out.success) {
+        console.warn('FCM sendCommand failed', row.device_id, out.error);
+      }
+    }
+
     res.status(201).json({ queued: rows.length });
   } catch (err) {
     next(err);

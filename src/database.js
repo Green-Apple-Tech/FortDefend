@@ -1,11 +1,8 @@
 require('dotenv').config();
 const knex = require('knex');
 const path = require('path');
-const fs = require('fs');
 
-const upperMigrationsDir = path.join(__dirname, '../Migrations');
-const lowerMigrationsDir = path.join(__dirname, '../migrations');
-const migrationsDirectory = fs.existsSync(upperMigrationsDir) ? upperMigrationsDir : lowerMigrationsDir;
+const migrationsDirectory = path.join(__dirname, '../Migrations');
 
 const db = knex({
   client: 'pg',

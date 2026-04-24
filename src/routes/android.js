@@ -1,6 +1,8 @@
 const express = require('express');
+const jwt = require('jsonwebtoken');
 const router = express.Router();
 const db = require('../database');
+const { getJwtSecret } = require('../config/jwtSecret');
 const { requireAuth, requireAdmin } = require('../middleware/auth');
 const { checkTrialStatus } = require('../middleware/trial');
 const {
@@ -8,6 +10,89 @@ const {
   verifyAndroidDevice,
   getAllAndroidDevices,
 } = require('../integrations/android');
+
+// ── Device app (enrollment token) — no session auth ─────────────────────────────
+function verifyDeviceToken(req, res, next) {
+  const authHeader = req.headers.authorization;
+  if (!authHeader?.startsWith('Bearer ')) {
+    return res.status(401).json({ error: 'Device token required.' });
+  }
+  try {
+    const payload = jwt.verify(authHeader.slice(7), getJwtSecret());
+    if (payload.type !== 'device' && payload.type !== 'enrollment') {
+      return res.status(401).json({ error: 'Invalid token type.' });
+    }
+    req.device = payload;
+    next();
+  } catch {
+    return res.status(401).json({ error: 'Invalid or expired token.' });
+  }
+}
+
+// POST /api/android/heartbeat — Android agent check-in, optional fcmToken, pending sm_commands
+router.post('/heartbeat', verifyDeviceToken, async (req, res, next) => {
+  try {
+    const { fcmToken, deviceName, securityScore } = req.body || {};
+    const { orgId, deviceId } = req.device;
+    if (!orgId || !deviceId) {
+      return res.status(400).json({ error: 'Invalid device token.' });
+    }
+
+    const patch = { last_seen: new Date(), updated_at: new Date() };
+    if (fcmToken && typeof fcmToken === 'string' && fcmToken.trim()) {
+      patch.fcm_token = fcmToken.trim();
+    }
+    if (deviceName && String(deviceName).trim()) {
+      patch.name = String(deviceName).trim();
+    }
+    if (Number.isFinite(Number(securityScore))) {
+      patch.security_score = Math.max(0, Math.min(100, Math.round(Number(securityScore))));
+    }
+
+    const n = await db('devices').where({ id: deviceId, org_id: orgId }).update(patch);
+    if (n === 0) {
+      return res.status(404).json({ error: 'Device not found.' });
+    }
+
+    const pending = await db('sm_commands')
+      .where({ device_id: deviceId, org_id: orgId, status: 'pending' })
+      .orderBy('created_at', 'asc')
+      .select('id', 'winget_id', 'command_type', 'created_at');
+
+    const commands = pending.map((c) => ({
+      id: c.id,
+      commandType: c.command_type,
+      wingetId: c.winget_id,
+      createdAt: c.created_at,
+    }));
+    return res.json({ ok: true, commands });
+  } catch (err) {
+    return next(err);
+  }
+});
+
+// POST /api/android/register-fcm — { fcmToken }
+router.post('/register-fcm', verifyDeviceToken, async (req, res, next) => {
+  try {
+    const { fcmToken } = req.body || {};
+    if (!fcmToken || typeof fcmToken !== 'string' || !fcmToken.trim()) {
+      return res.status(400).json({ error: 'fcmToken is required.' });
+    }
+    const { orgId, deviceId } = req.device;
+    if (!orgId || !deviceId) {
+      return res.status(400).json({ error: 'Invalid device token.' });
+    }
+    const n = await db('devices')
+      .where({ id: deviceId, org_id: orgId })
+      .update({ fcm_token: fcmToken.trim(), updated_at: new Date() });
+    if (n === 0) {
+      return res.status(404).json({ error: 'Device not found.' });
+    }
+    return res.json({ ok: true });
+  } catch (err) {
+    return next(err);
+  }
+});
 
 router.use(requireAuth);
 router.use(checkTrialStatus);

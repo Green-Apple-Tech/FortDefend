@@ -10,6 +10,7 @@ const {
   verifyAndroidDevice,
   getAllAndroidDevices,
 } = require('../integrations/android');
+const { toNum, toDateOrNull, evaluateDeviceAlerts } = require('../lib/deviceMonitoring');
 
 // ── Device app (enrollment token) — no session auth ─────────────────────────────
 function verifyDeviceToken(req, res, next) {
@@ -32,13 +33,45 @@ function verifyDeviceToken(req, res, next) {
 // POST /api/android/heartbeat — Android agent check-in, optional fcmToken, pending sm_commands
 router.post('/heartbeat', verifyDeviceToken, async (req, res, next) => {
   try {
-    const { fcmToken, deviceName, securityScore } = req.body || {};
+    const { fcmToken, deviceName, securityScore, telemetry } = req.body || {};
     const { orgId, deviceId } = req.device;
     if (!orgId || !deviceId) {
       return res.status(400).json({ error: 'Invalid device token.' });
     }
 
-    const patch = { last_seen: new Date(), updated_at: new Date() };
+    const current = await db('devices').where({ id: deviceId, org_id: orgId }).first();
+    const t = telemetry || {};
+    const now = new Date();
+    const cpuUsagePct = toNum(t.cpuUsagePct, current?.cpu_usage_pct ?? null);
+    const ramUsagePct = toNum(t.ramUsagePct, current?.ram_usage_pct ?? null);
+    const priorCpuSince = toDateOrNull(current?.high_cpu_since);
+    const priorRamSince = toDateOrNull(current?.high_ram_since);
+    const patch = {
+      last_seen: now,
+      updated_at: now,
+      hostname: t.hostname || current?.hostname || null,
+      serial: t.serialNumber || current?.serial || null,
+      os: t.osName || current?.os || 'android',
+      os_version: t.osVersion || current?.os_version || null,
+      logged_in_user: t.loggedInUser || current?.logged_in_user || null,
+      cpu_model: t.cpuModel || current?.cpu_model || null,
+      cpu_usage_pct: cpuUsagePct,
+      ram_total_gb: toNum(t.ramTotalGb, current?.ram_total_gb ?? null),
+      ram_usage_pct: ramUsagePct,
+      disk_total_gb: toNum(t.diskTotalGb, current?.disk_total_gb ?? null),
+      disk_free_gb: toNum(t.diskFreeGb, current?.disk_free_gb ?? null),
+      disk_usage_pct: toNum(t.diskUsagePct, current?.disk_usage_pct ?? null),
+      disk_free_pct: toNum(t.diskFreePct, current?.disk_free_pct ?? null),
+      battery_level: toNum(t.batteryLevel, current?.battery_level ?? null),
+      battery_status: t.batteryStatus || current?.battery_status || null,
+      battery_health: t.batteryHealth || current?.battery_health || null,
+      ip_address: t.ipAddress || current?.ip_address || null,
+      agent_version: t.agentVersion || current?.agent_version || null,
+      os_outdated: t.osOutdated === true,
+      security_agent_running: t.securityAgentRunning == null ? (current?.security_agent_running ?? true) : !!t.securityAgentRunning,
+      high_cpu_since: cpuUsagePct != null && cpuUsagePct >= 100 ? (priorCpuSince || now) : null,
+      high_ram_since: ramUsagePct != null && ramUsagePct >= 100 ? (priorRamSince || now) : null,
+    };
     if (fcmToken && typeof fcmToken === 'string' && fcmToken.trim()) {
       patch.fcm_token = fcmToken.trim();
     }
@@ -53,6 +86,8 @@ router.post('/heartbeat', verifyDeviceToken, async (req, res, next) => {
     if (n === 0) {
       return res.status(404).json({ error: 'Device not found.' });
     }
+    const latest = await db('devices').where({ id: deviceId, org_id: orgId }).first();
+    if (latest) await evaluateDeviceAlerts(db, { orgId, device: latest });
 
     const pending = await db('sm_commands')
       .where({ device_id: deviceId, org_id: orgId, status: 'pending' })

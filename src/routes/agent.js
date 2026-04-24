@@ -66,6 +66,159 @@ async function addDeviceToGroupIfValid(deviceId, orgId, groupId) {
     .ignore();
 }
 
+const DISK_FREE_ALERT_PCT = 2;
+const SATURATION_SECONDS = 30;
+const STALE_CHECKIN_MINUTES = 15;
+
+function toNum(value, fallback = null) {
+  const n = Number(value);
+  return Number.isFinite(n) ? n : fallback;
+}
+
+function toDateOrNull(value) {
+  if (!value) return null;
+  const d = new Date(value);
+  return Number.isNaN(d.getTime()) ? null : d;
+}
+
+async function ensureAlert({ orgId, deviceId, type, severity, message, aiAnalysis = null }) {
+  const existing = await db('alerts')
+    .where({ org_id: orgId, device_id: deviceId, type, resolved: false })
+    .first();
+  if (existing) {
+    await db('alerts').where({ id: existing.id }).update({
+      severity,
+      message,
+      ai_analysis: aiAnalysis,
+      created_at: new Date(),
+    });
+    return existing.id;
+  }
+  const [row] = await db('alerts')
+    .insert({
+      id: db.raw('gen_random_uuid()'),
+      org_id: orgId,
+      device_id: deviceId,
+      type,
+      severity,
+      message,
+      ai_analysis: aiAnalysis,
+      resolved: false,
+      created_at: new Date(),
+    })
+    .returning(['id']);
+  return row?.id;
+}
+
+async function resolveAlert({ orgId, deviceId, type }) {
+  await db('alerts')
+    .where({ org_id: orgId, device_id: deviceId, type, resolved: false })
+    .update({ resolved: true, resolved_at: new Date() });
+}
+
+async function evaluateDeviceAlerts({ orgId, device }) {
+  const now = new Date();
+  const diskFreePct = toNum(device.disk_free_pct, null);
+  if (diskFreePct != null && diskFreePct < DISK_FREE_ALERT_PCT) {
+    await ensureAlert({
+      orgId,
+      deviceId: device.id,
+      type: 'disk_free_critical',
+      severity: 'critical',
+      message: `${device.name}: disk free space is ${diskFreePct.toFixed(2)}% (< ${DISK_FREE_ALERT_PCT}%).`,
+      aiAnalysis: 'Immediate cleanup recommended; critically low disk can destabilize endpoint health checks.',
+    });
+  } else {
+    await resolveAlert({ orgId, deviceId: device.id, type: 'disk_free_critical' });
+  }
+
+  const cpuSince = toDateOrNull(device.high_cpu_since);
+  if (cpuSince && now.getTime() - cpuSince.getTime() >= SATURATION_SECONDS * 1000) {
+    await ensureAlert({
+      orgId,
+      deviceId: device.id,
+      type: 'cpu_sustained_100',
+      severity: 'critical',
+      message: `${device.name}: CPU usage has remained at 100% for more than ${SATURATION_SECONDS} seconds.`,
+      aiAnalysis: 'Likely process contention or runaway workload; investigate top CPU consumers.',
+    });
+  } else {
+    await resolveAlert({ orgId, deviceId: device.id, type: 'cpu_sustained_100' });
+  }
+
+  const ramSince = toDateOrNull(device.high_ram_since);
+  if (ramSince && now.getTime() - ramSince.getTime() >= SATURATION_SECONDS * 1000) {
+    await ensureAlert({
+      orgId,
+      deviceId: device.id,
+      type: 'ram_sustained_100',
+      severity: 'critical',
+      message: `${device.name}: RAM usage has remained at 100% for more than ${SATURATION_SECONDS} seconds.`,
+      aiAnalysis: 'Likely memory pressure or leak; inspect memory-heavy processes.',
+    });
+  } else {
+    await resolveAlert({ orgId, deviceId: device.id, type: 'ram_sustained_100' });
+  }
+
+  if (device.os_outdated === true) {
+    await ensureAlert({
+      orgId,
+      deviceId: device.id,
+      type: 'os_outdated',
+      severity: 'warning',
+      message: `${device.name}: OS version appears outdated (${device.os || 'unknown'} ${device.os_version || ''}).`,
+      aiAnalysis: 'Outdated operating systems increase vulnerability exposure and patch lag risk.',
+    });
+  } else {
+    await resolveAlert({ orgId, deviceId: device.id, type: 'os_outdated' });
+  }
+
+  if (device.security_agent_running === false) {
+    await ensureAlert({
+      orgId,
+      deviceId: device.id,
+      type: 'security_agent_stopped',
+      severity: 'critical',
+      message: `${device.name}: security agent appears missing or stopped.`,
+      aiAnalysis: 'Endpoint protection not active; restore security service immediately.',
+    });
+  } else {
+    await resolveAlert({ orgId, deviceId: device.id, type: 'security_agent_stopped' });
+  }
+}
+
+async function evaluateStaleCheckins(orgId) {
+  const cutoff = new Date(Date.now() - STALE_CHECKIN_MINUTES * 60 * 1000);
+  const staleDevices = await db('devices')
+    .where('org_id', orgId)
+    .andWhere('source', 'agent')
+    .andWhereNotNull('last_seen')
+    .andWhere('last_seen', '<', cutoff)
+    .select('id', 'name', 'last_seen');
+  const staleIds = new Set(staleDevices.map((d) => d.id));
+
+  for (const d of staleDevices) {
+    await ensureAlert({
+      orgId,
+      deviceId: d.id,
+      type: 'checkin_stale',
+      severity: 'warning',
+      message: `${d.name}: no heartbeat received in the last ${STALE_CHECKIN_MINUTES} minutes.`,
+      aiAnalysis: 'Device may be offline, agent service may be down, or network path is blocked.',
+    });
+  }
+
+  const activeAlerts = await db('alerts')
+    .where({ org_id: orgId, type: 'checkin_stale', resolved: false })
+    .select('id', 'device_id');
+  const resolveIds = activeAlerts.filter((a) => !staleIds.has(a.device_id)).map((a) => a.id);
+  if (resolveIds.length > 0) {
+    await db('alerts')
+      .whereIn('id', resolveIds)
+      .update({ resolved: true, resolved_at: new Date() });
+  }
+}
+
 const agentResourceDir = path.join(__dirname, '..', '..', 'agent');
 const agentDistExe = path.join(__dirname, '../../agent/dist/FortDefendAgent.exe');
 const agentInstallTemplate = path.join(agentResourceDir, 'install.ps1');
@@ -321,12 +474,41 @@ router.post('/heartbeat', async (req, res) => {
     const rebootRequiredReason = ['windows_update', 'patch', 'pending_file_ops'].includes(telemetry.rebootRequiredReason)
       ? telemetry.rebootRequiredReason
       : null;
+    const now = new Date();
+    const cpuUsagePct = toNum(telemetry.cpuUsagePct, existing?.cpu_usage_pct ?? null);
+    const ramUsagePct = toNum(telemetry.ramUsagePct, existing?.ram_usage_pct ?? null);
+    const diskFreePct = toNum(telemetry.diskFreePct, null);
+    const priorCpuSince = toDateOrNull(existing?.high_cpu_since);
+    const priorRamSince = toDateOrNull(existing?.high_ram_since);
+    const nextHighCpuSince = cpuUsagePct != null && cpuUsagePct >= 100 ? (priorCpuSince || now) : null;
+    const nextHighRamSince = ramUsagePct != null && ramUsagePct >= 100 ? (priorRamSince || now) : null;
     const updateFields = {
       name: deviceName,
-      last_seen: new Date(),
+      hostname: payload.hostname || deviceName,
+      serial: telemetry.serialNumber || payload.serialNumber || existing?.serial || null,
+      os: telemetry.osName || existing?.os || 'windows',
+      os_version: telemetry.osVersion || existing?.os_version || null,
+      logged_in_user: telemetry.loggedInUser || existing?.logged_in_user || null,
+      cpu_model: telemetry.cpuModel || existing?.cpu_model || null,
+      cpu_usage_pct: cpuUsagePct,
+      ram_total_gb: toNum(telemetry.ramTotalGb, existing?.ram_total_gb ?? null),
+      ram_usage_pct: ramUsagePct,
+      disk_total_gb: toNum(telemetry.diskTotalGb, existing?.disk_total_gb ?? null),
+      disk_free_gb: toNum(telemetry.diskFreeGb, existing?.disk_free_gb ?? null),
+      disk_usage_pct: toNum(telemetry.diskUsagePct, existing?.disk_usage_pct ?? null),
+      disk_free_pct: diskFreePct,
+      ip_address: telemetry.ipAddress || existing?.ip_address || null,
+      agent_version: telemetry.agentVersion || payload.agentVersion || existing?.agent_version || '1.0.0',
+      os_outdated: telemetry.osOutdated === true,
+      security_agent_running: telemetry.securityAgentRunning == null ? true : !!telemetry.securityAgentRunning,
+      high_cpu_since: nextHighCpuSince,
+      high_ram_since: nextHighRamSince,
+      last_seen: now,
       status: 'online',
       security_score: payload.securityScore || existing?.security_score || 75,
       battery_level: Number.isFinite(Number(telemetry.batteryLevel)) ? Number(telemetry.batteryLevel) : null,
+      battery_status: telemetry.batteryStatus || existing?.battery_status || null,
+      battery_health: telemetry.batteryHealth || existing?.battery_health || null,
       on_ac_power: telemetry.onAcPower == null ? true : !!telemetry.onAcPower,
       active_user_session: !!telemetry.activeUserSession,
       idle_time_minutes: Number.isFinite(Number(telemetry.idleTimeMinutes)) ? Number(telemetry.idleTimeMinutes) : null,
@@ -364,7 +546,7 @@ router.post('/heartbeat', async (req, res) => {
           name: deviceName,
           source,
           external_id: externalId,
-          os: 'windows',
+          os: telemetry.osName || 'windows',
           ...updateFields,
         })
         .returning(['id']);
@@ -373,6 +555,12 @@ router.post('/heartbeat', async (req, res) => {
       await db('devices')
         .where('id', existing.id)
         .update({ ...updateFields, updated_at: new Date() });
+    }
+
+    const latestDevice = await db('devices').where({ id: deviceId, org_id: orgId }).first();
+    if (latestDevice) {
+      await evaluateDeviceAlerts({ orgId, device: latestDevice });
+      await evaluateStaleCheckins(orgId);
     }
 
     const firstGroup = await db('device_groups').where({ device_id: deviceId }).first();

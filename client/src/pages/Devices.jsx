@@ -7,7 +7,6 @@ const PAGE_SIZE = 25;
 const POLL_MS = 60_000;
 const DEVICE_COLUMNS_LS_KEY = 'fortdefend_devices_column_order_v1';
 const DEFAULT_COLUMN_ORDER = [
-  'device',
   'os',
   'source',
   'status',
@@ -106,6 +105,12 @@ function formatRam(d) {
   const gb = d.ram_total_gb ?? d.ram?.totalGb;
   if (gb == null || Number.isNaN(Number(gb))) return '—';
   return `${Number(gb).toFixed(1)}GB`;
+}
+
+function formatPct(v) {
+  const n = Number(v);
+  if (!Number.isFinite(n)) return '—';
+  return `${n.toFixed(1)}%`;
 }
 
 function getPendingPatchCount(d) {
@@ -212,7 +217,7 @@ export default function Devices() {
       if (!raw) return;
       const parsed = JSON.parse(raw);
       if (!Array.isArray(parsed)) return;
-      const valid = parsed.filter((key) => DEFAULT_COLUMN_ORDER.includes(key));
+      const valid = parsed.filter((key) => DEFAULT_COLUMN_ORDER.includes(key) && key !== 'device');
       const missing = DEFAULT_COLUMN_ORDER.filter((key) => !valid.includes(key));
       const merged = [...valid, ...missing];
       if (merged.length === DEFAULT_COLUMN_ORDER.length) setColumnOrder(merged);
@@ -345,6 +350,7 @@ export default function Devices() {
       return next;
     });
   };
+  const orderedColumns = useMemo(() => ['device', ...columnOrder.filter((k) => k !== 'device')], [columnOrder]);
 
   const exportCsv = () => {
     const headers = [
@@ -473,6 +479,14 @@ export default function Devices() {
     setPanelTab('overview');
   };
 
+  const capabilityRows = [
+    { platform: 'Windows agent', cpu: 'Yes', ram: 'Yes', disk: 'Yes', battery: 'Yes', user: 'Yes', script: 'Yes' },
+    { platform: 'Android app', cpu: 'If app reports', ram: 'If app reports', disk: 'If app reports', battery: 'If app reports', user: 'Limited', script: 'Safe actions only' },
+    { platform: 'Chromebook extension', cpu: 'Limited', ram: 'Partial', disk: 'Partial', battery: 'No', user: 'Partial', script: 'JavaScript only' },
+    { platform: 'Intune (Windows/macOS/iOS)', cpu: 'Limited', ram: 'Limited', disk: 'Partial', battery: 'Limited', user: 'Partial', script: 'Vendor-dependent' },
+    { platform: 'Google Mobile (iOS)', cpu: 'No', ram: 'No', disk: 'No', battery: 'No', user: 'Partial', script: 'No arbitrary code' },
+  ];
+
   return (
     <div className="space-y-6">
       <div>
@@ -562,6 +576,37 @@ export default function Devices() {
         </div>
       </Card>
 
+      <Card className="overflow-x-auto">
+        <h2 className="text-sm font-semibold text-gray-900">Platform Capability Matrix</h2>
+        <p className="mb-3 text-xs text-gray-600">Telemetry availability depends on platform APIs and enrollment method.</p>
+        <table className="min-w-full text-xs">
+          <thead>
+            <tr className="border-b border-gray-200 text-left text-gray-600">
+              <th className="px-2 py-2">Platform</th>
+              <th className="px-2 py-2">CPU</th>
+              <th className="px-2 py-2">RAM</th>
+              <th className="px-2 py-2">Disk</th>
+              <th className="px-2 py-2">Battery</th>
+              <th className="px-2 py-2">User</th>
+              <th className="px-2 py-2">Script Exec</th>
+            </tr>
+          </thead>
+          <tbody>
+            {capabilityRows.map((r) => (
+              <tr key={r.platform} className="border-b border-gray-100">
+                <td className="px-2 py-2 font-medium text-gray-900">{r.platform}</td>
+                <td className="px-2 py-2 text-gray-700">{r.cpu}</td>
+                <td className="px-2 py-2 text-gray-700">{r.ram}</td>
+                <td className="px-2 py-2 text-gray-700">{r.disk}</td>
+                <td className="px-2 py-2 text-gray-700">{r.battery}</td>
+                <td className="px-2 py-2 text-gray-700">{r.user}</td>
+                <td className="px-2 py-2 text-gray-700">{r.script}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </Card>
+
       <Card className="overflow-hidden p-0">
         <div className="max-h-[min(70vh,900px)] overflow-auto">
           {loading ? (
@@ -584,14 +629,23 @@ export default function Devices() {
                       }}
                     />
                   </th>
-                  {columnOrder.map((colKey) => (
+                  {orderedColumns.map((colKey) => (
                     <th
                       key={colKey}
                       className={`whitespace-nowrap px-3 py-3 ${colKey === 'security_score' ? 'text-right' : 'text-left'}`}
-                      draggable
-                      onDragStart={() => setDraggedColumn(colKey)}
-                      onDragOver={(e) => e.preventDefault()}
-                      onDrop={() => moveColumn(draggedColumn, colKey)}
+                      draggable={colKey !== 'device'}
+                      onDragStart={() => {
+                        if (colKey === 'device') return;
+                        setDraggedColumn(colKey);
+                      }}
+                      onDragOver={(e) => {
+                        if (colKey === 'device') return;
+                        e.preventDefault();
+                      }}
+                      onDrop={() => {
+                        if (colKey === 'device') return;
+                        moveColumn(draggedColumn, colKey);
+                      }}
                       onDragEnd={() => setDraggedColumn(null)}
                     >
                       <button
@@ -642,7 +696,7 @@ export default function Devices() {
                           }}
                         />
                       </td>
-                      {columnOrder.map((colKey) => {
+                  {orderedColumns.map((colKey) => {
                         if (colKey === 'device') {
                           return (
                             <td key={colKey} className="px-3 py-2.5">
@@ -899,7 +953,17 @@ export default function Devices() {
                     ['Disk', formatDisk(selected)],
                     ['RAM', formatRam(selected)],
                     ['CPU', selected.cpu_model || selected.cpuModel || '—'],
+                    ['CPU usage', formatPct(selected.cpu_usage_pct)],
                     ['Security score', selected.security_score ?? '—'],
+                    ['RAM usage', formatPct(selected.ram_usage_pct)],
+                    ['Disk usage', formatPct(selected.disk_usage_pct)],
+                    ['Disk free %', formatPct(selected.disk_free_pct)],
+                    ['Hostname', selected.hostname || '—'],
+                    ['IP address', selected.ip_address || '—'],
+                    ['Battery status', selected.battery_status || '—'],
+                    ['Battery health', selected.battery_health || '—'],
+                    ['Logged in user', selected.logged_in_user || '—'],
+                    ['Agent version', selected.agent_version || '—'],
                     ['Compliance', selected.compliance || '—'],
                     ['Source', displaySource(selected.source)],
                     ['Group', selected.group_name || 'Ungrouped'],

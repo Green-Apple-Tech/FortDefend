@@ -100,6 +100,7 @@ app.use('/api/android',         require('./routes/android'));
 app.use('/api/nmap',            require('./routes/nmap'));
 app.use('/api/integrations',    require('./routes/integrations'));
 app.use('/api/reports',         require('./routes/reports'));
+app.use('/api/alerts',          require('./routes/alerts'));
 app.use('/api/enrollment',      require('./routes/enrollment'));
 app.use('/api/extension',       require('./routes/chromebook-extension'));
 app.use('/api/devices',         require('./routes/devices'));

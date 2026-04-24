@@ -146,10 +146,11 @@ async function queueScriptRun(req, res, next, scriptIdParam) {
 
     const quickContent = req.body?.scriptContent == null ? null : String(req.body.scriptContent);
     const quickType = req.body?.scriptType == null ? null : String(req.body.scriptType).toLowerCase();
-    const content = quickContent != null ? quickContent : script.content;
-    const scriptType = quickType || script.script_type;
+    const content = quickContent != null ? quickContent : script?.content;
+    const scriptType = quickType || script?.script_type;
     const scriptName = (req.body?.scriptName && String(req.body.scriptName).trim()) || script?.name || 'Quick script';
     if (!String(content || '').trim()) return res.status(400).json({ error: 'script content is required.' });
+    if (!String(scriptType || '').trim()) return res.status(400).json({ error: 'script type is required.' });
 
     const orgDevices = await db('devices')
       .where('org_id', req.user.orgId)
@@ -184,9 +185,21 @@ async function queueScriptRun(req, res, next, scriptIdParam) {
       updated_at: now,
     }));
 
-    const queued = await db('sm_commands')
-      .insert(rows)
-      .returning(['id', 'device_id', 'status', 'created_at']);
+    let queued;
+    try {
+      queued = await db('sm_commands')
+        .insert(rows)
+        .returning(['id', 'device_id', 'status', 'created_at']);
+    } catch (err) {
+      const msg = String(err?.message || '');
+      if (msg.includes('sm_commands_command_type_enum') || msg.includes('run_script')) {
+        return res.status(500).json({
+          error:
+            'Script commands are not enabled in this database yet. Run migrations to add run_script support.',
+        });
+      }
+      throw err;
+    }
 
     if (script) {
       await db('scripts').where({ id: script.id, org_id: req.user.orgId }).update({ last_run_at: now, updated_at: now });

@@ -1,25 +1,51 @@
-import { useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
+import { api } from '../lib/api';
 import { Card, Button, Badge } from '../components/ui';
 
-const seed = [
-  { id: 'a1', type: 'disk_low', severity: 'warning', message: 'Less than 10% free on C:', resolved: false, at: '2026-04-20T10:00:00Z' },
-  { id: 'a2', type: 'threat_detection', severity: 'critical', message: 'Defender flagged suspicious script', resolved: false, at: '2026-04-19T15:22:00Z' },
-];
-
 export default function Alerts() {
-  const [rows, setRows] = useState(seed);
+  const [rows, setRows] = useState([]);
+  const [types, setTypes] = useState([]);
+  const [loading, setLoading] = useState(true);
   const [emailOn, setEmailOn] = useState(true);
   const [slackOn, setSlackOn] = useState(false);
+  const [severity, setSeverity] = useState('all');
+  const [resolvedFilter, setResolvedFilter] = useState('false');
+  const [typeFilter, setTypeFilter] = useState('all');
 
-  function resolve(id) {
-    setRows((prev) => prev.map((r) => (r.id === id ? { ...r, resolved: true } : r)));
+  async function loadAlerts() {
+    setLoading(true);
+    const params = new URLSearchParams();
+    if (severity !== 'all') params.set('severity', severity);
+    if (resolvedFilter !== 'all') params.set('resolved', resolvedFilter);
+    if (typeFilter !== 'all') params.set('type', typeFilter);
+    try {
+      const data = await api(`/api/alerts?${params.toString()}`);
+      setRows(Array.isArray(data?.alerts) ? data.alerts : []);
+      setTypes(Array.isArray(data?.types) ? data.types : []);
+    } catch {
+      setRows([]);
+      setTypes([]);
+    } finally {
+      setLoading(false);
+    }
   }
+
+  useEffect(() => {
+    loadAlerts();
+  }, [severity, resolvedFilter, typeFilter]);
+
+  async function resolve(id) {
+    await api(`/api/alerts/${encodeURIComponent(id)}/resolve`, { method: 'POST' }).catch(() => {});
+    loadAlerts();
+  }
+
+  const filtered = useMemo(() => rows, [rows]);
 
   return (
     <div className="space-y-6">
       <div>
         <h1 className="text-2xl font-bold text-gray-900">Alerts</h1>
-        <p className="text-sm text-gray-600">History and resolution. Wire to `GET /api/orgs/.../alerts` when exposed.</p>
+        <p className="text-sm text-gray-600">History and resolution across all monitored device platforms.</p>
       </div>
 
       <Card>
@@ -38,6 +64,32 @@ export default function Alerts() {
       </Card>
 
       <Card className="overflow-x-auto p-0">
+        <div className="flex flex-wrap items-end gap-3 border-b border-gray-200 bg-gray-50 px-4 py-3">
+          <label className="text-xs">
+            <span className="mb-1 block font-medium text-gray-700">Severity</span>
+            <select value={severity} onChange={(e) => setSeverity(e.target.value)} className="rounded border border-gray-300 px-2 py-1 text-xs">
+              <option value="all">All</option>
+              <option value="critical">Critical</option>
+              <option value="warning">Warning</option>
+              <option value="info">Info</option>
+            </select>
+          </label>
+          <label className="text-xs">
+            <span className="mb-1 block font-medium text-gray-700">Status</span>
+            <select value={resolvedFilter} onChange={(e) => setResolvedFilter(e.target.value)} className="rounded border border-gray-300 px-2 py-1 text-xs">
+              <option value="all">All</option>
+              <option value="false">Open</option>
+              <option value="true">Resolved</option>
+            </select>
+          </label>
+          <label className="text-xs">
+            <span className="mb-1 block font-medium text-gray-700">Rule Type</span>
+            <select value={typeFilter} onChange={(e) => setTypeFilter(e.target.value)} className="rounded border border-gray-300 px-2 py-1 text-xs">
+              <option value="all">All</option>
+              {types.map((t) => <option key={t} value={t}>{t}</option>)}
+            </select>
+          </label>
+        </div>
         <table className="min-w-full divide-y divide-gray-200 text-sm">
           <thead className="bg-gray-50">
             <tr>
@@ -49,14 +101,23 @@ export default function Alerts() {
             </tr>
           </thead>
           <tbody className="divide-y divide-gray-100">
-            {rows.map((r) => (
+            {loading && (
+              <tr><td colSpan={6} className="px-4 py-8 text-center text-gray-500">Loading alerts...</td></tr>
+            )}
+            {!loading && filtered.length === 0 && (
+              <tr><td colSpan={6} className="px-4 py-8 text-center text-gray-500">No alerts match current filters.</td></tr>
+            )}
+            {filtered.map((r) => (
               <tr key={r.id} className={r.resolved ? 'bg-gray-50 opacity-70' : ''}>
-                <td className="px-4 py-3 whitespace-nowrap text-gray-600">{new Date(r.at).toLocaleString()}</td>
+                <td className="px-4 py-3 whitespace-nowrap text-gray-600">{new Date(r.created_at).toLocaleString()}</td>
                 <td className="px-4 py-3 font-medium text-gray-900">{r.type}</td>
                 <td className="px-4 py-3">
                   <Badge tone={r.severity === 'critical' ? 'danger' : 'warning'}>{r.severity}</Badge>
                 </td>
-                <td className="px-4 py-3 text-gray-600">{r.message}</td>
+                <td className="px-4 py-3 text-gray-600">
+                  <p>{r.message}</p>
+                  {r.device_name && <p className="text-xs text-gray-500">Device: {r.device_name}</p>}
+                </td>
                 <td className="px-4 py-3 text-right">
                   {!r.resolved ? (
                     <Button variant="outline" className="py-1 text-xs" type="button" onClick={() => resolve(r.id)}>

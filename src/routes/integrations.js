@@ -6,6 +6,7 @@ const db = require('../database');
 const { encrypt } = require('../lib/crypto');
 const { requireAuth, requireAdmin } = require('../middleware/auth');
 const { IntegrationManager } = require('../integrations/manager');
+const { evaluateDeviceAlerts } = require('../lib/deviceMonitoring');
 
 const router = express.Router();
 
@@ -149,8 +150,74 @@ router.get('/devices', requireAuth, async (req, res) => {
   try {
     const mgr = new IntegrationManager(req.user.orgId);
     const { devices: integrationDevices, errors } = await mgr.getAllDevices();
+    const now = new Date();
+    for (const d of integrationDevices) {
+      const osOutdated = Array.isArray(d.alerts)
+        ? d.alerts.some((a) => String(a.type || '').toLowerCase() === 'os_version')
+        : false;
+      const diskTotalGb = d.disk?.totalGb ?? null;
+      const diskFreeGb = d.disk?.freeGb ?? null;
+      const diskUsedPct = d.disk?.usedPct ?? null;
+      const diskFreePct = (diskTotalGb != null && diskFreeGb != null && Number(diskTotalGb) > 0)
+        ? (Number(diskFreeGb) / Number(diskTotalGb)) * 100
+        : null;
+      const source = d.source || 'intune';
+      const externalId = String(d.id || '');
+      const existing = await db('devices')
+        .where({ org_id: req.user.orgId, source, external_id: externalId })
+        .first();
+      if (existing) {
+        await db('devices')
+          .where({ id: existing.id, org_id: req.user.orgId })
+          .update({
+            name: d.name || d.id || 'Unknown Device',
+            hostname: d.name || null,
+            serial: d.serial || null,
+            os: d.os || null,
+            os_version: d.osVersion || null,
+            logged_in_user: d.user || d.email || null,
+            disk_total_gb: diskTotalGb,
+            disk_free_gb: diskFreeGb,
+            disk_usage_pct: diskUsedPct,
+            disk_free_pct: diskFreePct,
+            ram_total_gb: d.ram?.totalGb ?? null,
+            last_seen: d.lastSeen ? new Date(d.lastSeen) : now,
+            os_outdated: osOutdated,
+            security_agent_running: true,
+            updated_at: now,
+          });
+      } else {
+        await db('devices').insert({
+          id: db.raw('gen_random_uuid()'),
+          org_id: req.user.orgId,
+          source,
+          external_id: externalId,
+          name: d.name || d.id || 'Unknown Device',
+          hostname: d.name || null,
+          serial: d.serial || null,
+          os: d.os || null,
+          os_version: d.osVersion || null,
+          logged_in_user: d.user || d.email || null,
+          disk_total_gb: diskTotalGb,
+          disk_free_gb: diskFreeGb,
+          disk_usage_pct: diskUsedPct,
+          disk_free_pct: diskFreePct,
+          ram_total_gb: d.ram?.totalGb ?? null,
+          last_seen: d.lastSeen ? new Date(d.lastSeen) : now,
+          os_outdated: osOutdated,
+          security_agent_running: true,
+          updated_at: now,
+          created_at: now,
+        });
+      }
+      const latest = await db('devices')
+        .where({ org_id: req.user.orgId, source, external_id: externalId })
+        .first();
+      if (latest) await evaluateDeviceAlerts(db, { orgId: req.user.orgId, device: latest });
+    }
     const agentDevices = await db('devices')
-      .where({ org_id: req.user.orgId, source: 'agent' });
+      .whereIn('source', ['agent', 'android', 'extension', 'intune', 'google_admin', 'google_mobile'])
+      .andWhere({ org_id: req.user.orgId });
 
     res.json({ devices: [...integrationDevices, ...agentDevices], errors });
   } catch (err) {

@@ -201,6 +201,15 @@ function collectTelemetry() {
   const unsaved = runJson("(Get-Process | Where-Object {$_.MainWindowTitle -match '\\*'} | Select-Object ProcessName,MainWindowTitle | ConvertTo-Json -Compress)");
   const queue = runJson("(Get-WmiObject Win32_PerfFormattedData_PerfOS_System | Select-Object ProcessorQueueLength | ConvertTo-Json -Compress)");
   const netConn = runJson("(Get-NetTCPConnection -State Established -ErrorAction SilentlyContinue | Measure-Object | Select-Object Count | ConvertTo-Json -Compress)");
+  const osInfo = runJson("(Get-CimInstance Win32_OperatingSystem | Select-Object Caption,Version,BuildNumber,FreePhysicalMemory,TotalVisibleMemorySize | ConvertTo-Json -Compress)");
+  const cpuModelInfo = runJson("(Get-CimInstance Win32_Processor | Select-Object -First 1 Name | ConvertTo-Json -Compress)");
+  const serialInfo = runJson("(Get-CimInstance Win32_BIOS | Select-Object SerialNumber | ConvertTo-Json -Compress)");
+  const csInfo = runJson("(Get-CimInstance Win32_ComputerSystem | Select-Object TotalPhysicalMemory,UserName | ConvertTo-Json -Compress)");
+  const diskInfo = runJson("(Get-CimInstance Win32_LogicalDisk -Filter \"DeviceID='C:'\" | Select-Object DeviceID,FreeSpace,Size | ConvertTo-Json -Compress)");
+  const ipInfo = runJson("(Get-NetIPAddress -AddressFamily IPv4 -ErrorAction SilentlyContinue | Where-Object {$_.IPAddress -notlike '169.254.*' -and $_.PrefixOrigin -ne 'WellKnown'} | Select-Object -First 1 IPAddress | ConvertTo-Json -Compress)");
+  const defenderInfo = runJson("(Get-MpComputerStatus | Select-Object AMServiceEnabled,RealTimeProtectionEnabled | ConvertTo-Json -Compress)");
+  const cpuUsageRaw = run("Get-Counter '\\Processor(_Total)\\% Processor Time' | Select-Object -ExpandProperty CounterSamples | Select-Object -First 1 CookedValue");
+  const cpuUsagePct = Number.parseFloat(String(cpuUsageRaw || '').trim());
   const rebootRequiredWU = run("if(Test-Path 'HKLM:\\SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\WindowsUpdate\\Auto Update\\RebootRequired'){ 'true' } else { 'false' }").trim() === 'true';
   const rebootRequiredPending = run("if(Test-Path 'HKLM:\\SYSTEM\\CurrentControlSet\\Control\\Session Manager\\PendingFileRenameOperations'){ 'true' } else { 'false' }").trim() === 'true';
   const batteryEntry = Array.isArray(battery) ? battery[0] : battery;
@@ -212,6 +221,22 @@ function collectTelemetry() {
   const excelArr = Array.isArray(excel) ? excel : (excel ? [excel] : []);
   const openBrowserCount = Number(browsers?.Count || 0);
   const unsavedAnyArr = Array.isArray(unsaved) ? unsaved : (unsaved ? [unsaved] : []);
+  const totalRamKb = Number(osInfo?.TotalVisibleMemorySize || 0);
+  const freeRamKb = Number(osInfo?.FreePhysicalMemory || 0);
+  const ramUsagePct = totalRamKb > 0 ? ((totalRamKb - freeRamKb) / totalRamKb) * 100 : null;
+  const totalRamGb = totalRamKb > 0 ? totalRamKb / (1024 * 1024) : null;
+  const diskSize = Number(diskInfo?.Size || 0);
+  const diskFree = Number(diskInfo?.FreeSpace || 0);
+  const diskTotalGb = diskSize > 0 ? diskSize / (1024 * 1024 * 1024) : null;
+  const diskFreeGb = diskSize > 0 ? diskFree / (1024 * 1024 * 1024) : null;
+  const diskUsagePct = diskSize > 0 ? ((diskSize - diskFree) / diskSize) * 100 : null;
+  const diskFreePct = diskSize > 0 ? (diskFree / diskSize) * 100 : null;
+  const osVersionText = String(osInfo?.Version || '').trim();
+  const buildNum = Number.parseInt(String(osInfo?.BuildNumber || ''), 10);
+  const osOutdated = Number.isFinite(buildNum) ? buildNum < 19045 : false;
+  const batteryStatusText = noBattery ? 'not_present' : batteryStatus === 2 ? 'charging' : 'discharging';
+  const batteryHealth = noBattery ? null : (batteryLevel != null && batteryLevel < 40 ? 'degraded' : 'good');
+  const securityAgentRunning = !!(defenderInfo?.AMServiceEnabled && defenderInfo?.RealTimeProtectionEnabled);
 
   return {
     collectedAt: new Date().toISOString(),
@@ -227,15 +252,33 @@ function collectTelemetry() {
     wazuhAlerts: fs.existsSync('C:\\Program Files (x86)\\ossec-agent\\') ? 'Wazuh agent directory found' : 'Wazuh agent not found',
     telemetry: {
       batteryLevel,
+      batteryStatus: batteryStatusText,
+      batteryHealth,
       onAcPower,
       activeUserSession: !!session?.activeUserSession,
       idleTimeMinutes: Number.isFinite(Number(session?.idleTimeMinutes)) ? Number(session.idleTimeMinutes) : null,
+      loggedInUser: String(csInfo?.UserName || '').trim() || null,
       openApplications: openApps || [],
       unsavedWordDocs: wordArr.some((w) => String(w?.MainWindowTitle || '').includes('*')),
       unsavedExcelDocs: excelArr.some((w) => String(w?.MainWindowTitle || '').includes('*')),
       openBrowserCount,
       anyUnsavedChanges: unsavedAnyArr.length > 0,
       processorQueueLength: Number(queue?.ProcessorQueueLength || 0),
+      cpuModel: String(cpuModelInfo?.Name || '').trim() || null,
+      cpuUsagePct: Number.isFinite(cpuUsagePct) ? Math.max(0, Math.min(100, cpuUsagePct)) : null,
+      ramTotalGb: Number.isFinite(totalRamGb) ? Number(totalRamGb.toFixed(2)) : null,
+      ramUsagePct: Number.isFinite(ramUsagePct) ? Math.max(0, Math.min(100, Number(ramUsagePct.toFixed(2)))) : null,
+      diskTotalGb: Number.isFinite(diskTotalGb) ? Number(diskTotalGb.toFixed(2)) : null,
+      diskFreeGb: Number.isFinite(diskFreeGb) ? Number(diskFreeGb.toFixed(2)) : null,
+      diskUsagePct: Number.isFinite(diskUsagePct) ? Math.max(0, Math.min(100, Number(diskUsagePct.toFixed(2)))) : null,
+      diskFreePct: Number.isFinite(diskFreePct) ? Math.max(0, Math.min(100, Number(diskFreePct.toFixed(2)))) : null,
+      ipAddress: String(ipInfo?.IPAddress || '').trim() || null,
+      serialNumber: String(serialInfo?.SerialNumber || '').trim() || null,
+      osName: String(osInfo?.Caption || '').trim() || null,
+      osVersion: osVersionText || null,
+      osOutdated,
+      securityAgentRunning,
+      agentVersion: resolveCredentials().version || '1.0.0',
       activeNetworkConnections: Number(netConn?.Count || 0),
       rebootRequired: rebootRequiredWU || rebootRequiredPending,
       rebootRequiredReason: rebootRequiredWU ? 'windows_update' : rebootRequiredPending ? 'pending_file_ops' : null,

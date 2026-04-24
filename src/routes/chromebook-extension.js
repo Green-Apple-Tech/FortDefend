@@ -4,6 +4,7 @@ const db = require('../database');
 const jwt = require('jsonwebtoken');
 const { analyzeSysinternalsResults } = require('../integrations/sysinternals');
 const { getJwtSecret } = require('../config/jwtSecret');
+const { evaluateDeviceAlerts } = require('../lib/deviceMonitoring');
 
 // ── All routes are called BY the Chrome extension — no user auth ───────────────
 // Auth is via device token set during enrollment
@@ -82,12 +83,14 @@ router.post('/heartbeat', verifyDeviceToken, async (req, res, next) => {
     await db('devices').insert({
       id: req.device.deviceId,
       org_id: req.device.orgId,
+      hostname: rowName,
       name: rowName,
       serial: serialNumber || req.device.deviceId,
       os: platform || 'chromeos',
       os_version: osVersion || 'Unknown',
       source: 'extension',
       external_id: req.device.deviceId,
+      agent_version: extensionVersion || null,
       status: (score != null && score >= 80) ? 'online' : (score != null && score >= 60) ? 'warning' : 'alert',
       security_score: score != null ? score : 100,
       last_seen: new Date(),
@@ -96,10 +99,13 @@ router.post('/heartbeat', verifyDeviceToken, async (req, res, next) => {
     }).onConflict(['org_id', 'serial']).merge({
       security_score: score != null ? score : 100,
       os_version: osVersion || 'Unknown',
+      agent_version: extensionVersion || null,
       last_seen: new Date(),
       status: (score != null && score >= 80) ? 'online' : (score != null && score >= 60) ? 'warning' : 'alert',
       updated_at: new Date(),
     });
+    const latest = await db('devices').where({ id: req.device.deviceId, org_id: req.device.orgId }).first();
+    if (latest) await evaluateDeviceAlerts(db, { orgId: req.device.orgId, device: latest });
 
     if (checks && checks.length > 0) {
       await db('scan_results').insert({

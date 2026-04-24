@@ -302,7 +302,7 @@ if (-not (Test-Path $AgentPath)) { throw 'Download failed: FortDefendAgent.exe n
 $ConfigJson = @'
 ${configJson}
 '@
-Set-Content -Path $ConfigPath -Value $ConfigJson -Encoding utf8
+[System.IO.File]::WriteAllText($ConfigPath, $ConfigJson, [System.Text.UTF8Encoding]::new($false))
 Write-Host 'FortDefend: wrote config.json' -ForegroundColor Cyan
 
 $TaskName = 'FortDefend Agent'
@@ -372,7 +372,7 @@ router.get('/config.json', async (req, res, next) => {
       const g = await db('groups').where({ id: group, org_id: org }).first();
       if (g && g.name) groupName = String(g.name);
     }
-    const body = {
+    const config = {
       orgToken: org,
       groupId: group || '',
       groupName,
@@ -380,9 +380,10 @@ router.get('/config.json', async (req, res, next) => {
       heartbeatInterval: 30,
       version: '1.0.0',
     };
-    res.setHeader('Content-Type', 'application/json; charset=utf-8');
+    const configBuffer = Buffer.from(JSON.stringify(config), 'utf8');
+    res.setHeader('Content-Type', 'application/octet-stream');
     res.setHeader('Content-Disposition', 'attachment; filename="config.json"');
-    return res.status(200).send(`${JSON.stringify(body, null, 2)}\n`);
+    return res.status(200).send(configBuffer);
   } catch (err) {
     return next(err);
   }
@@ -445,12 +446,34 @@ router.get('/uninstall.ps1', (req, res) => {
 
 // POST /api/agent/heartbeat
 router.post('/heartbeat', async (req, res) => {
+  const heartbeatStartedAt = new Date().toISOString();
+  const safe200 = (body) => res.status(200).json(body);
   try {
+    console.log('[heartbeat] received from device:', req.body?.deviceId, 'apps:', req.body?.installedApps?.length);
+    console.log('[agent/heartbeat] start', {
+      at: heartbeatStartedAt,
+      hasTokenHeader: Boolean(req.headers['x-org-token']),
+      hasBodyToken: Boolean(req.body?.orgToken),
+      hasBody: Boolean(req.body),
+    });
     const token = req.headers['x-org-token'] || req.body?.orgToken;
-    const auth = await authAgentRequest(token);
-    if (!auth) return res.status(401).json({ error: 'Invalid org token.' });
+    let auth = null;
+    try {
+      auth = await authAgentRequest(token);
+    } catch (err) {
+      console.error('[agent/heartbeat] auth lookup failed', {
+        error: err?.message,
+        stack: err?.stack,
+      });
+      return safe200({ ok: false, commands: [], error: 'Authentication lookup failed.' });
+    }
+    if (!auth) {
+      console.error('[agent/heartbeat] auth failed: invalid token');
+      return safe200({ ok: false, commands: [], error: 'Invalid org token.' });
+    }
     if (auth.rejected === 'subscription') {
-      return res.status(402).json({ error: 'Subscription inactive.' });
+      console.error('[agent/heartbeat] auth rejected: subscription inactive', { orgId: auth.orgId || null });
+      return safe200({ ok: false, commands: [], error: 'Subscription inactive.' });
     }
 
     const payload = req.body || {};
@@ -468,9 +491,21 @@ router.post('/heartbeat', async (req, res) => {
           ? String(payload.enrollmentGroupId).trim()
           : null;
 
-    const existing = await db('devices')
-      .where({ org_id: orgId, source, external_id: externalId })
-      .first();
+    let existing = null;
+    try {
+      existing = await db('devices')
+        .where({ org_id: orgId, source, external_id: externalId })
+        .first();
+    } catch (err) {
+      console.error('[agent/heartbeat] failed to fetch existing device', {
+        orgId,
+        source,
+        externalId,
+        error: err?.message,
+        stack: err?.stack,
+      });
+      return safe200({ ok: false, commands: [], error: 'Device lookup failed.' });
+    }
     let deviceId = existing?.id;
     const rebootRequiredReason = ['windows_update', 'patch', 'pending_file_ops'].includes(telemetry.rebootRequiredReason)
       ? telemetry.rebootRequiredReason
@@ -527,45 +562,102 @@ router.post('/heartbeat', async (req, res) => {
     const groupHint = req.headers['x-fortdefend-group'];
     let targetGroupId = auth.groupId || null;
     if (groupFromBody) {
-      const gb = await db('groups')
-        .where({ id: String(groupFromBody), org_id: orgId })
-        .first();
-      if (gb) targetGroupId = gb.id;
+      try {
+        const gb = await db('groups')
+          .where({ id: String(groupFromBody), org_id: orgId })
+          .first();
+        if (gb) targetGroupId = gb.id;
+      } catch (err) {
+        console.error('[agent/heartbeat] failed resolving group from body', {
+          orgId,
+          groupFromBody,
+          error: err?.message,
+          stack: err?.stack,
+        });
+      }
     }
     if (!targetGroupId && groupHint) {
-      const g = await db('groups')
-        .where({ id: String(groupHint), org_id: orgId })
-        .first();
-      if (g) targetGroupId = g.id;
+      try {
+        const g = await db('groups')
+          .where({ id: String(groupHint), org_id: orgId })
+          .first();
+        if (g) targetGroupId = g.id;
+      } catch (err) {
+        console.error('[agent/heartbeat] failed resolving group from header hint', {
+          orgId,
+          groupHint,
+          error: err?.message,
+          stack: err?.stack,
+        });
+      }
     }
 
-    if (!existing) {
-      const [row] = await db('devices')
-        .insert({
-          id: db.raw('gen_random_uuid()'),
-          org_id: orgId,
-          name: deviceName,
-          source,
-          external_id: externalId,
-          os: telemetry.osName || 'windows',
-          ...updateFields,
-        })
-        .returning(['id']);
-      deviceId = row.id;
-    } else {
-      await db('devices')
-        .where('id', existing.id)
-        .update({ ...updateFields, updated_at: new Date() });
+    try {
+      if (!existing) {
+        const [row] = await db('devices')
+          .insert({
+            id: db.raw('gen_random_uuid()'),
+            org_id: orgId,
+            name: deviceName,
+            source,
+            external_id: externalId,
+            os: telemetry.osName || 'windows',
+            ...updateFields,
+          })
+          .returning(['id']);
+        deviceId = row.id;
+      } else {
+        await db('devices')
+          .where('id', existing.id)
+          .update({ ...updateFields, updated_at: new Date() });
+      }
+    } catch (err) {
+      console.error('[agent/heartbeat] failed to upsert device', {
+        orgId,
+        deviceId,
+        source,
+        externalId,
+        error: err?.message,
+        stack: err?.stack,
+      });
+      return safe200({ ok: false, commands: [], error: 'Device update failed.' });
     }
 
+    let canPersistDeviceApps = false;
     if (installedApps.length > 0) {
+      try {
+        canPersistDeviceApps = await db.schema.hasTable('sm_device_apps');
+      } catch (err) {
+        console.error('[agent/heartbeat] failed checking sm_device_apps table', {
+          orgId,
+          deviceId,
+          error: err?.message,
+          stack: err?.stack,
+        });
+      }
+      if (!canPersistDeviceApps) {
+        console.error('[agent/heartbeat] skipping installedApps persistence: sm_device_apps table missing');
+      }
+    }
+    if (installedApps.length > 0 && canPersistDeviceApps) {
       const wingetIds = [...new Set(installedApps.map((a) => String(a?.Id || '').trim()).filter(Boolean))];
-      const known = wingetIds.length
-        ? await db('sm_apps')
-            .where('org_id', orgId)
-            .whereIn('winget_id', wingetIds)
-            .select('id', 'winget_id')
-        : [];
+      let known = [];
+      try {
+        known = wingetIds.length
+          ? await db('sm_apps')
+              .where('org_id', orgId)
+              .whereIn('winget_id', wingetIds)
+              .select('id', 'winget_id')
+          : [];
+      } catch (err) {
+        console.error('[agent/heartbeat] failed loading sm_apps catalogue mapping', {
+          orgId,
+          deviceId,
+          wingetIdCount: wingetIds.length,
+          error: err?.message,
+          stack: err?.stack,
+        });
+      }
       const knownByWinget = new Map(known.map((k) => [k.winget_id, k.id]));
       const nowStamp = new Date();
       for (const app of installedApps) {
@@ -588,46 +680,115 @@ router.post('/heartbeat', async (req, res) => {
           updated_at: nowStamp,
         };
         if (!wingetId) continue;
-        await db('sm_device_apps')
-          .insert({ ...row, created_at: nowStamp })
-          .onConflict(['org_id', 'device_id', 'winget_id'])
-          .merge(row);
+        try {
+          await db('sm_device_apps')
+            .insert({ ...row, created_at: nowStamp })
+            .onConflict(['org_id', 'device_id', 'winget_id'])
+            .merge(row);
+        } catch (err) {
+          const msg = String(err?.message || '').toLowerCase();
+          const isSchemaIssue =
+            msg.includes('sm_device_apps')
+            && (msg.includes('does not exist') || msg.includes('column') || msg.includes('relation') || msg.includes('schema'));
+          if (isSchemaIssue) {
+            console.error('[agent/heartbeat] skipping sm_device_apps insert due to schema mismatch', {
+              orgId,
+              deviceId,
+              wingetId,
+              error: err?.message,
+            });
+            break;
+          }
+          console.error('[agent/heartbeat] failed to upsert installed app row', {
+            orgId,
+            deviceId,
+            wingetId,
+            error: err?.message,
+            stack: err?.stack,
+          });
+        }
       }
     }
 
-    const latestDevice = await db('devices').where({ id: deviceId, org_id: orgId }).first();
-    if (latestDevice) {
-      await evaluateDeviceAlerts({ orgId, device: latestDevice });
-      await evaluateStaleCheckins(orgId);
+    try {
+      const latestDevice = await db('devices').where({ id: deviceId, org_id: orgId }).first();
+      if (latestDevice) {
+        await evaluateDeviceAlerts({ orgId, device: latestDevice });
+        await evaluateStaleCheckins(orgId);
+      }
+    } catch (err) {
+      console.error('[agent/heartbeat] failed during alert evaluation', {
+        orgId,
+        deviceId,
+        error: err?.message,
+        stack: err?.stack,
+      });
     }
 
-    const firstGroup = await db('device_groups').where({ device_id: deviceId }).first();
-    if (!firstGroup && targetGroupId) {
-      await addDeviceToGroupIfValid(deviceId, orgId, targetGroupId);
+    try {
+      const firstGroup = await db('device_groups').where({ device_id: deviceId }).first();
+      if (!firstGroup && targetGroupId) {
+        await addDeviceToGroupIfValid(deviceId, orgId, targetGroupId);
+      }
+    } catch (err) {
+      console.error('[agent/heartbeat] failed assigning group', {
+        orgId,
+        deviceId,
+        targetGroupId,
+        error: err?.message,
+        stack: err?.stack,
+      });
     }
 
-    await db('scan_results').insert({
-      id: db.raw('gen_random_uuid()'),
-      org_id: orgId,
-      device_id: deviceId,
-      agent_name: 'fortdefend_windows_agent',
-      result: payload,
-      status: 'pass',
-      ai_summary: 'Device check-in received successfully.',
-    });
-
-    const pendingCommands = await db('sm_commands')
-      .where({
+    try {
+      await db('scan_results').insert({
+        id: db.raw('gen_random_uuid()'),
         org_id: orgId,
         device_id: deviceId,
-        status: 'pending',
-      })
-      .whereIn('command_type', ['run_script'])
-      .orderBy('created_at', 'asc')
-      .select('id', 'command_type', 'command_payload', 'created_at');
+        agent_name: 'fortdefend_windows_agent',
+        result: payload,
+        status: 'pass',
+        ai_summary: 'Device check-in received successfully.',
+      });
+    } catch (err) {
+      console.error('[agent/heartbeat] failed writing scan_results', {
+        orgId,
+        deviceId,
+        error: err?.message,
+        stack: err?.stack,
+      });
+    }
 
-    if (auth.kind === 'apiKey') {
-      await db('api_keys').where('id', auth.apiKey.id).update({ last_used_at: new Date() });
+    let pendingCommands = [];
+    try {
+      pendingCommands = await db('sm_commands')
+        .where({
+          org_id: orgId,
+          device_id: deviceId,
+          status: 'pending',
+        })
+        .whereIn('command_type', ['run_script'])
+        .orderBy('created_at', 'asc')
+        .select('id', 'command_type', 'command_payload', 'created_at');
+    } catch (err) {
+      console.error('[agent/heartbeat] failed loading pending commands', {
+        orgId,
+        deviceId,
+        error: err?.message,
+        stack: err?.stack,
+      });
+    }
+
+    try {
+      if (auth.kind === 'apiKey') {
+        await db('api_keys').where('id', auth.apiKey.id).update({ last_used_at: new Date() });
+      }
+    } catch (err) {
+      console.error('[agent/heartbeat] failed updating api key usage', {
+        orgId,
+        error: err?.message,
+        stack: err?.stack,
+      });
     }
     const commands = pendingCommands.map((row) => ({
       id: row.id,
@@ -636,11 +797,21 @@ router.post('/heartbeat', async (req, res) => {
       createdAt: row.created_at,
       name: row.command_payload?.scriptName || row.command_type,
     }));
-    return res.json({ ok: true, commands });
+    return safe200({ ok: true, commands });
   } catch (err) {
-    console.error('Agent heartbeat error:', err);
-    return res.status(500).json({ error: 'Failed to process heartbeat.' });
+    console.error('[agent/heartbeat] catch start raw error:', err);
+    console.error('[agent/heartbeat] unhandled error', {
+      error: err?.message,
+      stack: err?.stack,
+      bodyKeys: req.body ? Object.keys(req.body) : [],
+      at: heartbeatStartedAt,
+    });
+    return safe200({ ok: false, commands: [], error: 'Failed to process heartbeat.' });
   }
+});
+
+router.get('/version', (req, res) => {
+  return res.json({ version: process.env.AGENT_VERSION || '1.0.0' });
 });
 
 router.post('/command-result', async (req, res) => {

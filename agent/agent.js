@@ -6,7 +6,7 @@ try {
 
 const fetchImpl = typeof globalThis.fetch === 'function' ? globalThis.fetch.bind(globalThis) : require('node-fetch');
 
-const { execFileSync, exec } = require('child_process');
+const { execFileSync, exec, spawn } = require('child_process');
 const fs = require('fs');
 const os = require('os');
 const path = require('path');
@@ -15,6 +15,13 @@ const execAsync = promisify(exec);
 
 const LOG_DIR = 'C:\\ProgramData\\FortDefend\\logs';
 const LOG_FILE = `${LOG_DIR}\\agent.log`;
+const AGENT_INSTALL_DIR = 'C:\\ProgramData\\FortDefend';
+const AGENT_EXE_PATH = `${AGENT_INSTALL_DIR}\\FortDefendAgent.exe`;
+const AGENT_NEW_EXE_PATH = `${AGENT_INSTALL_DIR}\\FortDefendAgent_new.exe`;
+const AGENT_UPDATER_PS1_PATH = `${AGENT_INSTALL_DIR}\\updater.ps1`;
+const AGENT_TASK_NAME = 'FortDefend Agent';
+const AGENT_CURRENT_VERSION = '1.0.0';
+const AGENT_UPDATE_BASE_URL = 'https://app.fortdefend.com';
 const REG_TOKEN_PATH = 'HKLM\\SOFTWARE\\FortDefend';
 const REG_ORG_KEY = 'OrgToken';
 const REG_TOKEN_KEY_LEGACY = 'Token';
@@ -135,6 +142,108 @@ function resolveCredentials() {
 function heartbeatIntervalMs(creds) {
   const sec = Math.max(15, Number(creds.heartbeatInterval) > 0 ? Number(creds.heartbeatInterval) : 900);
   return sec * 1000;
+}
+
+function parseSemver(version) {
+  const match = String(version || '').trim().match(/^(\d+)\.(\d+)\.(\d+)$/);
+  if (!match) return null;
+  return {
+    major: Number(match[1]),
+    minor: Number(match[2]),
+    patch: Number(match[3]),
+  };
+}
+
+function compareSemver(a, b) {
+  const av = parseSemver(a);
+  const bv = parseSemver(b);
+  if (!av || !bv) return 0;
+  if (av.major !== bv.major) return av.major - bv.major;
+  if (av.minor !== bv.minor) return av.minor - bv.minor;
+  return av.patch - bv.patch;
+}
+
+async function fetchLatestAgentVersion() {
+  const url = `${AGENT_UPDATE_BASE_URL}/api/agent/version`;
+  const res = await fetchImpl(url, { method: 'GET' });
+  if (!res.ok) {
+    throw new Error(`version check failed (${res.status})`);
+  }
+  const body = await res.json().catch(() => ({}));
+  const latest = String(body?.version || '').trim();
+  if (!latest) {
+    throw new Error('version check returned empty version');
+  }
+  return latest;
+}
+
+async function downloadLatestAgentBinary() {
+  const url = `${AGENT_UPDATE_BASE_URL}/api/agent/download`;
+  const res = await fetchImpl(url, { method: 'GET' });
+  if (!res.ok) {
+    throw new Error(`agent download failed (${res.status})`);
+  }
+  const buf = Buffer.from(await res.arrayBuffer());
+  if (!buf.length) {
+    throw new Error('agent download returned empty file');
+  }
+  fs.mkdirSync(AGENT_INSTALL_DIR, { recursive: true });
+  fs.writeFileSync(AGENT_NEW_EXE_PATH, buf);
+  safeLog(`auto-update: downloaded ${buf.length} bytes to ${AGENT_NEW_EXE_PATH}`);
+}
+
+function writeUpdaterScript() {
+  const script = `
+$ErrorActionPreference = 'Continue'
+$TaskName = '${AGENT_TASK_NAME.replace(/'/g, "''")}'
+$InstallDir = '${AGENT_INSTALL_DIR.replace(/'/g, "''")}'
+$CurrentExe = '${AGENT_EXE_PATH.replace(/'/g, "''")}'
+$NewExe = '${AGENT_NEW_EXE_PATH.replace(/'/g, "''")}'
+
+try { Stop-ScheduledTask -TaskName $TaskName -ErrorAction SilentlyContinue } catch {}
+try { Get-Process FortDefendAgent -ErrorAction SilentlyContinue | Stop-Process -Force -ErrorAction SilentlyContinue } catch {}
+Start-Sleep -Seconds 2
+
+if (Test-Path $NewExe) {
+  Move-Item -Path $NewExe -Destination $CurrentExe -Force
+}
+
+try { Start-ScheduledTask -TaskName $TaskName -ErrorAction SilentlyContinue } catch {}
+try { Start-Process -FilePath $CurrentExe -WorkingDirectory $InstallDir -WindowStyle Hidden } catch {}
+`;
+  fs.mkdirSync(AGENT_INSTALL_DIR, { recursive: true });
+  fs.writeFileSync(AGENT_UPDATER_PS1_PATH, script, 'utf8');
+}
+
+async function runUpdaterAndExit() {
+  writeUpdaterScript();
+  const child = spawn(
+    'powershell.exe',
+    ['-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', AGENT_UPDATER_PS1_PATH],
+    { windowsHide: true, detached: true, stdio: 'ignore' },
+  );
+  child.unref();
+  safeLog(`auto-update: updater started from ${AGENT_UPDATER_PS1_PATH}`);
+  setTimeout(() => process.exit(0), 250);
+}
+
+async function checkForAgentUpdateOnStartup() {
+  try {
+    safeLog(`auto-update: current=${AGENT_CURRENT_VERSION}, checking latest`);
+    const latest = await fetchLatestAgentVersion();
+    safeLog(`auto-update: latest=${latest}`);
+    if (compareSemver(latest, AGENT_CURRENT_VERSION) <= 0) {
+      safeLog('auto-update: no newer version available');
+      return false;
+    }
+    safeLog(`auto-update: update required (${AGENT_CURRENT_VERSION} -> ${latest})`);
+    await downloadLatestAgentBinary();
+    await runUpdaterAndExit();
+    return true;
+  } catch (err) {
+    safeLog(`auto-update: skipped due to error: ${err.message}`);
+    return false;
+  }
 }
 
 function run(command) {
@@ -632,11 +741,15 @@ function runHeartbeatLoop() {
     });
 }
 
-try {
-  const wingetReady = installWinget();
-  const v = wingetVersion();
-  safeLog(`winget startup final: ${wingetReady && v ? `available (${v})` : 'not available, using Get-Package fallback'}`);
-} catch (err) {
-  safeLog(`winget startup check failed: ${err.message}`);
-}
-runHeartbeatLoop();
+(async () => {
+  const updateStarted = await checkForAgentUpdateOnStartup();
+  if (updateStarted) return;
+  try {
+    const wingetReady = installWinget();
+    const v = wingetVersion();
+    safeLog(`winget startup final: ${wingetReady && v ? `available (${v})` : 'not available, using Get-Package fallback'}`);
+  } catch (err) {
+    safeLog(`winget startup check failed: ${err.message}`);
+  }
+  runHeartbeatLoop();
+})();

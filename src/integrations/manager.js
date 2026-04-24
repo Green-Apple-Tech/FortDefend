@@ -158,6 +158,16 @@ class IntegrationManager {
     throw new Error(`Unknown integration source: ${source}`);
   }
 
+  async rebootDevice(deviceId, source) {
+    await this.loadConfig();
+    if (source === 'intune') {
+      const c = this._intuneCreds();
+      if (!c) throw new Error('Intune is not configured.');
+      return intune.restartDevice(deviceId, c.tenantId, c.clientId, c.clientSecret);
+    }
+    throw new Error(`Reboot is not available for source: ${source}`);
+  }
+
   async testConnections() {
     await this.loadConfig();
     const results = { intune: null, google: null, checkedAt: new Date().toISOString() };

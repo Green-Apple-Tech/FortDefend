@@ -224,6 +224,66 @@ router.post('/devices/:id/sync', requireAuth, requireAdmin, async (req, res) => 
   }
 });
 
+router.post('/devices/:id/reboot', requireAuth, requireAdmin, async (req, res) => {
+  try {
+    const { id } = req.params;
+    const schema = z.object({
+      source: z.enum(['intune', 'google_admin']).optional(),
+    });
+    const parsed = schema.safeParse(req.body || {});
+    if (!parsed.success) {
+      return res.status(400).json({ error: parsed.error.errors[0].message });
+    }
+
+    let source = parsed.data.source;
+    let externalId = id;
+
+    const device = await db('devices')
+      .where('org_id', req.user.orgId)
+      .where(function inner() {
+        this.where('id', id).orWhere('external_id', id);
+      })
+      .first();
+
+    if (device) {
+      if (!source && (device.source === 'intune' || device.source === 'google_admin')) {
+        source = device.source;
+      }
+      externalId = device.external_id || null;
+    }
+
+    if (!source) {
+      return res.status(400).json({
+        error: 'Could not infer integration source. Pass { "source": "intune" } for Intune reboot.',
+      });
+    }
+
+    if (source !== 'intune') {
+      return res.status(400).json({ error: 'Reboot is only supported for Intune-managed devices.' });
+    }
+
+    if (device && !device.external_id) {
+      return res.status(400).json({ error: 'Device has no external_id for cloud reboot.' });
+    }
+
+    if (!externalId) {
+      externalId = id;
+    }
+
+    if (!externalId) {
+      return res.status(400).json({ error: 'Missing device id for reboot.' });
+    }
+
+    const mgr = new IntegrationManager(req.user.orgId);
+    const result = await mgr.rebootDevice(externalId, source);
+    res.json(result);
+  } catch (err) {
+    console.error('Device reboot error:', err);
+    const status = err.status || 500;
+    res.status(status).json({ error: err.message || 'Reboot failed.' });
+  }
+});
+
 router.delete('/intune', requireAuth, requireAdmin, async (req, res) => {
   try {
     await db('org_integrations')

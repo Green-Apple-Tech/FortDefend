@@ -1,7 +1,6 @@
 import { Link, NavLink, Outlet, useLocation } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import { ThemeCycleButton } from '../context/ThemeContext';
-import { Banner2FA } from './Banner2FA';
 
 const PATH_TITLES = {
   '/dashboard': 'Dashboard',

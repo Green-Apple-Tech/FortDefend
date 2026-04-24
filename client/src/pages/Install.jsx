@@ -33,10 +33,12 @@ function CopyInline({ text, label = 'Copy' }) {
 function groupSelectOptions(tree) {
   const out = [];
   function walk(nodes, depth) {
-    if (!nodes) return;
+    if (!Array.isArray(nodes)) return;
     for (const n of nodes) {
+      if (!n || typeof n.id !== 'string' || !n.id) continue;
+      const name = typeof n.name === 'string' ? n.name : 'Group';
       const prefix = '─'.repeat(2) + '──'.repeat(depth);
-      out.push({ id: n.id, label: `${prefix} ${n.name}` });
+      out.push({ id: n.id, label: `${prefix} ${name}` });
       if (n.children?.length) walk(n.children, depth + 1);
     }
   }
@@ -55,12 +57,18 @@ function CodeBlock({ value, copyLabel = 'Copy' }) {
   );
 }
 
+function copyToClipboard(text, onDone) {
+  if (!text) return;
+  navigator.clipboard.writeText(text).then(onDone).catch(() => {});
+}
+
 export default function Install() {
   const [tab, setTab] = useState('windows');
   const [data, setData] = useState(null);
   const [loadError, setLoadError] = useState(null);
   const [selectedGroupId, setSelectedGroupId] = useState('');
   const [groupTree, setGroupTree] = useState([]);
+  const [psCopied, setPsCopied] = useState(false);
 
   const load = useCallback(async () => {
     try {
@@ -75,9 +83,20 @@ export default function Install() {
   }, [selectedGroupId]);
 
   useEffect(() => {
-    api('/api/groups')
-      .then((r) => setGroupTree(r.groups || []))
-      .catch(() => setGroupTree([]));
+    let cancelled = false;
+    (async () => {
+      try {
+        const r = await api('/api/groups');
+        if (cancelled) return;
+        const tree = r?.groups;
+        setGroupTree(Array.isArray(tree) ? tree : []);
+      } catch {
+        if (!cancelled) setGroupTree([]);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
   }, []);
 
   useEffect(() => {
@@ -87,6 +106,12 @@ export default function Install() {
   }, [load]);
 
   const groupOptions = useMemo(() => groupSelectOptions(groupTree), [groupTree]);
+
+  useEffect(() => {
+    if (groupOptions.length === 0 && selectedGroupId) {
+      setSelectedGroupId('');
+    }
+  }, [groupOptions.length, selectedGroupId]);
 
   const enrolled = data?.deviceCount ?? 0;
   const links = data?.links || {};
@@ -167,43 +192,42 @@ export default function Install() {
         <Card>
           <h2 className="text-lg font-semibold text-gray-900">Windows agent</h2>
           <p className="mt-1 text-sm text-gray-600">
-            Run as Administrator on the target PC. The agent installs as a Windows service and starts reporting immediately.
+            Run the command below in PowerShell on the target PC. You will be prompted to allow an elevated (Administrator)
+            window so the install can complete.
           </p>
-          <div className="mt-4 flex flex-wrap gap-3">
-            <a
-              href={links.windowsAgent || '#'}
-              download
-              className={!links.windowsAgent ? `${btnPrimary} pointer-events-none opacity-50` : btnPrimary}
+          <p className="mt-3 rounded-lg border border-amber-200 bg-amber-50/90 px-3 py-2.5 text-sm text-amber-950">
+            Windows agent installer coming soon. Use the PowerShell command below to enroll now.
+          </p>
+          <h3 className="mt-6 text-sm font-semibold text-gray-900">PowerShell (copy and run as Administrator)</h3>
+          <p className="mt-1 text-xs text-gray-600">Downloads the install script from FortDefend and runs it elevated.</p>
+          <div className="mt-3">
+            <button
+              type="button"
+              disabled={!psOneliner}
+              onClick={() => {
+                copyToClipboard(psOneliner, () => {
+                  setPsCopied(true);
+                  window.setTimeout(() => setPsCopied(false), 2500);
+                });
+              }}
+              className="w-full rounded-lg bg-brand px-4 py-3.5 text-base font-semibold text-white shadow-md transition hover:bg-[#144a85] focus:outline-none focus:ring-2 focus:ring-brand focus:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50 sm:max-w-md"
             >
-              Download Agent (.exe)
-            </a>
-            <a href={links.windowsMsi || '#'} className={!links.windowsMsi ? `${btnOutline} pointer-events-none opacity-50` : btnOutline}>
-              Download Installer (.msi)
-            </a>
+              {psCopied ? 'Copied' : 'Copy command'}
+            </button>
           </div>
-          {links.windowsAgent && (
-            <p className="mt-2 text-xs text-gray-500 break-all">
-              <span className="font-medium text-gray-700">URL (with token):</span> {links.windowsAgent}
-              <CopyInline text={links.windowsAgent} />
-            </p>
+          {psOneliner && (
+            <div className="mt-4 rounded-xl border-2 border-gray-800 bg-[#0d1117] shadow-inner">
+              <pre className="max-h-80 min-h-[8rem] overflow-auto p-4 pl-4 pr-4 text-left font-mono text-sm leading-relaxed text-gray-100 [word-break:break-word] sm:text-base">
+                {psOneliner}
+              </pre>
+            </div>
           )}
-          <details className="mt-6 rounded-lg border border-gray-200 bg-gray-50 p-4">
-            <summary className="cursor-pointer text-sm font-semibold text-gray-800">PowerShell one-liner (fallback)</summary>
-            <p className="mt-2 text-xs text-gray-600">Downloads the signed install script and runs it elevated. Hidden by default.</p>
-            {psOneliner && <CodeBlock value={psOneliner} />}
-          </details>
-          <ul className="mt-6 space-y-2 text-sm text-gray-700">
-            <li>
-              <span className="font-medium text-gray-900">System requirements:</span> Windows 10/11, Windows Server 2016+
-            </li>
-            {links.installScript && (
-              <li className="flex flex-wrap items-center gap-2">
-                <span className="font-medium text-gray-900">Install script URL:</span>
-                <span className="break-all text-gray-600">{links.installScript}</span>
-                <CopyInline text={links.installScript} />
-              </li>
-            )}
-          </ul>
+          {!psOneliner && (
+            <p className="mt-4 text-sm text-gray-500">Loading enrollment command…</p>
+          )}
+          <p className="mt-4 text-sm text-gray-700">
+            <span className="font-medium text-gray-900">System requirements:</span> Windows 10/11, Windows Server 2016+
+          </p>
         </Card>
       )}
 

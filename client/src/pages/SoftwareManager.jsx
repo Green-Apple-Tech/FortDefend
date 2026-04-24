@@ -55,40 +55,60 @@ const APP_DOMAINS = {
   IrfanView: 'irfanview.com',
 };
 
-function domainForAppName(name) {
-  const n = String(name || '').trim();
-  if (!n) return null;
-  if (APP_DOMAINS[n]) return APP_DOMAINS[n];
-  return null;
+function appInitialLetter(name) {
+  const t = String(name || '').trim();
+  if (!t) return '?';
+  return t.charAt(0).toUpperCase();
 }
 
-function GreyAppIcon({ className = 'mx-auto mb-1 h-8 w-8 text-slate-400' }) {
+const LETTER_BG_CLASSES = [
+  'bg-blue-600',
+  'bg-indigo-600',
+  'bg-violet-600',
+  'bg-brand',
+  'bg-teal-600',
+  'bg-cyan-600',
+  'bg-sky-600',
+  'bg-rose-600',
+];
+
+function letterBgClass(name) {
+  let h = 0;
+  for (let i = 0; i < String(name).length; i += 1) h += String(name).charCodeAt(i);
+  return LETTER_BG_CLASSES[h % LETTER_BG_CLASSES.length];
+}
+
+function AppLetterFallback({ appName }) {
   return (
-    <svg className={className} viewBox="0 0 24 24" aria-hidden>
-      <rect x="4" y="3" width="16" height="18" rx="2" fill="#f1f5f9" stroke="currentColor" strokeWidth="1.25" />
-      <path d="M8 8h8M8 12h8M8 16h5" stroke="#94a3b8" strokeWidth="1.25" strokeLinecap="round" />
-    </svg>
+    <div
+      className={`mx-auto mb-1 flex h-8 w-8 shrink-0 items-center justify-center rounded-full text-sm font-bold text-white ${letterBgClass(appName)}`}
+      aria-hidden
+    >
+      {appInitialLetter(appName)}
+    </div>
   );
 }
 
 function AppCatalogueIcon({ appName }) {
-  const domain = domainForAppName(appName);
+  const key = String(appName || '').trim();
+  const domain = key ? APP_DOMAINS[key] : undefined;
   const [imgFailed, setImgFailed] = useState(false);
 
+  useEffect(() => {
+    setImgFailed(false);
+  }, [key]);
+
   if (!domain || imgFailed) {
-    return <GreyAppIcon />;
+    return <AppLetterFallback appName={appName} />;
   }
 
   return (
     <img
-      src={`https://www.google.com/s2/favicons?domain=${encodeURIComponent(domain)}&sz=48`}
+      src={`https://www.google.com/s2/favicons?domain=${encodeURIComponent(APP_DOMAINS[key])}&sz=64`}
       alt=""
       className="mx-auto mb-1 h-8 w-8"
       loading="lazy"
-      onError={(e) => {
-        e.target.style.display = 'none';
-        setImgFailed(true);
-      }}
+      onError={() => setImgFailed(true)}
     />
   );
 }

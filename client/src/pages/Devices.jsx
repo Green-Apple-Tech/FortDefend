@@ -624,14 +624,6 @@ export default function Devices() {
     setPanelHeaderMenuOpen(false);
   };
 
-  const capabilityRows = [
-    { platform: 'Windows agent', cpu: 'Yes', ram: 'Yes', disk: 'Yes', battery: 'Yes', user: 'Yes', script: 'Yes' },
-    { platform: 'Android app', cpu: 'If app reports', ram: 'If app reports', disk: 'If app reports', battery: 'If app reports', user: 'Limited', script: 'Safe actions only' },
-    { platform: 'Chromebook extension', cpu: 'Limited', ram: 'Partial', disk: 'Partial', battery: 'No', user: 'Partial', script: 'JavaScript only' },
-    { platform: 'Intune (Windows/macOS/iOS)', cpu: 'Limited', ram: 'Limited', disk: 'Partial', battery: 'Limited', user: 'Partial', script: 'Vendor-dependent' },
-    { platform: 'Google Mobile (iOS)', cpu: 'No', ram: 'No', disk: 'No', battery: 'No', user: 'Partial', script: 'No arbitrary code' },
-  ];
-
   return (
     <div className="space-y-6">
       <SectionHeader title="Devices" description="Fleet inventory from connected integrations and agents." />
@@ -738,37 +730,6 @@ export default function Devices() {
         </span>
         <span className="ml-auto text-xs text-slate-500">{fleetSummary.total} devices</span>
       </div>
-
-      <Card className="overflow-x-auto">
-        <h2 className="text-sm font-semibold text-gray-900">Platform Capability Matrix</h2>
-        <p className="mb-3 text-xs text-gray-600">Telemetry availability depends on platform APIs and enrollment method.</p>
-        <table className="min-w-full text-xs">
-          <thead>
-            <tr className="border-b border-gray-200 text-left text-gray-600">
-              <th className="px-2 py-2">Platform</th>
-              <th className="px-2 py-2">CPU</th>
-              <th className="px-2 py-2">RAM</th>
-              <th className="px-2 py-2">Disk</th>
-              <th className="px-2 py-2">Battery</th>
-              <th className="px-2 py-2">User</th>
-              <th className="px-2 py-2">Script Exec</th>
-            </tr>
-          </thead>
-          <tbody>
-            {capabilityRows.map((r) => (
-              <tr key={r.platform} className="border-b border-gray-100">
-                <td className="px-2 py-2 font-medium text-gray-900">{r.platform}</td>
-                <td className="px-2 py-2 text-gray-700">{r.cpu}</td>
-                <td className="px-2 py-2 text-gray-700">{r.ram}</td>
-                <td className="px-2 py-2 text-gray-700">{r.disk}</td>
-                <td className="px-2 py-2 text-gray-700">{r.battery}</td>
-                <td className="px-2 py-2 text-gray-700">{r.user}</td>
-                <td className="px-2 py-2 text-gray-700">{r.script}</td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      </Card>
 
       <Card className="overflow-hidden p-0">
         <div className="max-h-[min(70vh,900px)] overflow-auto">

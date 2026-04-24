@@ -266,18 +266,16 @@ export function AppLayout() {
         </aside>
 
         <div className="flex min-w-0 flex-1 flex-col md:pl-[220px]">
-          <header className="sticky top-0 z-30 flex h-16 shrink-0 items-center justify-between gap-4 border-b border-fds-border bg-fds-header px-4 shadow-sm sm:px-6">
-            <div className="min-w-0 flex-1">
-              <h1 className="truncate text-lg font-bold text-slate-900 dark:text-slate-50">{pageTitle}</h1>
-              <p className="truncate text-xs text-slate-500 dark:text-slate-400">
-                {crumbs.join(' · ')}
-              </p>
+          <header className="sticky top-0 z-30 flex h-12 shrink-0 items-center justify-between gap-3 border-b border-fds-border bg-fds-header px-3 shadow-sm sm:px-4">
+            <div className="min-w-0 flex-1 leading-tight">
+              <h1 className="truncate text-base font-semibold text-slate-900 dark:text-slate-50">{pageTitle}</h1>
+              <p className="truncate text-[11px] text-slate-500 dark:text-slate-400">{crumbs.join(' · ')}</p>
             </div>
-            <div className="hidden items-center gap-3 sm:flex">
+            <div className="hidden items-center gap-2 sm:flex">
               <input
                 type="search"
                 placeholder="Search…"
-                className="w-48 rounded-lg border border-fds-border bg-fds-card px-3 py-2 text-sm text-slate-800 placeholder:text-slate-400 focus:border-brand focus:outline-none focus:ring-2 focus:ring-brand/20 dark:text-slate-100 dark:placeholder:text-slate-500 lg:w-64"
+                className="h-8 w-44 rounded-md border border-fds-border bg-fds-card px-2.5 py-1 text-sm text-slate-800 placeholder:text-slate-400 focus:border-brand focus:outline-none focus:ring-1 focus:ring-brand/20 dark:text-slate-100 dark:placeholder:text-slate-500 lg:w-56"
                 readOnly
                 title="Fleet search coming soon"
               />
@@ -341,7 +339,7 @@ export function AppLayout() {
             </div>
           </div>
 
-          <main className="flex-1 bg-fds-page p-4 sm:p-6 lg:p-8">
+          <main className="flex-1 bg-fds-page px-4 py-4 sm:px-6">
             <Outlet />
           </main>
         </div>

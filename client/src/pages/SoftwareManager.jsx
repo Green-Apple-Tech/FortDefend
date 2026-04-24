@@ -1,7 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { api } from '../lib/api';
 import { Button, Card, Input } from '../components/ui';
-import { SectionHeader } from '../components/fds';
 
 const CATEGORY_TABS = ['All', 'Browsers', 'Security', 'Productivity', 'Dev Tools', 'Utilities', 'Media'];
 
@@ -493,45 +492,38 @@ export default function SoftwareManager() {
   };
 
   return (
-    <div className="space-y-4 pb-24">
-      <div className="flex flex-col gap-3 lg:flex-row lg:items-end lg:justify-between">
-        <SectionHeader
-          className="mb-0"
-          title="Software Manager"
-          description="Devices in rows, catalogue apps in columns. Select devices and deploy Winget installs or updates."
-        />
-        <div className="flex flex-wrap items-end gap-3">
-          <label className="block min-w-[12rem]">
-            <span className="mb-1 block text-xs font-medium text-slate-600">Group</span>
-            <select
-              value={selectedGroupId}
-              onChange={(e) => {
-                setSelectedGroupId(e.target.value);
-                setSelectedDeviceIds(new Set());
-              }}
-              className="w-full min-w-[12rem] rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm focus:border-brand focus:outline-none focus:ring-1 focus:ring-brand"
-            >
-              <option value="">All Devices</option>
-              {flatGroups.map((g) => (
-                <option key={g.id} value={g.id}>
-                  {groupLabel(g)}
-                </option>
-              ))}
-            </select>
-          </label>
-          <Button variant="outline" className="h-[38px]" type="button" onClick={() => setAddModalOpen(true)}>
-            Add catalogue app
-          </Button>
-        </div>
+    <div className="space-y-3 pb-24">
+      <div className="flex flex-wrap items-end justify-end gap-2">
+        <label className="block min-w-[12rem]">
+          <span className="mb-0.5 block text-[11px] font-medium text-slate-600">Group</span>
+          <select
+            value={selectedGroupId}
+            onChange={(e) => {
+              setSelectedGroupId(e.target.value);
+              setSelectedDeviceIds(new Set());
+            }}
+            className="w-full min-w-[12rem] rounded-md border border-slate-300 bg-white px-2 py-1.5 text-sm focus:border-brand focus:outline-none focus:ring-1 focus:ring-brand"
+          >
+            <option value="">All Devices</option>
+            {flatGroups.map((g) => (
+              <option key={g.id} value={g.id}>
+                {groupLabel(g)}
+              </option>
+            ))}
+          </select>
+        </label>
+        <Button variant="outline" className="h-8 text-xs" type="button" onClick={() => setAddModalOpen(true)}>
+          Add catalogue app
+        </Button>
       </div>
 
       <Card className="overflow-hidden border-fds-border p-0 shadow-sm ring-1 ring-slate-950/5">
         {loading ? (
-          <p className="p-8 text-center text-sm text-slate-500">Loading device matrix…</p>
+          <p className="p-4 text-center text-sm text-slate-500">Loading device matrix…</p>
         ) : groupDevicesLoading ? (
-          <p className="p-8 text-center text-sm text-slate-500">Loading group devices…</p>
+          <p className="p-4 text-center text-sm text-slate-500">Loading group devices…</p>
         ) : filteredDevices.length === 0 ? (
-          <p className="p-8 text-center text-sm text-slate-500">
+          <p className="p-4 text-center text-sm text-slate-500">
             {selectedGroupId ? 'No devices in this group.' : 'No devices found.'}
           </p>
         ) : (

@@ -35,7 +35,7 @@ export function Input({ label, className = '', id, ...props }) {
 export function Card({ children, className = '', ...props }) {
   return (
     <div
-      className={`rounded-xl border border-fds-border bg-fds-card p-6 shadow-sm ring-1 ring-slate-950/5 dark:ring-slate-950/40 ${className}`}
+      className={`rounded-xl border border-fds-border bg-fds-card p-4 shadow-sm ring-1 ring-slate-950/5 dark:ring-slate-950/40 ${className}`}
       {...props}
     >
       {children}

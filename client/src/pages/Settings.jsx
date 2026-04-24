@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { api } from '../lib/api';
 import { Card, Button, Input } from '../components/ui';
-import { SectionHeader, ToggleCard } from '../components/fds';
+import { ToggleCard } from '../components/fds';
 import { useTheme } from '../context/ThemeContext';
 
 const LS_PREFIX = 'fds_settings_v1_';
@@ -133,12 +133,7 @@ export default function Settings() {
   );
 
   return (
-    <div className="mx-auto max-w-3xl space-y-8">
-      <SectionHeader
-        title="Settings"
-        description="Set policies once with large toggles. Values below are stored in this browser until your org API persists them."
-      />
-
+    <div className="mx-auto max-w-3xl space-y-3">
       {msg && (
         <div className="rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-2 text-sm text-emerald-900 dark:border-emerald-800 dark:bg-emerald-950/40 dark:text-emerald-100">
           {msg}

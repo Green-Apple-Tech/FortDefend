@@ -1,5 +1,4 @@
 import { Card, Button } from '../components/ui';
-import { SectionHeader } from '../components/fds';
 
 const sections = [
   {
@@ -73,13 +72,8 @@ function CodeBlock({ code }) {
 
 export default function ApiDocs() {
   return (
-    <div className="mx-auto max-w-6xl space-y-6">
-      <div className="flex flex-wrap items-end justify-between gap-3">
-        <SectionHeader
-          className="mb-0"
-          title="FortDefend API"
-          description="Everything you need to connect FortDefend into your app."
-        />
+    <div className="mx-auto max-w-6xl space-y-3">
+      <div className="flex flex-wrap items-center justify-end gap-2">
         <a href="#authentication">
           <Button>Start with authentication</Button>
         </a>

@@ -4,9 +4,9 @@
 
 export function SectionHeader({ title, description, className = '' }) {
   return (
-    <div className={`mb-6 ${className}`}>
-      <h1 className="text-2xl font-bold tracking-tight text-slate-900 dark:text-slate-50">{title}</h1>
-      {description && <p className="mt-1 text-sm text-slate-500 dark:text-slate-400">{description}</p>}
+    <div className={`mb-3 ${className}`}>
+      <h1 className="text-lg font-semibold tracking-tight text-slate-900 dark:text-slate-50">{title}</h1>
+      {description && <p className="mt-0.5 text-xs text-slate-500 dark:text-slate-400">{description}</p>}
     </div>
   );
 }
@@ -40,12 +40,12 @@ export function StatCard({ label, value, trend, icon, color = 'brand' }) {
   };
   const c = colors[color] || colors.brand;
   return (
-    <div className="rounded-xl border border-fds-border bg-fds-card p-5 shadow-sm ring-1 ring-slate-950/5 dark:ring-slate-950/40">
+    <div className="rounded-xl border border-fds-border bg-fds-card p-4 shadow-sm ring-1 ring-slate-950/5 dark:ring-slate-950/40">
       <div className="flex items-start justify-between gap-2">
-        <p className="text-xs font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">{label}</p>
-        {icon && <span className="text-lg opacity-80" aria-hidden>{icon}</span>}
+        <p className="text-[10px] font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">{label}</p>
+        {icon && <span className="text-base opacity-80" aria-hidden>{icon}</span>}
       </div>
-      <p className={`mt-3 text-3xl font-bold tabular-nums ${c}`}>{value}</p>
+      <p className={`mt-2 text-2xl font-bold tabular-nums ${c}`}>{value}</p>
       {trend != null && trend !== '' && (
         <p className="mt-1 text-xs font-medium text-slate-500 dark:text-slate-400">{trend}</p>
       )}

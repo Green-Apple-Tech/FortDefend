@@ -312,13 +312,13 @@ export default function Groups() {
         </div>
       </div>
 
-      <div className="flex-1 p-6">
+      <div className="flex-1 p-4">
         {selectedGroup ? (
           <>
-            <div className="flex items-center justify-between mb-4">
+            <div className="mb-3 flex items-center justify-between">
               <div>
-                <h1 className="text-xl font-semibold text-gray-800">{selectedGroup.name}</h1>
-                <p className="text-sm text-gray-400">{devices.length} device{devices.length !== 1 ? 's' : ''}</p>
+                <h2 className="text-base font-semibold text-gray-800">{selectedGroup.name}</h2>
+                <p className="text-xs text-gray-500">{devices.length} device{devices.length !== 1 ? 's' : ''}</p>
               </div>
               <div className="flex gap-2">
                 <button onClick={() => { setModal({ type: 'rename', group: selectedGroup }); setModalInput(selectedGroup.name); }}

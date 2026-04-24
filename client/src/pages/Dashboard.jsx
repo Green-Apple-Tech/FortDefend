@@ -3,7 +3,7 @@ import { Link } from 'react-router-dom';
 import { api } from '../lib/api';
 import { useAuth } from '../context/AuthContext';
 import { Card, Button, Spinner } from '../components/ui';
-import { SectionHeader, StatCard, EmptyState } from '../components/fds';
+import { StatCard, EmptyState } from '../components/fds';
 
 function formatRelative(iso) {
   if (!iso) return '—';
@@ -125,13 +125,8 @@ export default function Dashboard() {
   }
 
   return (
-    <div className="space-y-8">
-      <SectionHeader
-        title="Dashboard"
-        description={`Overview for ${org?.name || 'your organization'}. Simple by default — drill down when you need detail.`}
-      />
-
-      <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+    <div className="space-y-3">
+      <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
         <StatCard
           label="Devices online"
           value={hasDevices ? online : '—'}
@@ -162,12 +157,12 @@ export default function Dashboard() {
         />
       </div>
 
-      <div className="grid gap-6 lg:grid-cols-3">
+      <div className="grid gap-3 lg:grid-cols-3">
         <Card className="lg:col-span-2">
           <h2 className="text-sm font-bold uppercase tracking-wide text-slate-500">Fleet health</h2>
-          <div className="mt-4 flex flex-wrap items-center gap-4">
+          <div className="mt-2 flex flex-wrap items-center gap-3">
             <div
-              className={`flex h-20 w-20 items-center justify-center rounded-2xl text-3xl ${
+              className={`flex h-14 w-14 items-center justify-center rounded-xl text-2xl ${
                 healthTone === 'good'
                   ? 'bg-emerald-100 text-emerald-700'
                   : healthTone === 'warn'
@@ -202,7 +197,7 @@ export default function Dashboard() {
 
         <Card>
           <h2 className="text-sm font-bold uppercase tracking-wide text-slate-500">Quick actions</h2>
-          <div className="mt-4 flex flex-col gap-2">
+          <div className="mt-2 flex flex-col gap-2">
             <Link to="/install">
               <Button className="w-full justify-center">Enroll device</Button>
             </Link>
@@ -220,10 +215,10 @@ export default function Dashboard() {
         </Card>
       </div>
 
-      <div className="grid gap-6 lg:grid-cols-2">
+      <div className="grid gap-3 lg:grid-cols-2">
         <Card>
-          <div className="mb-4 flex items-center justify-between">
-            <h2 className="font-semibold text-slate-900">Device health</h2>
+          <div className="mb-2 flex items-center justify-between">
+            <h2 className="text-sm font-semibold text-slate-900">Device health</h2>
             <Link to="/devices" className="text-sm font-semibold text-brand hover:underline">
               View all
             </Link>
@@ -242,7 +237,7 @@ export default function Dashboard() {
           ) : (
           <ul className="divide-y divide-fds-border">
             {devices.map((d) => (
-              <li key={d.id || d.name} className="flex items-center justify-between py-3 text-sm first:pt-0">
+              <li key={d.id || d.name} className="flex items-center justify-between py-2 text-sm first:pt-0">
                 <div>
                   <div className="font-medium text-slate-900">{d.name || d.id}</div>
                   <div className="text-xs text-slate-500">

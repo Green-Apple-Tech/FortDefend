@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { api } from '../lib/api';
 import { Button, Card, Input } from '../components/ui';
-import { SectionHeader, StatusBadge } from '../components/fds';
+import { StatusBadge } from '../components/fds';
 import ScriptRunnerModal from '../components/ScriptRunnerModal';
 
 const PAGE_SIZE = 25;
@@ -625,11 +625,9 @@ export default function Devices() {
   };
 
   return (
-    <div className="space-y-6">
-      <SectionHeader title="Devices" description="Fleet inventory from connected integrations and agents." />
-
+    <div className="space-y-3">
       {integrationErrors && Object.keys(integrationErrors).length > 0 && (
-        <div className="rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">
+        <div className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-900">
           <p className="font-semibold">Some integrations reported errors</p>
           <ul className="mt-2 list-inside list-disc text-amber-800">
             {Object.entries(integrationErrors).map(([k, v]) => (
@@ -641,105 +639,106 @@ export default function Devices() {
         </div>
       )}
 
-      <Card>
-        {checkedDevices.length > 0 && (
-          <div className="mb-4 flex flex-wrap items-center gap-2 rounded-lg border border-brand/30 bg-brand-light/40 px-3 py-2">
-            <span className="text-sm font-medium text-brand">{checkedDevices.length} selected</span>
-            <Button variant="outline" className="!py-1.5 text-xs" onClick={() => setShowScriptRunner(true)}>Run Script</Button>
-            <Button variant="outline" className="!py-1.5 text-xs" onClick={rebootSelected}>Reboot</Button>
-            <Button variant="outline" className="!py-1.5 text-xs" onClick={assignSelectedToGroup}>Assign Group</Button>
-            <Button variant="outline" className="!py-1.5 text-xs" onClick={exportCsv}>Export Selected</Button>
-          </div>
-        )}
-        <div className="flex flex-col gap-4 lg:flex-row lg:flex-wrap lg:items-end">
-          <div className="min-w-0 flex-1 lg:max-w-md">
-            <Input
-              label="Search"
-              placeholder="Name, serial, user email, id…"
-              value={q}
-              onChange={(e) => setQ(e.target.value)}
-            />
-          </div>
-          <div>
-            <span className="mb-1 block text-sm font-medium text-gray-700">Source</span>
-            <select
-              value={sourceFilter}
-              onChange={(e) => setSourceFilter(e.target.value)}
-              className="w-full min-w-[10rem] rounded-lg border border-gray-300 px-3 py-2.5 text-sm focus:border-brand focus:outline-none focus:ring-1 focus:ring-brand"
-            >
-              <option value="all">All</option>
-              <option value="intune">Intune</option>
-              <option value="google_admin">Google Admin</option>
-              <option value="agent">Agent</option>
-              <option value="android">Android</option>
-            </select>
-          </div>
-          <div>
-            <span className="mb-1 block text-sm font-medium text-gray-700">Status</span>
-            <select
-              value={statusFilter}
-              onChange={(e) => setStatusFilter(e.target.value)}
-              className="w-full min-w-[10rem] rounded-lg border border-gray-300 px-3 py-2.5 text-sm focus:border-brand focus:outline-none focus:ring-1 focus:ring-brand"
-            >
-              <option value="all">All</option>
-              <option value="online">Online</option>
-              <option value="offline">Offline</option>
-              <option value="warning">Warning</option>
-              <option value="alert">Alert</option>
-            </select>
-          </div>
-          <div>
-            <span className="mb-1 block text-sm font-medium text-gray-700">OS</span>
-            <select
-              value={osFilter}
-              onChange={(e) => setOsFilter(e.target.value)}
-              className="w-full min-w-[10rem] rounded-lg border border-gray-300 px-3 py-2.5 text-sm focus:border-brand focus:outline-none focus:ring-1 focus:ring-brand"
-            >
-              <option value="all">All</option>
-              <option value="windows">Windows</option>
-              <option value="chromeos">ChromeOS</option>
-              <option value="android">Android</option>
-              <option value="ios">iOS</option>
-            </select>
-          </div>
-          <div className="flex items-end">
-            <Button type="button" variant="outline" onClick={exportCsv} disabled={sorted.length === 0}>
-              Export CSV
-            </Button>
-          </div>
-        </div>
-      </Card>
-
-      <div className="flex flex-wrap items-center gap-x-6 gap-y-2 rounded-xl border border-fds-border bg-white px-4 py-3 text-sm shadow-sm ring-1 ring-slate-950/5">
-        <span className="text-xs font-bold uppercase tracking-wide text-slate-500">Fleet summary</span>
-        <span className="inline-flex items-center gap-2 text-slate-700">
-          <span className="h-2 w-2 rounded-full bg-emerald-500" aria-hidden />
-          <strong className="tabular-nums text-slate-900">{fleetSummary.online}</strong> online
+      <div className="flex flex-wrap items-center gap-x-3 gap-y-2 rounded-lg border border-fds-border bg-fds-card px-3 py-2 text-xs shadow-sm ring-1 ring-slate-950/5 dark:ring-slate-950/40">
+        <span className="font-bold uppercase tracking-wide text-slate-500">Fleet</span>
+        <span className="inline-flex items-center gap-1.5 text-slate-700">
+          <span className="h-1.5 w-1.5 rounded-full bg-emerald-500" aria-hidden />
+          <strong className="tabular-nums text-slate-900">{fleetSummary.online}</strong>
+          <span className="text-slate-500">on</span>
         </span>
-        <span className="inline-flex items-center gap-2 text-slate-700">
-          <span className="h-2 w-2 rounded-full bg-amber-500" aria-hidden />
-          <strong className="tabular-nums text-slate-900">{fleetSummary.warning}</strong> warnings
+        <span className="inline-flex items-center gap-1.5 text-slate-700">
+          <span className="h-1.5 w-1.5 rounded-full bg-amber-500" aria-hidden />
+          <strong className="tabular-nums text-slate-900">{fleetSummary.warning}</strong>
+          <span className="text-slate-500">warn</span>
         </span>
-        <span className="inline-flex items-center gap-2 text-slate-700">
-          <span className="h-2 w-2 rounded-full bg-red-500" aria-hidden />
-          <strong className="tabular-nums text-slate-900">{fleetSummary.alert}</strong> alerts
+        <span className="inline-flex items-center gap-1.5 text-slate-700">
+          <span className="h-1.5 w-1.5 rounded-full bg-red-500" aria-hidden />
+          <strong className="tabular-nums text-slate-900">{fleetSummary.alert}</strong>
+          <span className="text-slate-500">alert</span>
         </span>
-        <span className="inline-flex items-center gap-2 text-slate-700">
-          <span className="h-2 w-2 rounded-full bg-slate-400" aria-hidden />
-          <strong className="tabular-nums text-slate-900">{fleetSummary.offline}</strong> offline
+        <span className="inline-flex items-center gap-1.5 text-slate-700">
+          <span className="h-1.5 w-1.5 rounded-full bg-slate-400" aria-hidden />
+          <strong className="tabular-nums text-slate-900">{fleetSummary.offline}</strong>
+          <span className="text-slate-500">off</span>
         </span>
-        <span className="ml-auto text-xs text-slate-500">{fleetSummary.total} devices</span>
+        <span className="text-slate-400">|</span>
+        <span className="tabular-nums text-slate-500">{fleetSummary.total} total</span>
+        <span className="mx-1 hidden h-4 w-px bg-fds-border sm:block" aria-hidden />
+        <input
+          type="search"
+          aria-label="Search devices"
+          placeholder="Search name, serial, email…"
+          value={q}
+          onChange={(e) => setQ(e.target.value)}
+          className="min-w-[10rem] flex-1 rounded-md border border-fds-border bg-white px-2 py-1.5 text-sm text-slate-900 placeholder:text-slate-400 focus:border-brand focus:outline-none focus:ring-1 focus:ring-brand sm:max-w-xs dark:bg-slate-900 dark:text-slate-100"
+        />
+        <select
+          value={sourceFilter}
+          onChange={(e) => setSourceFilter(e.target.value)}
+          title="Source"
+          className="rounded-md border border-fds-border bg-white px-2 py-1.5 text-xs text-slate-800 focus:border-brand focus:outline-none dark:bg-slate-900 dark:text-slate-100"
+        >
+          <option value="all">All sources</option>
+          <option value="intune">Intune</option>
+          <option value="google_admin">Google Admin</option>
+          <option value="agent">Agent</option>
+          <option value="android">Android</option>
+        </select>
+        <select
+          value={statusFilter}
+          onChange={(e) => setStatusFilter(e.target.value)}
+          title="Status"
+          className="rounded-md border border-fds-border bg-white px-2 py-1.5 text-xs text-slate-800 focus:border-brand focus:outline-none dark:bg-slate-900 dark:text-slate-100"
+        >
+          <option value="all">All status</option>
+          <option value="online">Online</option>
+          <option value="offline">Offline</option>
+          <option value="warning">Warning</option>
+          <option value="alert">Alert</option>
+        </select>
+        <select
+          value={osFilter}
+          onChange={(e) => setOsFilter(e.target.value)}
+          title="OS"
+          className="rounded-md border border-fds-border bg-white px-2 py-1.5 text-xs text-slate-800 focus:border-brand focus:outline-none dark:bg-slate-900 dark:text-slate-100"
+        >
+          <option value="all">All OS</option>
+          <option value="windows">Windows</option>
+          <option value="chromeos">ChromeOS</option>
+          <option value="android">Android</option>
+          <option value="ios">iOS</option>
+        </select>
+        <Button type="button" variant="outline" className="!py-1.5 text-xs" onClick={exportCsv} disabled={sorted.length === 0}>
+          Export CSV
+        </Button>
       </div>
 
       <Card className="overflow-hidden p-0">
+        {checkedDevices.length > 0 && (
+          <div className="flex flex-wrap items-center gap-2 border-b border-fds-border bg-brand-light/30 px-3 py-1.5 dark:bg-blue-950/30">
+            <span className="text-xs font-medium text-brand">{checkedDevices.length} selected</span>
+            <Button variant="outline" className="!py-1 text-[11px]" onClick={() => setShowScriptRunner(true)}>
+              Run Script
+            </Button>
+            <Button variant="outline" className="!py-1 text-[11px]" onClick={rebootSelected}>
+              Reboot
+            </Button>
+            <Button variant="outline" className="!py-1 text-[11px]" onClick={assignSelectedToGroup}>
+              Assign Group
+            </Button>
+            <Button variant="outline" className="!py-1 text-[11px]" onClick={exportCsv}>
+              Export Selected
+            </Button>
+          </div>
+        )}
         <div className="max-h-[min(70vh,900px)] overflow-auto">
           {loading ? (
-            <p className="p-6 text-sm text-gray-500">Loading…</p>
+            <p className="p-4 text-sm text-gray-500">Loading…</p>
           ) : (
             <table className="min-w-full border-collapse text-sm">
               <thead className="sticky top-0 z-20 border-b border-fds-border bg-white shadow-sm">
                 <tr>
-                  <th className="whitespace-nowrap px-3 py-3 text-left">
+                  <th className="whitespace-nowrap px-2 py-2 text-left">
                     <input
                       type="checkbox"
                       checked={pageItems.length > 0 && pageItems.every((d) => checkedIds.includes(d.id))}
@@ -756,7 +755,7 @@ export default function Devices() {
                   {orderedColumns.map((colKey) => (
                     <th
                       key={colKey}
-                      className={`whitespace-nowrap px-3 py-3 text-[11px] font-semibold uppercase tracking-wide text-slate-500 ${colKey === 'security_score' ? 'text-right' : 'text-left'}`}
+                      className={`whitespace-nowrap px-2 py-2 text-[11px] font-semibold uppercase tracking-wide text-slate-500 ${colKey === 'security_score' ? 'text-right' : 'text-left'}`}
                       draggable={colKey !== 'device'}
                       onDragStart={() => {
                         if (colKey === 'device') return;
@@ -783,7 +782,7 @@ export default function Devices() {
                       </button>
                     </th>
                   ))}
-                  <th className="sticky right-0 z-20 whitespace-nowrap border-l border-fds-border bg-white px-3 py-3 text-right text-[11px] font-semibold uppercase tracking-wide text-slate-500">
+                  <th className="sticky right-0 z-20 whitespace-nowrap border-l border-fds-border bg-white px-2 py-2 text-right text-[11px] font-semibold uppercase tracking-wide text-slate-500">
                     Actions
                   </th>
                 </tr>
@@ -803,14 +802,14 @@ export default function Devices() {
                   return (
                     <tr
                       key={k}
-                      className="h-12 cursor-pointer hover:bg-slate-50"
+                      className="h-10 cursor-pointer hover:bg-slate-50"
                       onClick={() => openDetails(d)}
                       onContextMenu={(e) => {
                         e.preventDefault();
                         setOpenMenu((m) => (m === k ? null : k));
                       }}
                     >
-                      <td className="px-3 py-2.5" onClick={(e) => e.stopPropagation()}>
+                      <td className="px-2 py-1.5" onClick={(e) => e.stopPropagation()}>
                         <input
                           type="checkbox"
                           checked={checkedIds.includes(d.id)}
@@ -823,7 +822,7 @@ export default function Devices() {
                   {orderedColumns.map((colKey) => {
                         if (colKey === 'device') {
                           return (
-                            <td key={colKey} className="px-3 py-2.5">
+                            <td key={colKey} className="px-2 py-1.5">
                               <div className="flex min-w-0 items-center gap-2">
                                 <span className={`inline-block h-2 w-2 shrink-0 rounded-full ${statusDotClass(st)}`} title={st} />
                                 <div className="min-w-0">
@@ -835,39 +834,39 @@ export default function Devices() {
                           );
                         }
                         if (colKey === 'os') {
-                          return <td key={colKey} className="px-3 py-2.5 text-gray-600">{displayOs(d)} {osVersionOf(d) ? `· ${osVersionOf(d)}` : ''}</td>;
+                          return <td key={colKey} className="px-2 py-1.5 text-gray-600">{displayOs(d)} {osVersionOf(d) ? `· ${osVersionOf(d)}` : ''}</td>;
                         }
                         if (colKey === 'source') {
                           return (
-                            <td key={colKey} className="px-3 py-2.5">
+                            <td key={colKey} className="px-2 py-1.5">
                               <StatusBadge status="default">{displaySource(d.source)}</StatusBadge>
                             </td>
                           );
                         }
                         if (colKey === 'status') {
-                          return <td key={colKey} className="px-3 py-2.5 capitalize text-gray-700">{st}</td>;
+                          return <td key={colKey} className="px-2 py-1.5 capitalize text-gray-700">{st}</td>;
                         }
                         if (colKey === 'compliance') {
-                          return <td key={colKey} className="px-3 py-2.5 text-gray-600">{d.compliance || '—'}</td>;
+                          return <td key={colKey} className="px-2 py-1.5 text-gray-600">{d.compliance || '—'}</td>;
                         }
                         if (colKey === 'security_score') {
-                          return <td key={colKey} className="px-3 py-2.5 text-right font-semibold text-brand">{d.security_score ?? '—'}</td>;
+                          return <td key={colKey} className="px-2 py-1.5 text-right font-semibold text-brand">{d.security_score ?? '—'}</td>;
                         }
                         if (colKey === 'last_seen') {
-                          return <td key={colKey} className="whitespace-nowrap px-3 py-2.5 text-gray-600">{formatRelativeTime(getLastSeen(d))}</td>;
+                          return <td key={colKey} className="whitespace-nowrap px-2 py-1.5 text-gray-600">{formatRelativeTime(getLastSeen(d))}</td>;
                         }
                         if (colKey === 'group') {
-                          return <td key={colKey} className="px-3 py-2.5 text-gray-700">{d.group_name || 'Ungrouped'}</td>;
+                          return <td key={colKey} className="px-2 py-1.5 text-gray-700">{d.group_name || 'Ungrouped'}</td>;
                         }
                         if (colKey === 'disk') {
-                          return <td key={colKey} className="px-3 py-2.5 text-gray-600">{formatDisk(d)}</td>;
+                          return <td key={colKey} className="px-2 py-1.5 text-gray-600">{formatDisk(d)}</td>;
                         }
                         if (colKey === 'ram') {
-                          return <td key={colKey} className="px-3 py-2.5 text-gray-600">{formatRam(d)}</td>;
+                          return <td key={colKey} className="px-2 py-1.5 text-gray-600">{formatRam(d)}</td>;
                         }
                         if (colKey === 'patches') {
                           return (
-                            <td key={colKey} className="px-3 py-2.5">
+                            <td key={colKey} className="px-2 py-1.5">
                               {patchN == null ? (
                                 '—'
                               ) : patchN > 0 ? (
@@ -882,7 +881,7 @@ export default function Devices() {
                             </td>
                           );
                         }
-                        return <td key={colKey} className="px-3 py-2.5 text-gray-600">—</td>;
+                        return <td key={colKey} className="px-2 py-1.5 text-gray-600">—</td>;
                       })}
                       <td
                         className="sticky right-0 z-10 border-l border-gray-100 bg-white px-2 py-2 text-right"

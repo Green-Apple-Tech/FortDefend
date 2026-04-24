@@ -2,7 +2,6 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import { api } from '../lib/api';
 import { Card, Button, Input } from '../components/ui';
 import ScriptRunnerModal from '../components/ScriptRunnerModal';
-import { SectionHeader } from '../components/fds';
 
 const PLATFORM_TYPES = {
   windows: ['powershell', 'cmd', 'python'],
@@ -216,12 +215,7 @@ export default function Scripts() {
   }
 
   return (
-    <div className="space-y-6">
-      <SectionHeader
-        title="Custom commands"
-        description="Enable scripts for your fleet, review results, and run on demand. Toggles are stored in this browser until scheduling is wired to the API."
-      />
-
+    <div className="space-y-3">
       {msg && (
         <div className="rounded-lg border border-blue-100 bg-blue-50/90 px-3 py-2 text-sm text-brand">{msg}</div>
       )}

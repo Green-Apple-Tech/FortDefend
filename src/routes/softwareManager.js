@@ -107,25 +107,47 @@ router.get('/matrix', async (req, res, next) => {
         winget_scan_status: wingetScanStatus(lastWingetScanAt),
       };
     });
-    const matchedRows = await db('sm_device_apps as sda')
-      .join('sm_apps as sa', function joinMatchedApps() {
-        this.on('sa.org_id', '=', 'sda.org_id')
-          .andOn(function onAnyMatch() {
-            this.on('sda.winget_id', '=', 'sa.winget_id')
-              .orOn(db.raw("LOWER(sda.app_name) LIKE '%' || LOWER(sa.name) || '%'"))
-              .orOn(db.raw("LOWER(sa.name) LIKE '%' || LOWER(sda.app_name) || '%'"));
-          });
-      })
-      .where('sda.org_id', req.user.orgId)
-      .select(
-        'sda.device_id',
-        'sa.winget_id as matched_winget_id',
-        'sda.installed_version',
-        'sda.latest_version',
-        'sda.update_available',
-        'sda.last_scanned_at',
-      )
-      .orderByRaw("CASE WHEN sda.winget_id = sa.winget_id THEN 0 ELSE 1 END ASC");
+    // Fuzzy join: winget_id (trim/case-insensitive), explicit catalogue link, or bidirectional name LIKE.
+    // DISTINCT ON prefers exact winget / catalogue matches, then name containment, then recency.
+    const { rows: matchedRows } = await db.raw(
+      `
+      SELECT DISTINCT ON (sda.device_id, sa.winget_id)
+        sda.device_id,
+        sa.winget_id AS matched_winget_id,
+        sda.installed_version,
+        sda.latest_version,
+        sda.update_available,
+        sda.last_scanned_at
+      FROM sm_device_apps sda
+      INNER JOIN sm_apps sa ON sa.org_id = sda.org_id
+        AND (
+          (sda.catalogue_app_id IS NOT NULL AND sda.catalogue_app_id = sa.id)
+          OR (
+            NULLIF(TRIM(sda.winget_id), '') IS NOT NULL
+            AND NULLIF(TRIM(sa.winget_id), '') IS NOT NULL
+            AND LOWER(TRIM(sda.winget_id)) = LOWER(TRIM(sa.winget_id))
+          )
+          OR LOWER(TRIM(COALESCE(sda.app_name, ''))) LIKE '%' || LOWER(TRIM(sa.name)) || '%'
+          OR LOWER(TRIM(COALESCE(sa.name, ''))) LIKE '%' || LOWER(TRIM(sda.app_name)) || '%'
+        )
+      WHERE sda.org_id = ?
+      ORDER BY
+        sda.device_id,
+        sa.winget_id,
+        (CASE
+          WHEN sda.catalogue_app_id IS NOT NULL AND sda.catalogue_app_id = sa.id THEN 0
+          WHEN NULLIF(TRIM(sda.winget_id), '') IS NOT NULL
+            AND NULLIF(TRIM(sa.winget_id), '') IS NOT NULL
+            AND LOWER(TRIM(sda.winget_id)) = LOWER(TRIM(sa.winget_id)) THEN 1
+          WHEN LOWER(TRIM(COALESCE(sda.app_name, ''))) = LOWER(TRIM(COALESCE(sa.name, ''))) THEN 2
+          WHEN LOWER(TRIM(COALESCE(sda.app_name, ''))) LIKE '%' || LOWER(TRIM(sa.name)) || '%'
+            OR LOWER(TRIM(COALESCE(sa.name, ''))) LIKE '%' || LOWER(TRIM(sda.app_name)) || '%' THEN 3
+          ELSE 4
+        END),
+        sda.last_scanned_at DESC NULLS LAST
+      `,
+      [req.user.orgId],
+    );
 
     const deduped = new Map();
     for (const row of matchedRows) {

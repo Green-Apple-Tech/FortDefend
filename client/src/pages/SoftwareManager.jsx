@@ -4,126 +4,105 @@ import { Button, Card, Input } from '../components/ui';
 import { SectionHeader } from '../components/fds';
 
 const CATEGORY_TABS = ['All', 'Browsers', 'Security', 'Productivity', 'Dev Tools', 'Utilities', 'Media'];
-const COLUMN_PREFS_KEY = 'software_manager_hidden_columns';
-const SHOW_UNINSTALLED_LS_KEY = 'software_manager_show_uninstalled_apps';
 
-/** Lowercase name / substring → favicon domain */
-const APP_NAME_DOMAIN_RULES = [
-  ['google chrome', 'google.com'],
-  ['mozilla firefox', 'mozilla.org'],
-  ['microsoft edge', 'microsoft.com'],
-  ['brave browser', 'brave.com'],
-  ['brave', 'brave.com'],
-  ['zoom', 'zoom.us'],
-  ['slack', 'slack.com'],
-  ['spotify', 'spotify.com'],
-  ['discord', 'discord.com'],
-  ['dropbox', 'dropbox.com'],
-  ['vlc', 'videolan.org'],
-  ['7-zip', '7-zip.org'],
-  ['7 zip', '7-zip.org'],
-  ['visual studio code', 'code.visualstudio.com'],
-  ['vs code', 'code.visualstudio.com'],
-  ['vscode', 'code.visualstudio.com'],
-  ['notepad++', 'notepad-plus-plus.org'],
-  ['notepad plus', 'notepad-plus-plus.org'],
-  ['malwarebytes', 'malwarebytes.com'],
-  ['ccleaner', 'ccleaner.com'],
-  ['teamviewer', 'teamviewer.com'],
-  ['anydesk', 'anydesk.com'],
-  ['libreoffice', 'libreoffice.org'],
-  ['gimp', 'gimp.org'],
-];
+const APP_DOMAINS = {
+  'Google Chrome': 'chrome.google.com',
+  'Mozilla Firefox': 'firefox.com',
+  'Microsoft Edge': 'microsoft.com',
+  Brave: 'brave.com',
+  Opera: 'opera.com',
+  Vivaldi: 'vivaldi.com',
+  Zoom: 'zoom.us',
+  Slack: 'slack.com',
+  'Microsoft Teams': 'teams.microsoft.com',
+  Discord: 'discord.com',
+  Thunderbird: 'thunderbird.net',
+  Spotify: 'spotify.com',
+  VLC: 'videolan.org',
+  Audacity: 'audacityteam.org',
+  HandBrake: 'handbrake.fr',
+  iTunes: 'apple.com',
+  Malwarebytes: 'malwarebytes.com',
+  'KeePass 2': 'keepass.info',
+  Dropbox: 'dropbox.com',
+  'Google Drive': 'drive.google.com',
+  OneDrive: 'onedrive.live.com',
+  LibreOffice: 'libreoffice.org',
+  'Adobe Acrobat Reader': 'adobe.com',
+  'Foxit Reader': 'foxit.com',
+  SumatraPDF: 'sumatrapdfreader.org',
+  GIMP: 'gimp.org',
+  'Paint.NET': 'getpaint.net',
+  Greenshot: 'getgreenshot.org',
+  ShareX: 'getsharex.com',
+  Inkscape: 'inkscape.org',
+  Blender: 'blender.org',
+  Krita: 'krita.org',
+  'Visual Studio Code': 'code.visualstudio.com',
+  Git: 'git-scm.com',
+  'Notepad++': 'notepad-plus-plus.org',
+  'Python 3': 'python.org',
+  PuTTY: 'putty.org',
+  WinSCP: 'winscp.net',
+  FileZilla: 'filezilla-project.org',
+  '7-Zip': '7-zip.org',
+  WinRAR: 'win-rar.com',
+  TeamViewer: 'teamviewer.com',
+  AnyDesk: 'anydesk.com',
+  CCleaner: 'ccleaner.com',
+  Everything: 'voidtools.com',
+  Cursor: 'cursor.com',
+  IrfanView: 'irfanview.com',
+};
 
-function domainForCatalogueApp(app) {
-  const name = String(app?.name || '').trim().toLowerCase();
-  if (!name) return null;
-  for (const [needle, domain] of APP_NAME_DOMAIN_RULES) {
-    if (name === needle.trim() || name.includes(needle)) return domain;
-  }
-  const wid = String(app?.winget_id || '').toLowerCase();
-  if (wid.includes('google.chrome') || wid === 'chrome' || name.includes('chrome')) return 'google.com';
-  if (wid.includes('mozilla.firefox') || name.includes('firefox')) return 'mozilla.org';
-  if (wid.includes('microsoft.edge') || name.includes('edge')) return 'microsoft.com';
-  if (wid.includes('brave')) return 'brave.com';
-  if (wid.includes('zoom')) return 'zoom.us';
-  if (wid.includes('slack')) return 'slack.com';
-  if (wid.includes('spotify')) return 'spotify.com';
-  if (wid.includes('discord')) return 'discord.com';
-  if (wid.includes('dropbox')) return 'dropbox.com';
-  if (wid.includes('videolan') || wid.includes('vlc')) return 'videolan.org';
-  if (wid.includes('7zip') || wid.includes('7-zip')) return '7-zip.org';
-  if (wid.includes('microsoft.vscode') || wid.includes('vscode')) return 'code.visualstudio.com';
-  if (wid.includes('git.git') || wid.endsWith('.git')) return 'git-scm.com';
-  if (wid.includes('notepadplusplus')) return 'notepad-plus-plus.org';
-  if (wid.includes('malwarebytes')) return 'malwarebytes.com';
-  if (wid.includes('piriform.ccleaner') || wid.includes('ccleaner')) return 'ccleaner.com';
-  if (wid.includes('teamviewer')) return 'teamviewer.com';
-  if (wid.includes('anydesk')) return 'anydesk.com';
-  if (wid.includes('libreoffice')) return 'libreoffice.org';
-  if (wid.includes('gimp')) return 'gimp.org';
+function domainForAppName(name) {
+  const n = String(name || '').trim();
+  if (!n) return null;
+  if (APP_DOMAINS[n]) return APP_DOMAINS[n];
   return null;
 }
 
-function PackageIcon({ className = 'h-8 w-8' }) {
+function GreyAppIcon({ className = 'mx-auto mb-1 h-8 w-8 text-slate-400' }) {
   return (
     <svg className={className} viewBox="0 0 24 24" aria-hidden>
-      <path
-        d="M12 2.5l7.5 4.25v8.5L12 19.5l-7.5-4.25v-8.5L12 2.5z"
-        fill="#dbeafe"
-        stroke="#2563eb"
-        strokeWidth="1.25"
-        strokeLinejoin="round"
-      />
-      <path d="M12 12V21M12 12L4.5 7.75M12 12l7.5-4.25" stroke="#2563eb" strokeWidth="1.1" strokeLinecap="round" />
+      <rect x="4" y="3" width="16" height="18" rx="2" fill="#f1f5f9" stroke="currentColor" strokeWidth="1.25" />
+      <path d="M8 8h8M8 12h8M8 16h5" stroke="#94a3b8" strokeWidth="1.25" strokeLinecap="round" />
     </svg>
   );
 }
 
-function AppFavicon({ domain }) {
-  const [failed, setFailed] = useState(false);
-  if (!domain || failed) {
-    return <PackageIcon className="h-8 w-8 shrink-0" />;
+function AppCatalogueIcon({ appName }) {
+  const domain = domainForAppName(appName);
+  const [imgFailed, setImgFailed] = useState(false);
+
+  if (!domain || imgFailed) {
+    return <GreyAppIcon />;
   }
+
   return (
     <img
-      src={`https://www.google.com/s2/favicons?domain=${encodeURIComponent(domain)}&sz=32`}
+      src={`https://www.google.com/s2/favicons?domain=${encodeURIComponent(domain)}&sz=48`}
       alt=""
-      width={32}
-      height={32}
-      className="h-8 w-8 shrink-0 rounded"
+      className="mx-auto mb-1 h-8 w-8"
       loading="lazy"
-      onError={() => setFailed(true)}
+      onError={(e) => {
+        e.target.style.display = 'none';
+        setImgFailed(true);
+      }}
     />
   );
 }
 
-function keyFor(deviceId, wingetId) {
-  return `${deviceId}::${wingetId}`;
-}
-
-function statusColor(status) {
-  if (status === 'online') return 'bg-emerald-500';
-  if (status === 'warning') return 'bg-amber-500';
-  if (status === 'alert') return 'bg-red-500';
-  return 'bg-slate-400';
-}
-
 export default function SoftwareManager() {
   const [loading, setLoading] = useState(true);
-  const [matrix, setMatrix] = useState({ devices: [], apps: [], installations: [] });
+  const [apps, setApps] = useState([]);
+  const [installations, setInstallations] = useState([]);
   const [commands, setCommands] = useState([]);
-  const [showUninstalledApps, setShowUninstalledApps] = useState(false);
   const [search, setSearch] = useState('');
   const [category, setCategory] = useState('All');
-  const [selected, setSelected] = useState(new Set());
-  const [lastAnchor, setLastAnchor] = useState(null);
   const [activeAppId, setActiveAppId] = useState(null);
   const [toast, setToast] = useState('');
-  const [actionLoading, setActionLoading] = useState(false);
   const [addModalOpen, setAddModalOpen] = useState(false);
-  const [manageColumnsOpen, setManageColumnsOpen] = useState(false);
-  const [hiddenWingetIds, setHiddenWingetIds] = useState([]);
   const [addAppLoading, setAddAppLoading] = useState(false);
   const [addAppForm, setAddAppForm] = useState({
     winget_id: '',
@@ -140,11 +119,8 @@ export default function SoftwareManager() {
       api('/api/software/commands?limit=250'),
     ]);
 
-    setMatrix({
-      devices: Array.isArray(matrixData?.devices) ? matrixData.devices : [],
-      apps: Array.isArray(matrixData?.apps) ? matrixData.apps : [],
-      installations: Array.isArray(matrixData?.installations) ? matrixData.installations : [],
-    });
+    setApps(Array.isArray(matrixData?.apps) ? matrixData.apps : []);
+    setInstallations(Array.isArray(matrixData?.installations) ? matrixData.installations : []);
     setCommands(Array.isArray(commandsData?.commands) ? commandsData.commands : []);
   };
 
@@ -176,67 +152,18 @@ export default function SoftwareManager() {
     return () => clearTimeout(timer);
   }, [toast]);
 
-  useEffect(() => {
-    try {
-      const raw = localStorage.getItem(COLUMN_PREFS_KEY);
-      if (!raw) return;
-      const parsed = JSON.parse(raw);
-      if (Array.isArray(parsed)) {
-        setHiddenWingetIds(parsed.filter((id) => typeof id === 'string'));
-      }
-    } catch {
-      setHiddenWingetIds([]);
-    }
-  }, []);
-
-  useEffect(() => {
-    try {
-      const v = localStorage.getItem(SHOW_UNINSTALLED_LS_KEY);
-      if (v === 'true') setShowUninstalledApps(true);
-      else if (v === 'false') setShowUninstalledApps(false);
-    } catch {
-      /* ignore */
-    }
-  }, []);
-
-  useEffect(() => {
-    try {
-      localStorage.setItem(SHOW_UNINSTALLED_LS_KEY, showUninstalledApps ? 'true' : 'false');
-    } catch {
-      /* ignore */
-    }
-  }, [showUninstalledApps]);
-
-  useEffect(() => {
-    localStorage.setItem(COLUMN_PREFS_KEY, JSON.stringify(hiddenWingetIds));
-  }, [hiddenWingetIds]);
-
-  useEffect(() => {
-    const validIds = new Set(matrix.apps.map((app) => app.winget_id));
-    setHiddenWingetIds((prev) => {
-      const next = prev.filter((id) => validIds.has(id));
-      return next.length === prev.length ? prev : next;
-    });
-  }, [matrix.apps]);
-
   const filteredApps = useMemo(() => {
-    return matrix.apps.filter((app) => {
+    return apps.filter((app) => {
       const inCategory = category === 'All' || app.category === category;
       if (!inCategory) return false;
       const hay = `${app.name || ''} ${app.publisher || ''} ${app.winget_id || ''}`.toLowerCase();
       return !search || hay.includes(search.toLowerCase());
     });
-  }, [matrix.apps, search, category]);
-
-  const hiddenSet = useMemo(() => new Set(hiddenWingetIds), [hiddenWingetIds]);
-
-  const visibleApps = useMemo(() => {
-    return filteredApps.filter((app) => !hiddenSet.has(app.winget_id));
-  }, [filteredApps, hiddenSet]);
+  }, [apps, search, category]);
 
   const installDeviceCountByWinget = useMemo(() => {
     const sets = new Map();
-    matrix.installations.forEach((inv) => {
+    installations.forEach((inv) => {
       const wid = inv?.winget_id;
       if (!wid) return;
       if (!sets.has(wid)) sets.set(wid, new Set());
@@ -245,169 +172,28 @@ export default function SoftwareManager() {
     const out = new Map();
     sets.forEach((set, wid) => out.set(wid, set.size));
     return out;
-  }, [matrix.installations]);
+  }, [installations]);
 
-  const orderedVisibleApps = useMemo(() => {
-    const enriched = visibleApps.map((app) => ({
-      app,
-      installCount: installDeviceCountByWinget.get(app.winget_id) || 0,
-    }));
-    const installed = enriched
-      .filter((e) => e.installCount > 0)
-      .sort((a, b) => {
-        if (b.installCount !== a.installCount) return b.installCount - a.installCount;
-        return String(a.app.name || '').localeCompare(String(b.app.name || ''), undefined, { sensitivity: 'base' });
-      });
-    const uninstalled = enriched
-      .filter((e) => e.installCount === 0)
-      .sort((a, b) => String(a.app.name || '').localeCompare(String(b.app.name || ''), undefined, { sensitivity: 'base' }));
-    const tail = showUninstalledApps ? uninstalled : [];
-    return [...installed, ...tail];
-  }, [visibleApps, installDeviceCountByWinget, showUninstalledApps]);
-
-  const installationsByKey = useMemo(() => {
-    const map = new Map();
-    matrix.installations.forEach((item) => {
-      map.set(keyFor(item.device_id, item.winget_id), item);
+  const sortedApps = useMemo(() => {
+    return [...filteredApps].sort((a, b) => {
+      const ca = installDeviceCountByWinget.get(a.winget_id) || 0;
+      const cb = installDeviceCountByWinget.get(b.winget_id) || 0;
+      if (cb !== ca) return cb - ca;
+      return String(a.name || '').localeCompare(String(b.name || ''), undefined, { sensitivity: 'base' });
     });
-    return map;
-  }, [matrix.installations]);
-
-  const commandStateByKey = useMemo(() => {
-    const map = new Map();
-    commands.forEach((cmd) => {
-      if (!cmd?.device_id || !cmd?.winget_id) return;
-      const k = keyFor(cmd.device_id, cmd.winget_id);
-      const current = map.get(k);
-      if (!current) {
-        map.set(k, cmd);
-        return;
-      }
-      if (new Date(cmd.created_at).getTime() > new Date(current.created_at).getTime()) {
-        map.set(k, cmd);
-      }
-    });
-    return map;
-  }, [commands]);
+  }, [filteredApps, installDeviceCountByWinget]);
 
   const activeApp = useMemo(() => {
-    return filteredApps.find((a) => String(a.id) === String(activeAppId)) || null;
-  }, [filteredApps, activeAppId]);
+    return sortedApps.find((a) => String(a.id) === String(activeAppId)) || null;
+  }, [sortedApps, activeAppId]);
 
-  const selectedCount = selected.size;
-
-  const toggleCell = (deviceId, wingetId, shiftPressed = false) => {
-    const apps = orderedVisibleApps.map((e) => e.app);
-    const deviceIndex = matrix.devices.findIndex((d) => d.id === deviceId);
-    const appIndex = apps.findIndex((a) => a.winget_id === wingetId);
-    if (deviceIndex === -1 || appIndex === -1) return;
-
-    const currentPoint = { deviceIndex, appIndex };
-    const currentKey = keyFor(deviceId, wingetId);
-
-    setSelected((prev) => {
-      const next = new Set(prev);
-
-      if (shiftPressed && lastAnchor) {
-        const minDevice = Math.min(lastAnchor.deviceIndex, currentPoint.deviceIndex);
-        const maxDevice = Math.max(lastAnchor.deviceIndex, currentPoint.deviceIndex);
-        const minApp = Math.min(lastAnchor.appIndex, currentPoint.appIndex);
-        const maxApp = Math.max(lastAnchor.appIndex, currentPoint.appIndex);
-
-        for (let d = minDevice; d <= maxDevice; d += 1) {
-          for (let a = minApp; a <= maxApp; a += 1) {
-            const device = matrix.devices[d];
-            const app = apps[a];
-            if (device && app) next.add(keyFor(device.id, app.winget_id));
-          }
-        }
-      } else if (next.has(currentKey)) {
-        next.delete(currentKey);
-      } else {
-        next.add(currentKey);
-      }
-
-      return next;
-    });
-
-    setLastAnchor(currentPoint);
-  };
-
-  const selectColumn = (wingetId, appId) => {
-    setSelected((prev) => {
-      const next = new Set(prev);
-      matrix.devices.forEach((device) => next.add(keyFor(device.id, wingetId)));
-      return next;
-    });
-    setActiveAppId(appId);
-  };
-
-  const selectRow = (deviceId) => {
-    setSelected((prev) => {
-      const next = new Set(prev);
-      orderedVisibleApps.forEach(({ app }) => next.add(keyFor(deviceId, app.winget_id)));
-      return next;
-    });
-  };
-
-  const toggleColumnVisibility = (wingetId) => {
-    setHiddenWingetIds((prev) => {
-      const currentlyHidden = prev.includes(wingetId);
-      if (currentlyHidden) {
-        return prev.filter((id) => id !== wingetId);
-      }
-      return [...prev, wingetId];
-    });
-    setSelected((prev) => {
-      const next = new Set(prev);
-      Array.from(next).forEach((cellKey) => {
-        const [, appWingetId] = cellKey.split('::');
-        if (appWingetId === wingetId) next.delete(cellKey);
-      });
-      return next;
-    });
-  };
-
-  const selectedPairs = useMemo(() => {
-    return Array.from(selected).map((cellKey) => {
-      const [deviceId, wingetId] = cellKey.split('::');
-      return { deviceId, wingetId };
-    });
-  }, [selected]);
-
-  const runBulkAction = async (commandType) => {
-    if (selectedPairs.length === 0) return;
-    setActionLoading(true);
-    try {
-      const byWinget = selectedPairs.reduce((acc, row) => {
-        if (!acc[row.wingetId]) acc[row.wingetId] = [];
-        acc[row.wingetId].push(row.deviceId);
-        return acc;
-      }, {});
-
-      let queuedTotal = 0;
-      const wingetIds = Object.keys(byWinget);
-      for (let i = 0; i < wingetIds.length; i += 1) {
-        const wingetId = wingetIds[i];
-        const payload = {
-          deviceIds: [...new Set(byWinget[wingetId])],
-          wingetId,
-          commandType,
-        };
-        const result = await api('/api/software/commands', { method: 'POST', body: payload });
-        queuedTotal += Number(result?.queued || 0);
-      }
-
-      setToast(`${queuedTotal} command${queuedTotal === 1 ? '' : 's'} queued.`);
-      setSelected(new Set());
-      setLastAnchor(null);
-      await loadData();
-    } catch (err) {
-      setToast(err.message || 'Failed to queue commands.');
-    } finally {
-      setActionLoading(false);
-    }
-  };
+  const appCommandHistory = useMemo(() => {
+    if (!activeApp) return [];
+    return commands
+      .filter((c) => c.winget_id === activeApp.winget_id)
+      .sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime())
+      .slice(0, 10);
+  }, [commands, activeApp]);
 
   const onAddApp = async (e) => {
     e.preventDefault();
@@ -442,85 +228,16 @@ export default function SoftwareManager() {
     }
   };
 
-  const cellStatus = (deviceId, wingetId) => {
-    const command = commandStateByKey.get(keyFor(deviceId, wingetId));
-    if (command && ['pending', 'running'].includes(command.status)) {
-      return { icon: 'spinner', tone: 'text-brand' };
-    }
-    if (command && command.status === 'failed') {
-      return { icon: 'failed', tone: 'text-red-600', latestVersion: null };
-    }
-
-    const installation = installationsByKey.get(keyFor(deviceId, wingetId));
-    if (!installation) return { icon: 'none', tone: 'text-slate-300' };
-    if (installation.update_available) {
-      return { icon: 'update', tone: 'text-amber-500', latestVersion: installation.latest_version || null };
-    }
-    return { icon: 'installed', tone: 'text-emerald-600', latestVersion: null };
-  };
-
-  const appCommandHistory = useMemo(() => {
-    if (!activeApp) return [];
-    return commands
-      .filter((c) => c.winget_id === activeApp.winget_id)
-      .sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime())
-      .slice(0, 10);
-  }, [commands, activeApp]);
-
-  const renderCell = (device, app) => {
-    const cellKey = keyFor(device.id, app.winget_id);
-    const isSelected = selected.has(cellKey);
-    const status = cellStatus(device.id, app.winget_id);
-
-    let content = null;
-    if (status.icon === 'installed') {
-      content = <span className="text-2xl font-bold leading-none text-emerald-600">✓</span>;
-    } else if (status.icon === 'update') {
-      content = (
-        <span className="flex flex-col items-center justify-center leading-none">
-          <span className="inline-flex min-w-[1.75rem] items-center justify-center rounded-full bg-amber-100 px-1 py-0.5 text-base font-bold text-amber-700 ring-1 ring-amber-200">
-            ↑
-          </span>
-          {status.latestVersion ? (
-            <span className="mt-1 max-w-[5rem] truncate text-[10px] font-semibold text-amber-800">{status.latestVersion}</span>
-          ) : null}
-        </span>
-      );
-    } else if (status.icon === 'failed') {
-      content = <span className="text-lg font-bold text-red-600">✗</span>;
-    } else if (status.icon === 'none') {
-      content = <span className="block h-6 w-6" aria-hidden />;
-    }
-
-    return (
-      <td key={cellKey} className="border-b border-fds-border p-0">
-        <button
-          type="button"
-          onClick={(e) => toggleCell(device.id, app.winget_id, e.shiftKey)}
-          className={`flex h-12 w-full items-center justify-center text-base transition ${status.tone} ${
-            isSelected ? 'bg-blue-50 ring-1 ring-inset ring-brand' : 'hover:bg-slate-50'
-          }`}
-        >
-          {status.icon === 'spinner' ? (
-            <span className="inline-block h-4 w-4 animate-spin rounded-full border-2 border-current border-t-transparent" />
-          ) : (
-            content
-          )}
-        </button>
-      </td>
-    );
-  };
-
   return (
     <div className="space-y-5">
       <div className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
         <SectionHeader
           className="mb-0"
           title="Software Manager"
-          description="Matrix view: green check when installed, amber badge when an update is available, blank when not installed."
+          description="Browse your app catalogue, open an app for details and recent commands, or add new Winget entries."
         />
-        <div className="flex w-full gap-3 lg:w-auto">
-          <div className="flex-1 lg:w-80">
+        <div className="flex w-full flex-wrap items-end gap-3 lg:w-auto">
+          <div className="min-w-0 flex-1 lg:w-80">
             <Input
               label="Search apps"
               placeholder="App name, publisher, winget id"
@@ -528,47 +245,9 @@ export default function SoftwareManager() {
               onChange={(e) => setSearch(e.target.value)}
             />
           </div>
-          <div className="relative flex flex-wrap items-end gap-2">
-            <label className="flex cursor-pointer items-center gap-2 rounded-lg border border-fds-border bg-white px-3 py-2 text-sm text-slate-700 shadow-sm ring-1 ring-slate-950/5">
-              <input
-                type="checkbox"
-                checked={showUninstalledApps}
-                onChange={(e) => setShowUninstalledApps(e.target.checked)}
-                className="h-4 w-4 rounded border-slate-300 text-brand focus:ring-brand"
-              />
-              Show uninstalled apps
-            </label>
-            <Button variant="outline" className="h-[42px]" onClick={() => setManageColumnsOpen((prev) => !prev)}>
-              Manage Columns
-            </Button>
-            <Button className="h-[42px]" onClick={() => setAddModalOpen(true)}>Add App</Button>
-            {manageColumnsOpen && (
-              <div className="absolute right-0 top-[46px] z-30 max-h-80 w-80 overflow-auto rounded-xl border border-fds-border bg-white p-3 shadow-xl ring-1 ring-slate-950/5">
-                <div className="mb-2 flex items-center justify-between">
-                  <p className="text-sm font-semibold text-slate-900">Visible App Columns</p>
-                  <button type="button" className="text-xs text-slate-500 hover:text-slate-700" onClick={() => setManageColumnsOpen(false)}>
-                    Close
-                  </button>
-                </div>
-                <div className="space-y-2">
-                  {matrix.apps.map((app) => {
-                    const checked = !hiddenSet.has(app.winget_id);
-                    return (
-                      <label key={app.id} className="flex items-center justify-between gap-2 rounded px-1 py-1 hover:bg-slate-50">
-                        <span className="truncate text-sm text-slate-700">{app.name}</span>
-                        <input
-                          type="checkbox"
-                          checked={checked}
-                          onChange={() => toggleColumnVisibility(app.winget_id)}
-                          className="h-4 w-4 rounded border-slate-300 text-brand focus:ring-brand"
-                        />
-                      </label>
-                    );
-                  })}
-                </div>
-              </div>
-            )}
-          </div>
+          <Button className="h-[42px]" onClick={() => setAddModalOpen(true)}>
+            Add App
+          </Button>
         </div>
       </div>
 
@@ -587,137 +266,53 @@ export default function SoftwareManager() {
         ))}
       </div>
 
-      <Card className="border-fds-border p-0 shadow-sm ring-1 ring-slate-950/5">
+      <Card className="border-fds-border p-6 shadow-sm ring-1 ring-slate-950/5">
         {loading ? (
-          <div className="p-8 text-sm text-slate-500">Loading software matrix...</div>
-        ) : visibleApps.length === 0 ? (
-          <div className="p-8 text-sm text-slate-500">No apps match your filters.</div>
-        ) : orderedVisibleApps.length === 0 ? (
-          <div className="p-8 text-sm text-slate-500">
-            All catalogue apps in this view are uninstalled on every device. Turn on &quot;Show uninstalled apps&quot; to list
-            those columns.
-          </div>
+          <p className="text-center text-sm text-slate-500">Loading catalogue…</p>
+        ) : sortedApps.length === 0 ? (
+          <p className="text-center text-sm text-slate-500">No apps match your filters.</p>
         ) : (
-          <>
-            <div className="hidden overflow-auto lg:block">
-              <table className="min-w-full border-collapse">
-                <thead className="sticky top-0 z-20 bg-white">
-                  <tr>
-                    <th className="sticky left-0 z-30 border-b border-r border-fds-border bg-white px-4 py-3 text-left text-[11px] font-bold uppercase tracking-wide text-slate-500">
-                      Devices
-                    </th>
-                    {orderedVisibleApps.map(({ app, installCount }) => {
-                      const greyHeader = showUninstalledApps && installCount === 0;
-                      const domain = domainForCatalogueApp(app);
-                      return (
-                        <th
-                          key={app.id}
-                          className={`min-w-[100px] max-w-[140px] border-b border-fds-border px-2 py-3 text-center ${
-                            greyHeader ? 'opacity-60' : ''
-                          }`}
-                        >
-                          <button
-                            type="button"
-                            className={`flex w-full flex-col items-center gap-1.5 rounded px-1 py-1 text-xs font-semibold text-slate-800 hover:bg-slate-50 ${
-                              greyHeader ? 'text-slate-400' : ''
-                            }`}
-                            onClick={() => selectColumn(app.winget_id, app.id)}
-                          >
-                            <AppFavicon domain={domain} />
-                            <div className="line-clamp-2 w-full leading-tight">{app.name}</div>
-                          </button>
-                        </th>
-                      );
-                    })}
-                  </tr>
-                </thead>
-                <tbody>
-                  {matrix.devices.map((device) => (
-                    <tr key={device.id} className="bg-white">
-                      <th className="sticky left-0 z-10 h-12 border-b border-r border-fds-border bg-white px-4 py-2 text-left align-middle">
-                        <button
-                          type="button"
-                          className="flex w-full items-center gap-2 rounded px-1 py-1 text-left hover:bg-slate-50"
-                          onClick={() => selectRow(device.id)}
-                        >
-                          <span className={`inline-block h-2 w-2 shrink-0 rounded-full ${statusColor(device.status)}`} />
-                          <span className="max-w-[160px] truncate text-sm font-medium text-slate-900">{device.name}</span>
-                        </button>
-                      </th>
-                      {orderedVisibleApps.map(({ app }) => renderCell(device, app))}
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-
-            <div className="space-y-4 p-4 lg:hidden">
-              {matrix.devices.map((device) => (
-                <div key={device.id} className="rounded-lg border border-fds-border bg-white p-3 shadow-sm ring-1 ring-slate-950/5">
-                  <button
-                    type="button"
-                    onClick={() => selectRow(device.id)}
-                    className="mb-3 flex w-full items-center gap-2 rounded px-1 py-1 text-left hover:bg-slate-50"
-                  >
-                    <span className={`inline-block h-2 w-2 rounded-full ${statusColor(device.status)}`} />
-                    <span className="font-semibold text-slate-900">{device.name}</span>
-                  </button>
-                  <div className="grid grid-cols-2 gap-2">
-                    {orderedVisibleApps.map(({ app, installCount }) => {
-                      const status = cellStatus(device.id, app.winget_id);
-                      const cellKey = keyFor(device.id, app.winget_id);
-                      const isSelected = selected.has(cellKey);
-                      const greyHeader = showUninstalledApps && installCount === 0;
-                      let right = null;
-                      if (status.icon === 'spinner') {
-                        right = <span className="inline-block h-3 w-3 shrink-0 animate-spin rounded-full border-2 border-current border-t-transparent" />;
-                      } else if (status.icon === 'installed') {
-                        right = <span className="text-2xl font-bold text-emerald-600">✓</span>;
-                      } else if (status.icon === 'update') {
-                        right = (
-                          <span className="flex shrink-0 flex-col items-end leading-none">
-                            <span className="inline-flex min-w-[1.5rem] items-center justify-center rounded-full bg-amber-100 px-1 text-base font-bold text-amber-700 ring-1 ring-amber-200">
-                              ↑
-                            </span>
-                            {status.latestVersion ? (
-                              <span className="max-w-[4rem] truncate text-[9px] font-semibold text-amber-900">{status.latestVersion}</span>
-                            ) : null}
-                          </span>
-                        );
-                      } else if (status.icon === 'failed') {
-                        right = <span className="text-base font-bold text-red-600">✗</span>;
-                      }
-                      return (
-                        <button
-                          key={cellKey}
-                          type="button"
-                          onClick={(e) => toggleCell(device.id, app.winget_id, e.shiftKey)}
-                          className={`flex items-center justify-between gap-1 rounded border px-2 py-2 text-xs ${
-                            isSelected ? 'border-brand bg-blue-50 ring-1 ring-brand' : 'border-fds-border bg-white'
-                          }`}
-                        >
-                          <span className={`min-w-0 flex-1 truncate text-left ${greyHeader ? 'text-slate-400' : 'text-slate-800'}`}>{app.name}</span>
-                          <span className={`flex shrink-0 items-center ${status.tone}`}>{right}</span>
-                        </button>
-                      );
-                    })}
+          <div className="grid gap-6 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5">
+            {sortedApps.map((app) => {
+              const installCount = installDeviceCountByWinget.get(app.winget_id) || 0;
+              return (
+                <button
+                  key={app.id}
+                  type="button"
+                  onClick={() => setActiveAppId(app.id)}
+                  className="flex flex-col items-center rounded-xl border border-transparent px-2 py-3 text-center transition hover:border-fds-border hover:bg-slate-50/80 focus:outline-none focus:ring-2 focus:ring-brand/30"
+                >
+                  <div className="flex min-h-[2.5rem] w-full flex-col items-center justify-center">
+                    <AppCatalogueIcon appName={app.name} />
                   </div>
-                </div>
-              ))}
-            </div>
-          </>
+                  <div className="mt-1 line-clamp-2 w-full text-xs font-medium text-slate-900">{app.name}</div>
+                  {installCount > 0 ? (
+                    <span className="mt-1 text-[10px] font-medium text-emerald-600">{installCount} device(s)</span>
+                  ) : (
+                    <span className="mt-1 text-[10px] text-slate-400">Not detected</span>
+                  )}
+                </button>
+              );
+            })}
+          </div>
         )}
       </Card>
 
       {activeApp && (
-        <div className="fixed inset-y-0 right-0 z-40 w-full max-w-md border-l border-slate-200 bg-white shadow-2xl">
-          <div className="flex items-center justify-between border-b border-slate-200 px-5 py-4">
+        <div className="fixed inset-y-0 right-0 z-40 w-full max-w-md border-l border-fds-border bg-white shadow-2xl">
+          <div className="flex items-center justify-between border-b border-fds-border px-5 py-4">
             <h2 className="text-lg font-semibold text-slate-900">{activeApp.name}</h2>
             <button type="button" onClick={() => setActiveAppId(null)} className="text-sm text-slate-500 hover:text-slate-800">
               Close
             </button>
           </div>
           <div className="space-y-4 overflow-auto p-5">
+            <div className="flex flex-col items-center border-b border-fds-border pb-4">
+              <div className="flex min-h-[3rem] items-center justify-center">
+                <AppCatalogueIcon appName={activeApp.name} />
+              </div>
+              <p className="mt-2 line-clamp-2 text-center text-xs font-medium text-slate-900">{activeApp.name}</p>
+            </div>
             <div>
               <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Publisher</p>
               <p className="text-sm text-slate-800">{activeApp.publisher || 'Unknown'}</p>
@@ -741,7 +336,7 @@ export default function SoftwareManager() {
               <div className="space-y-2">
                 {appCommandHistory.length === 0 && <p className="text-sm text-slate-500">No recent commands.</p>}
                 {appCommandHistory.map((cmd) => (
-                  <div key={cmd.id} className="rounded border border-slate-200 p-2">
+                  <div key={cmd.id} className="rounded border border-fds-border p-2">
                     <div className="flex items-center justify-between text-xs">
                       <span className="font-medium uppercase text-slate-700">{cmd.command_type}</span>
                       <span className="text-slate-500">{cmd.status}</span>
@@ -750,28 +345,6 @@ export default function SoftwareManager() {
                   </div>
                 ))}
               </div>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {selectedCount > 0 && (
-        <div className="fixed bottom-4 left-1/2 z-50 w-[95%] max-w-3xl -translate-x-1/2 rounded-xl bg-brand px-4 py-3 text-white shadow-xl">
-          <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-            <p className="text-sm font-semibold">{selectedCount} selected</p>
-            <div className="flex flex-wrap gap-2">
-              <Button variant="secondary" className="!bg-white !text-brand" disabled={actionLoading} onClick={() => runBulkAction('install')}>
-                Install
-              </Button>
-              <Button variant="secondary" className="!bg-white !text-brand" disabled={actionLoading} onClick={() => runBulkAction('update')}>
-                Update
-              </Button>
-              <Button variant="secondary" className="!bg-white !text-brand" disabled={actionLoading} onClick={() => runBulkAction('uninstall')}>
-                Uninstall
-              </Button>
-              <Button variant="secondary" className="!bg-white !text-brand" disabled={actionLoading} onClick={() => runBulkAction('update_all')}>
-                Update All
-              </Button>
             </div>
           </div>
         </div>
@@ -808,7 +381,9 @@ export default function SoftwareManager() {
                   className="w-full rounded-lg border border-slate-300 px-3 py-2.5 text-sm focus:border-brand focus:outline-none focus:ring-1 focus:ring-brand"
                 >
                   {CATEGORY_TABS.filter((tab) => tab !== 'All').map((tab) => (
-                    <option key={tab} value={tab}>{tab}</option>
+                    <option key={tab} value={tab}>
+                      {tab}
+                    </option>
                   ))}
                 </select>
               </label>
@@ -826,7 +401,9 @@ export default function SoftwareManager() {
                 Featured app
               </label>
               <div className="flex justify-end gap-2 pt-2">
-                <Button variant="outline" onClick={() => setAddModalOpen(false)}>Cancel</Button>
+                <Button variant="outline" onClick={() => setAddModalOpen(false)}>
+                  Cancel
+                </Button>
                 <Button type="submit" disabled={addAppLoading}>
                   {addAppLoading ? 'Adding...' : 'Add App'}
                 </Button>

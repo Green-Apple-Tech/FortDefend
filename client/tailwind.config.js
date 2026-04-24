@@ -10,7 +10,7 @@ export default {
           light: '#dbeafe',
         },
         fds: {
-          sidebar: '#0f172a',
+          sidebar: '#ffffff',
           page: '#f1f5f9',
           card: '#ffffff',
           border: '#e2e8f0',

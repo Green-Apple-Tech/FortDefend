@@ -197,13 +197,15 @@ export function AppLayout() {
     <div className="min-h-screen bg-fds-page">
       <Banner2FA />
       <div className="flex min-h-screen">
-        <aside className="fixed inset-y-0 left-0 z-40 hidden w-[220px] shrink-0 flex-col bg-fds-sidebar md:flex">
+        <aside className="fixed inset-y-0 left-0 z-40 hidden w-[220px] shrink-0 flex-col border-r border-fds-border bg-fds-sidebar shadow-sm md:flex">
           <div className="flex h-full flex-col px-3 py-5">
-            <Link to="/dashboard" className="mb-8 flex items-center gap-2 px-2 text-white">
-              <span className="flex h-9 w-9 items-center justify-center rounded-lg bg-blue-600 text-lg" aria-hidden>
-                🛡️
+            <Link to="/dashboard" className="mb-8 flex items-center gap-2.5 px-2 text-slate-900">
+              <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-brand text-white" aria-hidden>
+                <svg className="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                  <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z" />
+                </svg>
               </span>
-              <span className="text-lg font-bold tracking-tight">FortDefend</span>
+              <span className="text-lg font-bold tracking-tight text-slate-900">FortDefend</span>
             </Link>
 
             <nav className="flex flex-1 flex-col gap-6 overflow-y-auto">
@@ -215,7 +217,7 @@ export function AppLayout() {
                 if (!items.length) return null;
                 return (
                   <div key={section.label}>
-                    <p className="mb-2 px-2 text-[10px] font-bold uppercase tracking-wider text-slate-500">
+                    <p className="mb-2 px-2 text-[10px] font-semibold uppercase tracking-wider text-brand">
                       {section.label}
                     </p>
                     <div className="flex flex-col gap-0.5">
@@ -224,10 +226,10 @@ export function AppLayout() {
                           key={to}
                           to={to}
                           className={({ isActive }) =>
-                            `flex items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium transition ${
+                            `flex items-center gap-3 rounded-lg border-l-[3px] px-3 py-2 text-sm font-medium transition ${
                               isActive
-                                ? 'border-l-2 border-blue-500 bg-white/10 text-white'
-                                : 'border-l-2 border-transparent text-white/70 hover:bg-white/5 hover:text-white'
+                                ? 'border-brand bg-blue-50/80 text-brand'
+                                : 'border-transparent text-slate-600 hover:bg-blue-50/60 hover:text-slate-900'
                             }`
                           }
                         >
@@ -241,20 +243,20 @@ export function AppLayout() {
               })}
             </nav>
 
-            <div className="mt-auto border-t border-white/10 pt-4">
+            <div className="mt-auto border-t border-fds-border pt-4">
               <div className="flex items-center gap-3 px-2">
-                <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-blue-600 text-xs font-bold text-white">
+                <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-brand text-xs font-bold text-white">
                   {(user?.email || '?').charAt(0).toUpperCase()}
                 </div>
                 <div className="min-w-0 flex-1">
-                  <div className="truncate text-sm font-medium text-white">{user?.email || '—'}</div>
-                  {org?.name && <div className="truncate text-xs text-slate-400">{org.name}</div>}
+                  <div className="truncate text-sm font-medium text-slate-800">{user?.email || '—'}</div>
+                  {org?.name && <div className="truncate text-xs text-slate-500">{org.name}</div>}
                 </div>
               </div>
               <button
                 type="button"
                 onClick={() => logout()}
-                className="mt-3 w-full rounded-lg px-2 py-2 text-left text-sm text-slate-400 hover:bg-white/5 hover:text-white"
+                className="mt-3 w-full rounded-lg px-2 py-2 text-left text-sm text-slate-500 hover:bg-slate-50 hover:text-slate-800"
               >
                 Log out
               </button>
@@ -270,17 +272,17 @@ export function AppLayout() {
                 {crumbs.join(' · ')}
               </p>
             </div>
-            <div className="hidden items-center gap-3 sm:flex">
+            <div className="hidden items-center gap-4 sm:flex">
               <input
                 type="search"
                 placeholder="Search…"
-                className="w-48 rounded-lg border border-fds-border bg-slate-50 px-3 py-2 text-sm text-slate-800 placeholder:text-slate-400 focus:border-brand focus:outline-none focus:ring-2 focus:ring-brand/20 lg:w-64"
+                className="w-48 rounded-lg border border-fds-border bg-white px-3 py-2 text-sm text-slate-800 placeholder:text-slate-400 focus:border-brand focus:outline-none focus:ring-2 focus:ring-brand/20 lg:w-64"
                 readOnly
                 title="Fleet search coming soon"
               />
               <button
                 type="button"
-                className="relative rounded-lg p-2 text-slate-500 hover:bg-slate-100 hover:text-slate-800"
+                className="relative rounded-lg p-2 text-slate-500 hover:bg-slate-50 hover:text-slate-800"
                 title="Notifications"
               >
                 <svg className="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75">
@@ -288,15 +290,25 @@ export function AppLayout() {
                 </svg>
                 <span className="absolute right-1 top-1 h-2 w-2 rounded-full bg-danger ring-2 ring-white" />
               </button>
-              <div className="flex h-9 w-9 items-center justify-center rounded-full bg-brand text-xs font-bold text-white">
-                {(user?.email || '?').charAt(0).toUpperCase()}
+              <div className="flex items-center gap-3 border-l border-fds-border pl-4">
+                <div className="hidden text-right text-xs leading-tight lg:block">
+                  {org?.name && <div className="max-w-[10rem] truncate font-semibold text-slate-800">{org.name}</div>}
+                  <div className="max-w-[10rem] truncate text-slate-500">{user?.email || '—'}</div>
+                </div>
+                <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-brand text-xs font-bold text-white" title={user?.email || undefined}>
+                  {(user?.email || '?').charAt(0).toUpperCase()}
+                </div>
               </div>
             </div>
           </header>
 
           <header className="flex items-center justify-between border-b border-fds-border bg-white px-3 py-2 md:hidden">
             <Link to="/dashboard" className="flex items-center gap-2 font-bold text-slate-900">
-              <span className="text-lg">🛡️</span>
+              <span className="flex h-8 w-8 items-center justify-center rounded-lg bg-brand text-white">
+                <svg className="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                  <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z" strokeLinecap="round" strokeLinejoin="round" />
+                </svg>
+              </span>
               FortDefend
             </Link>
             <button type="button" onClick={() => logout()} className="text-sm font-medium text-brand">
@@ -322,7 +334,7 @@ export function AppLayout() {
             </div>
           </div>
 
-          <main className="flex-1 p-4 sm:p-6 lg:p-8">
+          <main className="flex-1 bg-fds-page p-4 sm:p-6 lg:p-8">
             <Outlet />
           </main>
         </div>

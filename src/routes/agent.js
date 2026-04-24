@@ -455,6 +455,7 @@ router.post('/heartbeat', async (req, res) => {
 
     const payload = req.body || {};
     const telemetry = payload.telemetry || {};
+    const installedApps = Array.isArray(payload.installedApps) ? payload.installedApps : [];
     const deviceName = payload.deviceName || payload.hostname || 'Unknown Device';
     const externalId = payload.deviceId || payload.machineGuid || payload.hostname || crypto.randomUUID();
     const source = 'agent';
@@ -475,7 +476,7 @@ router.post('/heartbeat', async (req, res) => {
       ? telemetry.rebootRequiredReason
       : null;
     const now = new Date();
-    const cpuUsagePct = toNum(telemetry.cpuUsagePct, existing?.cpu_usage_pct ?? null);
+    const cpuUsagePct = toNum(telemetry.cpuUsagePct ?? payload.cpuUsage, existing?.cpu_usage_pct ?? null);
     const ramUsagePct = toNum(telemetry.ramUsagePct, existing?.ram_usage_pct ?? null);
     const diskFreePct = toNum(telemetry.diskFreePct, null);
     const priorCpuSince = toDateOrNull(existing?.high_cpu_since);
@@ -486,15 +487,15 @@ router.post('/heartbeat', async (req, res) => {
       name: deviceName,
       hostname: payload.hostname || deviceName,
       serial: telemetry.serialNumber || payload.serialNumber || existing?.serial || null,
-      os: telemetry.osName || existing?.os || 'windows',
-      os_version: telemetry.osVersion || existing?.os_version || null,
+      os: telemetry.osName || payload.os || existing?.os || 'windows',
+      os_version: telemetry.osVersion || payload.osVersion || existing?.os_version || null,
       logged_in_user: telemetry.loggedInUser || existing?.logged_in_user || null,
       cpu_model: telemetry.cpuModel || existing?.cpu_model || null,
       cpu_usage_pct: cpuUsagePct,
-      ram_total_gb: toNum(telemetry.ramTotalGb, existing?.ram_total_gb ?? null),
+      ram_total_gb: toNum(telemetry.ramTotalGb ?? payload?.ram?.totalGb, existing?.ram_total_gb ?? null),
       ram_usage_pct: ramUsagePct,
-      disk_total_gb: toNum(telemetry.diskTotalGb, existing?.disk_total_gb ?? null),
-      disk_free_gb: toNum(telemetry.diskFreeGb, existing?.disk_free_gb ?? null),
+      disk_total_gb: toNum(telemetry.diskTotalGb ?? payload?.disk?.totalGb, existing?.disk_total_gb ?? null),
+      disk_free_gb: toNum(telemetry.diskFreeGb ?? payload?.disk?.freeGb, existing?.disk_free_gb ?? null),
       disk_usage_pct: toNum(telemetry.diskUsagePct, existing?.disk_usage_pct ?? null),
       disk_free_pct: diskFreePct,
       ip_address: telemetry.ipAddress || existing?.ip_address || null,
@@ -555,6 +556,43 @@ router.post('/heartbeat', async (req, res) => {
       await db('devices')
         .where('id', existing.id)
         .update({ ...updateFields, updated_at: new Date() });
+    }
+
+    if (installedApps.length > 0) {
+      const wingetIds = [...new Set(installedApps.map((a) => String(a?.Id || '').trim()).filter(Boolean))];
+      const known = wingetIds.length
+        ? await db('sm_apps')
+            .where('org_id', orgId)
+            .whereIn('winget_id', wingetIds)
+            .select('id', 'winget_id')
+        : [];
+      const knownByWinget = new Map(known.map((k) => [k.winget_id, k.id]));
+      const nowStamp = new Date();
+      for (const app of installedApps) {
+        const appName = String(app?.Name || '').trim() || 'Unknown';
+        const wingetId = app?.Id ? String(app.Id).trim() : null;
+        const installedVersion = app?.Version == null ? null : String(app.Version);
+        const latestVersion = app?.AvailableVersion == null ? null : String(app.AvailableVersion);
+        const updateAvailable = app?.update_available === true
+          || (!!latestVersion && !!installedVersion && latestVersion !== installedVersion);
+        const row = {
+          org_id: orgId,
+          device_id: deviceId,
+          app_name: appName,
+          winget_id: wingetId,
+          installed_version: installedVersion,
+          latest_version: latestVersion,
+          update_available: updateAvailable,
+          catalogue_app_id: wingetId ? knownByWinget.get(wingetId) || null : null,
+          last_scanned_at: nowStamp,
+          updated_at: nowStamp,
+        };
+        if (!wingetId) continue;
+        await db('sm_device_apps')
+          .insert({ ...row, created_at: nowStamp })
+          .onConflict(['org_id', 'device_id', 'winget_id'])
+          .merge(row);
+      }
     }
 
     const latestDevice = await db('devices').where({ id: deviceId, org_id: orgId }).first();

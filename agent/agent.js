@@ -8,6 +8,7 @@ const fetchImpl = typeof globalThis.fetch === 'function' ? globalThis.fetch.bind
 
 const { execFileSync, exec } = require('child_process');
 const fs = require('fs');
+const os = require('os');
 const path = require('path');
 const { promisify } = require('util');
 const execAsync = promisify(exec);
@@ -184,6 +185,72 @@ function runJson(command) {
   }
 }
 
+function commandExistsWin(command) {
+  try {
+    execFileSync('cmd.exe', ['/c', `${command} --version`], { encoding: 'utf8', windowsHide: true, timeout: 20000 });
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+function ensureWinget() {
+  if (commandExistsWin('winget')) return true;
+  try {
+    run('Add-AppxPackage -RegisterByFamilyName -MainPackage Microsoft.DesktopAppInstaller_8wekyb3d8bbwe');
+  } catch {
+    /* ignore */
+  }
+  return commandExistsWin('winget');
+}
+
+function fallbackInstalledApps() {
+  const pkgs = runJson('(Get-Package | Select-Object Name, Version | ConvertTo-Json -Depth 4)');
+  const arr = Array.isArray(pkgs) ? pkgs : (pkgs ? [pkgs] : []);
+  return arr.map((p) => ({
+    Name: String(p?.Name || '').trim() || 'Unknown',
+    Id: null,
+    Version: p?.Version != null ? String(p.Version) : null,
+    AvailableVersion: null,
+    update_available: false,
+  }));
+}
+
+function collectInstalledApps() {
+  const hasWinget = ensureWinget();
+  if (!hasWinget) return fallbackInstalledApps();
+  try {
+    const out = execFileSync(
+      'winget',
+      ['list', '--output', 'json', '--accept-source-agreements'],
+      { encoding: 'utf8', windowsHide: true, timeout: 90000, maxBuffer: 20 * 1024 * 1024 }
+    );
+    const parsed = JSON.parse(out);
+    const source = Array.isArray(parsed) ? parsed : (Array.isArray(parsed?.Sources) ? parsed.Sources : []);
+    const apps = [];
+    for (const block of source) {
+      const pkgs = Array.isArray(block?.Packages) ? block.Packages : [];
+      for (const p of pkgs) {
+        const name = String(p?.PackageIdentifier || p?.Name || '').trim() || 'Unknown';
+        const id = p?.PackageIdentifier || p?.Id || null;
+        const version = p?.Version || null;
+        const latest = p?.AvailableVersion || null;
+        apps.push({
+          Name: String(p?.Name || name),
+          Id: id ? String(id) : null,
+          Version: version ? String(version) : null,
+          AvailableVersion: latest ? String(latest) : null,
+          update_available: !!(latest && version && String(latest) !== String(version)),
+        });
+      }
+    }
+    return apps;
+  } catch (err) {
+    safeLog(`winget list failed, using Get-Package fallback: ${err.message}`);
+    return fallbackInstalledApps();
+  }
+}
+
 function buildHeartbeatHeaders(token, groupId) {
   const h = { 'Content-Type': 'application/json', 'x-org-token': token };
   const g = (groupId || '').trim();
@@ -205,7 +272,7 @@ function collectTelemetry() {
   const cpuModelInfo = runJson("(Get-CimInstance Win32_Processor | Select-Object -First 1 Name | ConvertTo-Json -Compress)");
   const serialInfo = runJson("(Get-CimInstance Win32_BIOS | Select-Object SerialNumber | ConvertTo-Json -Compress)");
   const csInfo = runJson("(Get-CimInstance Win32_ComputerSystem | Select-Object TotalPhysicalMemory,UserName | ConvertTo-Json -Compress)");
-  const diskInfo = runJson("(Get-CimInstance Win32_LogicalDisk -Filter \"DeviceID='C:'\" | Select-Object DeviceID,FreeSpace,Size | ConvertTo-Json -Compress)");
+  const diskInfo = runJson("(Get-WmiObject Win32_LogicalDisk -Filter \"DeviceID='C:'\" | Select-Object DeviceID,FreeSpace,Size | ConvertTo-Json -Compress)");
   const ipInfo = runJson("(Get-NetIPAddress -AddressFamily IPv4 -ErrorAction SilentlyContinue | Where-Object {$_.IPAddress -notlike '169.254.*' -and $_.PrefixOrigin -ne 'WellKnown'} | Select-Object -First 1 IPAddress | ConvertTo-Json -Compress)");
   const defenderInfo = runJson("(Get-MpComputerStatus | Select-Object AMServiceEnabled,RealTimeProtectionEnabled | ConvertTo-Json -Compress)");
   const cpuUsageRaw = run("Get-Counter '\\Processor(_Total)\\% Processor Time' | Select-Object -ExpandProperty CounterSamples | Select-Object -First 1 CookedValue");
@@ -240,7 +307,18 @@ function collectTelemetry() {
 
   return {
     collectedAt: new Date().toISOString(),
-    hostname: process.env.COMPUTERNAME || 'windows-device',
+    deviceName: os.hostname(),
+    hostname: os.hostname(),
+    os: String(osInfo?.Caption || 'Windows'),
+    osVersion: os.release() || osVersionText || null,
+    disk: {
+      freeGb: Number.isFinite(diskFreeGb) ? Number(diskFreeGb.toFixed(2)) : null,
+      totalGb: Number.isFinite(diskTotalGb) ? Number(diskTotalGb.toFixed(2)) : null,
+    },
+    ram: {
+      totalGb: Number.isFinite(totalRamGb) ? Number(totalRamGb.toFixed(2)) : null,
+    },
+    cpuUsage: Number.isFinite(cpuUsagePct) ? Math.max(0, Math.min(100, Number(cpuUsagePct.toFixed(2)))) : null,
     pendingUpdates: run('winget upgrade --include-unknown | Out-String'),
     localUsers: run('Get-LocalUser | Select-Object Name,Enabled,PasswordLastSet | ConvertTo-Json -Depth 4'),
     disk: run('Get-WmiObject Win32_LogicalDisk | Select-Object DeviceID,FreeSpace,Size | ConvertTo-Json -Depth 4'),
@@ -250,6 +328,7 @@ function collectTelemetry() {
     threats: run('Get-MpThreatDetection | Select-Object -First 30 | ConvertTo-Json -Depth 6'),
     wifiSecurity: run('netsh wlan show interfaces | Out-String'),
     wazuhAlerts: fs.existsSync('C:\\Program Files (x86)\\ossec-agent\\') ? 'Wazuh agent directory found' : 'Wazuh agent not found',
+    installedApps: collectInstalledApps(),
     telemetry: {
       batteryLevel,
       batteryStatus: batteryStatusText,
@@ -275,7 +354,7 @@ function collectTelemetry() {
       ipAddress: String(ipInfo?.IPAddress || '').trim() || null,
       serialNumber: String(serialInfo?.SerialNumber || '').trim() || null,
       osName: String(osInfo?.Caption || '').trim() || null,
-      osVersion: osVersionText || null,
+      osVersion: os.release() || osVersionText || null,
       osOutdated,
       securityAgentRunning,
       agentVersion: resolveCredentials().version || '1.0.0',
@@ -465,4 +544,10 @@ function runHeartbeatLoop() {
     });
 }
 
+try {
+  const wingetReady = ensureWinget();
+  safeLog(`winget startup check: ${wingetReady ? 'available' : 'not available, fallback mode'}`);
+} catch (err) {
+  safeLog(`winget startup check failed: ${err.message}`);
+}
 runHeartbeatLoop();

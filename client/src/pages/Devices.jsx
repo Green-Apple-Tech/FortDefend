@@ -55,25 +55,14 @@ function getLastSeen(d) {
 }
 
 function deriveStatus(d) {
-  const s = d.status;
-  if (s && ['online', 'offline', 'warning', 'alert'].includes(String(s).toLowerCase())) {
-    return String(s).toLowerCase();
-  }
   const critical = (d.alerts || []).some((a) => String(a.severity).toLowerCase() === 'critical');
   if (critical) return 'alert';
-  const hasWarn = (d.alerts || []).some(
-    (a) => String(a.severity).toLowerCase() === 'high' || String(a.severity).toLowerCase() === 'warning'
-  );
-  const c = String(d.compliance || '').toLowerCase();
-  if (c && (c.includes('noncompliant') || c.includes('not compliant'))) {
-    return 'warning';
-  }
-  if (hasWarn) return 'warning';
   const last = getLastSeen(d);
   if (!last) return 'offline';
-  const days = (Date.now() - new Date(last).getTime()) / 86400000;
-  if (days > 7) return 'offline';
-  return 'online';
+  const ageMin = (Date.now() - new Date(last).getTime()) / 60000;
+  if (ageMin <= 5) return 'online';
+  if (ageMin <= 60) return 'warning';
+  return 'offline';
 }
 
 function statusDotClass(status) {

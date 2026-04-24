@@ -83,7 +83,7 @@ router.get('/matrix', async (req, res, next) => {
         .where('org_id', req.user.orgId)
         .select('id', 'name', 'winget_id', 'category', 'publisher')
         .orderBy('name', 'asc'),
-      db('sm_installations')
+      db('sm_device_apps')
         .where('org_id', req.user.orgId)
         .select('device_id', 'winget_id', 'installed_version', 'latest_version', 'update_available', 'last_scanned_at'),
     ]);

@@ -304,11 +304,16 @@ export default function SoftwareManager() {
     if (command && ['pending', 'running'].includes(command.status)) {
       return { icon: 'spinner', tone: 'text-brand' };
     }
+    if (command && command.status === 'failed') {
+      return { icon: 'failed', tone: 'text-red-600', latestVersion: null };
+    }
 
     const installation = installationsByKey.get(keyFor(deviceId, wingetId));
     if (!installation) return { icon: 'none', tone: 'text-gray-400' };
-    if (installation.update_available) return { icon: 'update', tone: 'text-amber-500' };
-    return { icon: 'installed', tone: 'text-emerald-600' };
+    if (installation.update_available) {
+      return { icon: 'update', tone: 'text-amber-500', latestVersion: installation.latest_version || null };
+    }
+    return { icon: 'installed', tone: 'text-emerald-600', latestVersion: null };
   };
 
   const appCommandHistory = useMemo(() => {
@@ -326,7 +331,8 @@ export default function SoftwareManager() {
 
     let icon = '—';
     if (status.icon === 'installed') icon = '✓';
-    if (status.icon === 'update') icon = '↑';
+    if (status.icon === 'update') icon = `↑${status.latestVersion ? ` ${status.latestVersion}` : ''}`;
+    if (status.icon === 'failed') icon = '✗';
 
     return (
       <td key={cellKey} className="border-b border-gray-100 p-0">
@@ -487,7 +493,15 @@ export default function SoftwareManager() {
                         >
                           <span className="truncate text-left">{app.name}</span>
                           <span className={status.tone}>
-                            {status.icon === 'spinner' ? <span className="inline-block h-3 w-3 animate-spin rounded-full border-2 border-current border-t-transparent" /> : status.icon === 'installed' ? '✓' : status.icon === 'update' ? '↑' : '—'}
+                            {status.icon === 'spinner'
+                              ? <span className="inline-block h-3 w-3 animate-spin rounded-full border-2 border-current border-t-transparent" />
+                              : status.icon === 'installed'
+                                ? '✓'
+                                : status.icon === 'update'
+                                  ? `↑${status.latestVersion ? ` ${status.latestVersion}` : ''}`
+                                  : status.icon === 'failed'
+                                    ? '✗'
+                                    : '—'}
                           </span>
                         </button>
                       );

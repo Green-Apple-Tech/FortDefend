@@ -96,6 +96,80 @@ function buildInstallScript(baseUrl, orgId, groupId) {
   return src;
 }
 
+/**
+ * One-file installer: hardcoded org/group, downloads EXE, writes ProgramData\\FortDefend\\config.json, registers task.
+ */
+function buildOneClickInstallerScript({ baseUrl, orgId, groupId, groupName }) {
+  const b = baseUrl.replace(/\/$/, '');
+  const qs = new URLSearchParams();
+  qs.set('org', orgId);
+  if (groupId) qs.set('group', groupId);
+  const selfUrl = `${b}/api/agent/installer?${qs.toString()}`;
+  const downloadUrl = `${b}/api/agent/download`;
+  const cfg = {
+    orgToken: orgId,
+    groupId: groupId || '',
+    groupName: groupName || 'General',
+    serverUrl: b,
+    heartbeatInterval: 30,
+    version: '1.0.0',
+  };
+  const configJson = JSON.stringify(cfg, null, 2);
+  const escSingle = (s) => String(s).replace(/'/g, "''");
+  return `# FortDefend one-click installer (generated — do not edit; re-download to change org/group)
+$ErrorActionPreference = 'Stop'
+
+function Test-IsAdministrator {
+  $id = [Security.Principal.WindowsIdentity]::GetCurrent()
+  $p = [Security.Principal.WindowsPrincipal]$id
+  return $p.IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)
+}
+
+if (-not (Test-IsAdministrator)) {
+  Write-Host 'FortDefend: elevation required. Re-launching as administrator…' -ForegroundColor Yellow
+  $u = '${escSingle(selfUrl)}'
+  $arg = "-NoProfile -ExecutionPolicy Bypass -Command \`"& { iex (irm -UseBasicParsing '$u') }\`""
+  Start-Process -FilePath powershell.exe -Verb RunAs -ArgumentList $arg
+  exit
+}
+
+$DownloadUrl = '${escSingle(downloadUrl)}'
+$InstallDir = 'C:\\ProgramData\\FortDefend'
+$AgentPath = Join-Path $InstallDir 'FortDefendAgent.exe'
+$ConfigPath = Join-Path $InstallDir 'config.json'
+$LogDir = Join-Path $InstallDir 'logs'
+
+Write-Host 'FortDefend: preparing directories…' -ForegroundColor Cyan
+New-Item -ItemType Directory -Force -Path $InstallDir, $LogDir | Out-Null
+
+Write-Host 'FortDefend: downloading FortDefendAgent.exe…' -ForegroundColor Cyan
+Invoke-WebRequest -Uri $DownloadUrl -OutFile $AgentPath -UseBasicParsing
+if (-not (Test-Path $AgentPath)) { throw 'Download failed: FortDefendAgent.exe not found' }
+
+$ConfigJson = @'
+${configJson}
+'@
+Set-Content -Path $ConfigPath -Value $ConfigJson -Encoding utf8
+Write-Host 'FortDefend: wrote config.json' -ForegroundColor Cyan
+
+$TaskName = 'FortDefend Agent'
+Unregister-ScheduledTask -TaskName $TaskName -Confirm:$false -ErrorAction SilentlyContinue
+$action = New-ScheduledTaskAction -Execute $AgentPath -WorkingDirectory $InstallDir
+$trBoot = New-ScheduledTaskTrigger -AtStartup
+$trRep = New-ScheduledTaskTrigger -Once -At (Get-Date) -RepetitionInterval (New-TimeSpan -Minutes 15) -RepetitionDuration (New-TimeSpan -Days 3650)
+$settings = New-ScheduledTaskSettingsSet -AllowStartIfOnBatteries -DontStopIfGoingOnBatteries -StartWhenAvailable
+$principal = New-ScheduledTaskPrincipal -UserId 'S-1-5-18' -LogonType ServiceAccount -RunLevel Highest
+Write-Host 'FortDefend: registering scheduled task…' -ForegroundColor Cyan
+Register-ScheduledTask -TaskName $TaskName -Action $action -Trigger @($trBoot, $trRep) -Settings $settings -Principal $principal -Force
+
+Write-Host 'FortDefend: starting agent…' -ForegroundColor Cyan
+Start-Process -FilePath $AgentPath -WorkingDirectory $InstallDir -WindowStyle Hidden
+Start-ScheduledTask -TaskName $TaskName
+
+Write-Host 'FortDefend installed successfully!' -ForegroundColor Green
+`;
+}
+
 // GET /api/agent/install.ps1?org=UUID&group= (optional) — install.ps1 with injected URLs (text/plain)
 router.get('/install.ps1', async (req, res) => {
   try {
@@ -158,6 +232,46 @@ router.get('/config.json', async (req, res, next) => {
     return res.status(200).send(`${JSON.stringify(body, null, 2)}\n`);
   } catch (err) {
     return next(err);
+  }
+});
+
+// GET /api/agent/installer?org=ORG_ID&group=GROUP_ID — one-file .ps1 with org/group baked in (downloads EXE, writes config, task)
+router.get('/installer', async (req, res) => {
+  try {
+    const org = String(req.query.org || '').trim();
+    if (!org) {
+      res.setHeader('Content-Type', 'text/plain; charset=utf-8');
+      return res.status(400).send('# Error: add ?org=<organization-id> (optional &group=)');
+    }
+    const group = String(req.query.group || '').trim();
+    const check = await resolveOrgAndGroupForInstall(org, group || null);
+    if (check.error) {
+      res.setHeader('Content-Type', 'text/plain; charset=utf-8');
+      return res.status(check.error).send(`# Error: ${check.message}`);
+    }
+    let baseUrl = (process.env.APP_URL || '').trim().replace(/\/$/, '');
+    if (!baseUrl) {
+      baseUrl = `${req.protocol}://${req.get('host')}`;
+    }
+    let groupName = 'General';
+    if (group) {
+      const g = await db('groups').where({ id: group, org_id: org }).first();
+      if (g && g.name) groupName = String(g.name);
+    }
+    res.setHeader('Content-Type', 'text/plain; charset=utf-8');
+    res.setHeader('Content-Disposition', 'attachment; filename="FortDefend-Install.ps1"');
+    return res.send(
+      buildOneClickInstallerScript({
+        baseUrl,
+        orgId: org,
+        groupId: group || '',
+        groupName,
+      }),
+    );
+  } catch (err) {
+    console.error('installer error:', err);
+    res.setHeader('Content-Type', 'text/plain; charset=utf-8');
+    return res.status(500).send('# Error: failed to generate installer');
   }
 });
 

@@ -61,18 +61,12 @@ function CodeBlock({ value, copyLabel = 'Copy' }) {
   );
 }
 
-function copyToClipboard(text, onDone) {
-  if (!text) return;
-  navigator.clipboard.writeText(text).then(onDone).catch(() => {});
-}
-
 export default function Install() {
   const [tab, setTab] = useState('windows');
   const [data, setData] = useState(null);
   const [loadError, setLoadError] = useState(null);
   const [selectedGroupId, setSelectedGroupId] = useState('');
   const [groupTree, setGroupTree] = useState([]);
-  const [psCopied, setPsCopied] = useState(false);
 
   const load = useCallback(async () => {
     try {
@@ -133,23 +127,14 @@ export default function Install() {
     );
   }, [data?.token, selectedGroupId]);
 
-  const windowsAgentConfigUrl = useMemo(() => {
+  const windowsInstallerUrl = useMemo(() => {
     const t = data?.token;
     if (!t) return '';
     const p = new URLSearchParams();
     p.set('org', t);
     if (selectedGroupId) p.set('group', selectedGroupId);
-    return `/api/agent/config.json?${p.toString()}`;
+    return `/api/agent/installer?${p.toString()}`;
   }, [data?.token, selectedGroupId]);
-
-  // GET /api/orgs/me/enrollment: { token, installUrl, psCommand } with psCommand = iex (irm '.../api/agent/install.ps1?org=...')
-  const psOneliner = data?.psCommand
-    ? data.psCommand
-    : data?.installUrl
-      ? `iex (irm '${data.installUrl}')`
-      : links.installScript
-        ? `Invoke-WebRequest -Uri '${links.installScript}' -OutFile ($env:TEMP + '\\\\fortdefend-install.ps1') -UseBasicParsing; Start-Process powershell -Verb RunAs -ArgumentList '-NoProfile','-ExecutionPolicy','Bypass','-File',($env:TEMP + '\\\\fortdefend-install.ps1')`
-        : '';
 
   const macCmd = links.macPkg
     ? `curl -fSL '${links.macPkg}' -o /tmp/fortdefend.pkg && sudo installer -pkg /tmp/fortdefend.pkg -target /`
@@ -222,71 +207,26 @@ export default function Install() {
         <Card>
           <h2 className="text-lg font-semibold text-gray-900">Windows agent</h2>
           <p className="mt-1 text-sm text-gray-600">
-            Run the command below in PowerShell on the target PC. You will be prompted to allow an elevated (Administrator)
-            window so the install can complete.
+            One download installs the agent with your org and group, writes configuration under{' '}
+            <code className="rounded bg-gray-100 px-1">C:\ProgramData\FortDefend</code>, and registers a startup scheduled
+            task. You will be prompted for administrator approval when the script runs.
           </p>
-          <p className="mt-3 rounded-lg border border-amber-200 bg-amber-50/90 px-3 py-2.5 text-sm text-amber-950">
-            Windows agent installer coming soon. Use the PowerShell command below to enroll now.
-          </p>
-          <div className="mt-4 flex flex-wrap items-center gap-3">
+          <div className="mt-4">
             <a
-              href="/api/agent/download"
-              className={btnPrimary}
+              href={windowsInstallerUrl || '#'}
+              className={!windowsInstallerUrl ? `${btnPrimary} pointer-events-none opacity-50` : btnPrimary}
               download
             >
-              Download Agent (.exe)
-            </a>
-            <a
-              href={windowsAgentConfigUrl || '#'}
-              className={!windowsAgentConfigUrl ? `${btnOutline} pointer-events-none opacity-50` : btnOutline}
-              download
-            >
-              Download Config
+              Download Installer (.ps1)
             </a>
           </div>
-          {windowsAgentConfigUrl && (
-            <div className="mt-3 space-y-2 text-sm text-gray-600">
-              <p>
-                <span className="font-medium text-gray-900">Manual install:</span> Download both files to the{' '}
-                <strong>same folder</strong>, then run <strong>FortDefendAgent.exe as Administrator</strong>.
-              </p>
-              <p className="rounded-md border border-gray-200 bg-gray-50/90 px-3 py-2 text-gray-700">
-                The config file tells the agent which organization and group this device belongs to, the FortDefend server
-                URL, and how often to check in. You can also use the PowerShell one-liner below to install and register
-                via the registry instead.
-              </p>
-            </div>
-          )}
-          <h3 className="mt-6 text-sm font-semibold text-gray-900">PowerShell (copy and run as Administrator)</h3>
-          <p className="mt-1 text-xs text-gray-600">
-            One line: <code className="rounded bg-gray-100 px-1">iex (irm &apos;…&apos;)</code> fetches the script and runs it. The URL is in
-            single quotes so <code className="rounded bg-gray-100 px-1">&amp;</code> in query strings is not a problem. Installs Node if needed, drops
-            the agent under <code className="rounded bg-gray-100 px-1">C:\ProgramData\FortDefend</code>, and schedules it every 15 minutes.
-          </p>
-          <div className="mt-3">
-            <button
-              type="button"
-              disabled={!psOneliner}
-              onClick={() => {
-                copyToClipboard(psOneliner, () => {
-                  setPsCopied(true);
-                  window.setTimeout(() => setPsCopied(false), 2500);
-                });
-              }}
-              className="w-full rounded-lg bg-brand px-4 py-3.5 text-base font-semibold text-white shadow-md transition hover:bg-[#144a85] focus:outline-none focus:ring-2 focus:ring-brand focus:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50 sm:max-w-md"
-            >
-              {psCopied ? 'Copied' : 'Copy command'}
-            </button>
-          </div>
-          {psOneliner && (
-            <div className="mt-4 rounded-xl border-2 border-gray-800 bg-[#0d1117] shadow-inner">
-              <pre className="max-h-80 min-h-[8rem] overflow-auto p-4 pl-4 pr-4 text-left font-mono text-sm leading-relaxed text-gray-100 [word-break:break-word] sm:text-base">
-                {psOneliner}
-              </pre>
-            </div>
-          )}
-          {!psOneliner && (
-            <p className="mt-4 text-sm text-gray-500">Loading enrollment command…</p>
+          {windowsInstallerUrl ? (
+            <p className="mt-4 text-sm text-gray-700">
+              Right-click the downloaded file and select <strong>Run with PowerShell as Administrator</strong>. When
+              finished, you should see <strong>FortDefend installed successfully!</strong> in the window.
+            </p>
+          ) : (
+            <p className="mt-3 text-sm text-gray-500">Load enrollment data above to generate the installer link.</p>
           )}
           <p className="mt-4 text-sm text-gray-700">
             <span className="font-medium text-gray-900">System requirements:</span> Windows 10/11, Windows Server 2016+

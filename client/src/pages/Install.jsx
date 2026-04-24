@@ -16,6 +16,10 @@ const TABS = [
   { id: 'mac', label: 'Mac' },
 ];
 
+/** Replace with your published extension ID from the Chrome Web Store / Google Admin. */
+const FORTDEFEND_EXTENSION_ID = 'FORTDEFEND_EXTENSION_ID';
+const CHROME_WEB_STORE_URL = 'https://chrome.google.com/webstore/detail/fortdefend/FORTDEFEND_EXTENSION_ID';
+
 function CopyInline({ text, label = 'Copy' }) {
   return (
     <button
@@ -115,7 +119,19 @@ export default function Install() {
 
   const enrolled = data?.deviceCount ?? 0;
   const links = data?.links || {};
-  const extensionId = data?.extensionId || 'jpchjpcgcldplgfdjclgfljegdopkphc';
+  const chromeManagedConfig = useMemo(() => {
+    const t = data?.token;
+    if (!t) return '';
+    return JSON.stringify(
+      {
+        orgToken: t,
+        groupId: selectedGroupId || '',
+        autoEnroll: true,
+      },
+      null,
+      2,
+    );
+  }, [data?.token, selectedGroupId]);
 
   // GET /api/orgs/me/enrollment: { token, installUrl, psCommand } with psCommand = iex (irm '.../api/agent/install.ps1?org=...')
   const psOneliner = data?.psCommand
@@ -241,47 +257,120 @@ export default function Install() {
       )}
 
       {tab === 'chromebook' && (
-        <Card>
-          <h2 className="text-lg font-semibold text-gray-900">Chrome extension</h2>
-          <p className="mt-1 text-sm text-gray-600">
-            Or deploy via Google Admin Console to all devices at once.
-          </p>
-          <div className="mt-4 flex flex-wrap gap-3">
-            <a
-              href={data?.chromeWebStoreUrl || '#'}
-              target="_blank"
-              rel="noreferrer"
-              className={!data?.chromeWebStoreUrl ? `${btnPrimary} pointer-events-none opacity-50` : btnPrimary}
-            >
-              Install Chrome Extension
-            </a>
-            <a
-              href={links.extensionCrx || '#'}
-              className={!links.extensionCrx ? `${btnOutline} pointer-events-none opacity-50` : btnOutline}
-            >
-              Download Extension (.crx)
-            </a>
-          </div>
-          <p className="mt-3 text-sm text-gray-700">
-            <span className="font-medium">Extension ID (placeholder):</span>{' '}
-            <code className="rounded bg-gray-100 px-1.5 py-0.5 text-xs text-gray-800">{extensionId}</code>
-            <CopyInline text={extensionId} label="Copy ID" />
-          </p>
-          {data?.googleAdminPolicyJson && (
-            <>
-              <h3 className="mt-6 text-sm font-semibold text-gray-900">Google Admin Console — force-install policy (JSON)</h3>
-              <p className="mt-1 text-xs text-gray-600">Apply under Apps → Google Workspace → Additional Google services → Chrome Management.</p>
-              <CodeBlock value={data.googleAdminPolicyJson} copyLabel="Copy JSON" />
-            </>
-          )}
-          {links.extensionCrx && (
-            <p className="mt-3 flex flex-wrap items-center gap-2 text-xs text-gray-500">
-              <span className="font-medium text-gray-700">.crx URL:</span>
-              <span className="break-all">{links.extensionCrx}</span>
-              <CopyInline text={links.extensionCrx} />
+        <div className="space-y-6">
+          <Card>
+            <h2 className="text-lg font-semibold text-gray-900">For Google Admin (recommended)</h2>
+            <p className="mt-1 text-sm text-gray-600">
+              Deploy the FortDefend extension to every managed Chromebook using the same org token and optional group. Best
+              for schools and MSPs.
             </p>
-          )}
-        </Card>
+            <p className="mt-3 text-sm text-gray-700">
+              <span className="font-medium">Extension ID:</span>{' '}
+              <code className="rounded bg-gray-100 px-1.5 py-0.5 text-xs text-gray-800">{FORTDEFEND_EXTENSION_ID}</code>
+              <CopyInline text={FORTDEFEND_EXTENSION_ID} label="Copy ID" />
+            </p>
+            <p className="mt-2 text-xs text-gray-500">
+              In Google Admin: <strong>Devices</strong> → <strong>Chrome</strong> → <strong>Apps &amp; Extensions</strong>{' '}
+              → <strong>Users &amp; browsers</strong> (or the OU you use). Add by extension ID, then set{' '}
+              <strong>Installation policy</strong> to <em>Force install + pin</em> (or <em>Force install</em>).
+            </p>
+            <h3 className="mt-5 text-sm font-semibold text-gray-900">Managed configuration (paste in Admin or policy JSON)</h3>
+            <p className="mt-1 text-xs text-gray-600">
+              Under the extension, open <strong>Managed configuration</strong> and paste the JSON below (it includes
+              this page&apos;s org token and the selected group). This lets devices auto-enroll without manual token entry.
+            </p>
+            {chromeManagedConfig ? (
+              <CodeBlock value={chromeManagedConfig} copyLabel="Copy managed JSON" />
+            ) : (
+              <p className="mt-2 text-sm text-amber-800">Load enrollment data above to generate the JSON.</p>
+            )}
+            <p className="mt-3 text-sm text-gray-700">
+              <a
+                className="font-medium text-brand hover:underline"
+                href="/api/enrollment/managed-schema"
+                target="_blank"
+                rel="noreferrer"
+                download
+              >
+                Download managed_schema.json
+              </a>
+              <span className="text-gray-500"> — for reference or custom policy hosts.</span>
+            </p>
+            <h3 className="mt-5 text-sm font-semibold text-gray-900">Step-by-step (what you&apos;ll see)</h3>
+            <ol className="mt-2 list-decimal space-y-2 pl-5 text-sm text-gray-700">
+              <li>
+                <span className="text-gray-900">Select organisational unit</span> — In Apps &amp; extensions, the left
+                tree shows your domain and OUs; pick the OU that should receive FortDefend.
+              </li>
+              <li>
+                <span className="text-gray-900">Add app</span> — Yellow plus → <em>Add from Chrome Web Store</em> and search
+                by extension ID, or <em>Add by extension ID</em> and paste <code className="text-xs">FORTDEFEND_EXTENSION_ID</code>.
+              </li>
+              <li>
+                <span className="text-gray-900">Force install</span> — Set policy so the app installs for every user
+                (typical: &quot;Force install&quot; on user-level apps).
+              </li>
+              <li>
+                <span className="text-gray-900">Managed configuration</span> — Expand the extension row → paste the
+                JSON from above (or configure key/value: <code className="text-xs">orgToken</code>, optional{' '}
+                <code className="text-xs">groupId</code>, <code className="text-xs">autoEnroll</code>: true).
+              </li>
+              <li>
+                <span className="text-gray-900">Save</span> — Policy can take a short time to apply; new sign-ins and
+                restarts pick up the extension. Devices should appear in FortDefend with no manual token.
+              </li>
+            </ol>
+            {links.extensionCrx && (
+              <p className="mt-4 flex flex-wrap items-center gap-2 text-xs text-gray-500">
+                <span className="font-medium text-gray-700">.crx for testing (optional):</span>
+                <span className="break-all">{links.extensionCrx}</span>
+                <CopyInline text={links.extensionCrx} />
+              </p>
+            )}
+          </Card>
+
+          <Card>
+            <h2 className="text-lg font-semibold text-gray-900">Individual install</h2>
+            <p className="mt-1 text-sm text-gray-600">For a single device or quick testing. Install the extension, then
+              paste your org token in the extension&apos;s enrollment screen.</p>
+            <div className="mt-4 flex flex-wrap gap-3">
+              <a
+                href={data?.chromeWebStoreUrl || CHROME_WEB_STORE_URL}
+                target="_blank"
+                rel="noreferrer"
+                className={btnPrimary}
+              >
+                Chrome Web Store
+              </a>
+              {links.extensionCrx && (
+                <a href={links.extensionCrx} className={btnOutline} target="_blank" rel="noreferrer">
+                  Download .crx
+                </a>
+              )}
+            </div>
+            <p className="mt-3 text-sm text-gray-700">
+              <span className="font-medium">Org token (from this page, after you load it):</span>{' '}
+              {data?.token ? (
+                <>
+                  <code className="rounded bg-gray-100 px-1.5 py-0.5 text-xs text-gray-800 break-all">{data.token}</code>
+                  <CopyInline text={data.token} label="Copy token" />
+                </>
+              ) : (
+                <span className="text-gray-500">—</span>
+              )}
+            </p>
+            <h3 className="mt-4 text-sm font-semibold text-gray-900">Manual token entry</h3>
+            <ol className="mt-1 list-decimal space-y-1.5 pl-5 text-sm text-gray-600">
+              <li>Install FortDefend from the Web Store (or load unpacked for development).</li>
+              <li>On first run the extension opens a tab asking for an organisation token (or open the
+                <span className="font-medium"> Options </span> page for this extension from the toolbar menu).</li>
+              <li>
+                Copy your org token from the box above, paste it, and submit. The extension calls{' '}
+                <code className="text-xs">/api/enrollment/verify-token</code> to validate, then registers the device.
+              </li>
+            </ol>
+          </Card>
+        </div>
       )}
 
       {tab === 'android' && (

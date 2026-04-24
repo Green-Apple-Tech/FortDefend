@@ -37,45 +37,64 @@ router.post('/heartbeat', verifyDeviceToken, async (req, res, next) => {
       installedExtensions,
       securityScore,
       serialNumber,
+      fullReport,
+      status: statusField,
     } = req.body;
 
-    // Upsert device
+    const isFull = fullReport !== false && Array.isArray(checks) && checks.length > 0;
+    const score = typeof securityScore === 'number' ? securityScore : isFull ? 100 : undefined;
+    const rowName = deviceName || 'Chromebook';
+
+    if (!isFull) {
+      await db('devices')
+        .where({ id: req.device.deviceId, org_id: req.device.orgId })
+        .update({
+          last_seen: new Date(),
+          updated_at: new Date(),
+          ...(statusField === 'error' ? { status: 'warning' } : {}),
+        });
+      return res.json({
+        received: true,
+        nextCheckIn: 0.5,
+        commands: [],
+      });
+    }
+
+    // Upsert device (full inventory)
     await db('devices').insert({
       id: req.device.deviceId,
       org_id: req.device.orgId,
-      name: deviceName || 'Chromebook',
+      name: rowName,
       serial: serialNumber || req.device.deviceId,
       os: platform || 'chromeos',
       os_version: osVersion || 'Unknown',
       source: 'extension',
       external_id: req.device.deviceId,
-      status: securityScore >= 80 ? 'online' : securityScore >= 60 ? 'warning' : 'alert',
-      security_score: securityScore || 100,
+      status: (score != null && score >= 80) ? 'online' : (score != null && score >= 60) ? 'warning' : 'alert',
+      security_score: score != null ? score : 100,
       last_seen: new Date(),
       created_at: new Date(),
       updated_at: new Date(),
     }).onConflict(['org_id', 'serial']).merge({
-      security_score: securityScore || 100,
+      security_score: score != null ? score : 100,
       os_version: osVersion || 'Unknown',
       last_seen: new Date(),
-      status: securityScore >= 80 ? 'online' : securityScore >= 60 ? 'warning' : 'alert',
+      status: (score != null && score >= 80) ? 'online' : (score != null && score >= 60) ? 'warning' : 'alert',
       updated_at: new Date(),
     });
 
-    // Save check results
     if (checks && checks.length > 0) {
       await db('scan_results').insert({
         org_id: req.device.orgId,
         device_id: req.device.deviceId,
         agent_name: 'chromebook_extension',
         result: JSON.stringify(checks),
-        status: securityScore >= 80 ? 'pass' : securityScore >= 60 ? 'warn' : 'fail',
+        status: (score != null && score >= 80) ? 'pass' : (score != null && score >= 60) ? 'warn' : 'fail',
         ai_summary: generateExtensionSummary(checks),
         created_at: new Date(),
       }).catch(() => {});
     }
 
-    // Flag risky extensions
     if (installedExtensions && installedExtensions.length > 0) {
       const risky = installedExtensions.filter(e =>
         e.permissions?.includes('tabs') &&
@@ -87,12 +106,12 @@ router.post('/heartbeat', verifyDeviceToken, async (req, res, next) => {
           org_id: req.device.orgId,
           type: 'risky_extensions',
           severity: 'warning',
-          message: `${deviceName}: ${risky.length} risky extension${risky.length > 1 ? 's' : ''} detected`,
+          message: `${rowName}: ${risky.length} risky extension${risky.length > 1 ? 's' : ''} detected`,
           ai_analysis: `Extensions with broad permissions not from Web Store: ${risky.map(e => e.name).join(', ')}`,
           resolved: false,
           created_at: new Date(),
         }).onConflict(['org_id', 'type']).merge({
-          message: `${deviceName}: ${risky.length} risky extensions`,
+          message: `${rowName}: ${risky.length} risky extensions`,
           resolved: false,
         });
       }
@@ -100,8 +119,8 @@ router.post('/heartbeat', verifyDeviceToken, async (req, res, next) => {
 
     res.json({
       received: true,
-      nextCheckIn: 240, // minutes
-      commands: [], // future: send commands back to extension
+      nextCheckIn: 15,
+      commands: [],
     });
   } catch (err) { next(err); }
 });

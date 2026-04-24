@@ -1,4 +1,5 @@
 const express = require('express');
+const path = require('path');
 const router = express.Router();
 /** Mounted in server with app.use('/api', …) → GET /api/orgs/me/enrollment */
 const orgsMeApiRouter = express.Router();
@@ -47,6 +48,67 @@ function generateEnrollmentToken(orgId, deviceType, expiresInOrOpts = '30d') {
 
 // ═ Public routes (no user session) — must be registered before admin middleware ═
 
+// GET /api/enrollment/verify-token?token=... — for Chrome extension before saving (org UUID or enrollment JWT)
+router.get('/verify-token', async (req, res, next) => {
+  try {
+    const raw = String(req.query.token || '').trim();
+    if (!raw) {
+      return res.status(400).json({ error: 'Query parameter "token" is required.' });
+    }
+    const looksUuid = (s) => /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(s);
+    if (looksUuid(raw)) {
+      const org = await db('orgs').where({ id: raw }).first();
+      if (!org) return res.status(404).json({ error: 'Organisation not found.' });
+      if (org.subscription_status === 'canceled') {
+        return res.status(402).json({ error: 'Subscription inactive.' });
+      }
+      return res.json({ valid: true, orgName: org.name, orgId: org.id, deviceType: 'chromebook' });
+    }
+    let decoded;
+    try {
+      const payload = jwt.verify(raw, getJwtSecret());
+      if (payload.type !== 'enrollment' || !payload.orgId) {
+        return res.status(401).json({ error: 'Invalid token type.' });
+      }
+      decoded = {
+        orgId: payload.orgId,
+        deviceType: payload.deviceType,
+        groupId: payload.groupId || null,
+      };
+    } catch {
+      return res.status(401).json({ error: 'Invalid or expired enrollment token.' });
+    }
+    const org = await db('orgs').where({ id: decoded.orgId }).first();
+    if (!org) return res.status(404).json({ error: 'Organisation not found.' });
+    if (org.subscription_status === 'canceled') {
+      return res.status(402).json({ error: 'Subscription inactive.' });
+    }
+    return res.json({
+      valid: true,
+      orgName: org.name,
+      orgId: org.id,
+      deviceType: decoded.deviceType || 'chromebook',
+      groupId: decoded.groupId,
+    });
+  } catch (err) {
+    return next(err);
+  }
+});
+
+// GET /api/enrollment/managed-schema — download managed policy schema for Google Admin
+router.get('/managed-schema', (req, res) => {
+  const file = path.join(__dirname, '../../chrome-extension/managed_schema.json');
+  res.setHeader('Content-Type', 'application/json; charset=utf-8');
+  res.setHeader('Content-Disposition', 'attachment; filename="managed_schema.json"');
+  return res.sendFile(file, (err) => {
+    if (err) {
+      if (!res.headersSent) {
+        return res.status(500).json({ error: 'Schema file not available on this server.' });
+      }
+    }
+  });
+});
+
 // GET /api/enrollment/validate/:token — validate enrollment token
 router.get('/validate/:token', async (req, res, next) => {
   try {
@@ -82,19 +144,38 @@ router.get('/validate/:token', async (req, res, next) => {
 // POST /api/enrollment/register — register device after install
 router.post('/register', async (req, res, next) => {
   try {
-    const { token, deviceName, deviceType, platform, osVersion, serialNumber } = req.body;
+    const { token, deviceName, deviceType, platform, osVersion, serialNumber, groupId: groupIdFromBody } = req.body;
 
     if (!token) return res.status(400).json({ error: 'Enrollment token required.' });
+    const raw = String(token).trim();
 
     let payload;
-    try {
-      payload = jwt.verify(token, getJwtSecret());
-    } catch {
-      return res.status(401).json({ error: 'Invalid or expired enrollment token.' });
+    const looksUuid = (s) => /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(s);
+    if (looksUuid(raw)) {
+      const o = await db('orgs').where({ id: raw }).first();
+      if (!o) {
+        return res.status(401).json({ error: 'Invalid or expired enrollment token.' });
+      }
+      if (o.subscription_status === 'canceled') {
+        return res.status(402).json({ error: 'Subscription inactive.' });
+      }
+      payload = { orgId: o.id, type: 'enrollment', groupId: null, deviceType: deviceType || 'chromebook' };
+    } else {
+      try {
+        payload = jwt.verify(raw, getJwtSecret());
+      } catch {
+        return res.status(401).json({ error: 'Invalid or expired enrollment token.' });
+      }
+      if (payload.type !== 'enrollment' || !payload.orgId) {
+        return res.status(401).json({ error: 'Invalid token type.' });
+      }
     }
 
     const org = await db('orgs').where({ id: payload.orgId }).first();
     if (!org) return res.status(404).json({ error: 'Organisation not found.' });
+    if (org.subscription_status === 'canceled') {
+      return res.status(402).json({ error: 'Subscription inactive.' });
+    }
 
     const { n } = await db('devices')
       .where({ org_id: org.id }).count('id as n').first();
@@ -129,8 +210,9 @@ router.post('/register', async (req, res, next) => {
 
     const deviceRow = await db('devices').where({ org_id: org.id, serial }).first();
     const resolvedId = deviceRow?.id || deviceId;
-    if (payload.groupId) {
-      const g = await db('groups').where({ id: payload.groupId, org_id: org.id }).first();
+    const groupId = payload.groupId || groupIdFromBody;
+    if (groupId) {
+      const g = await db('groups').where({ id: String(groupId), org_id: org.id }).first();
       if (g) {
         await db('device_groups')
           .insert({ device_id: resolvedId, group_id: g.id })

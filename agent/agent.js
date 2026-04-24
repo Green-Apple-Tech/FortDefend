@@ -19,6 +19,19 @@ const REG_ORG_KEY = 'OrgToken';
 const REG_TOKEN_KEY_LEGACY = 'Token';
 const REG_GROUP_KEY = 'GroupId';
 const REG_APIURL_KEY = 'ApiUrl';
+const NO_ORG_TOKEN_MSG =
+  'FortDefend: No org token found. Please run the installer script or set ORG_TOKEN environment variable.';
+
+const DEFER_FILE = 'C:\\ProgramData\\FortDefend\\defer-state.json';
+let warnedNoToken = false;
+let scheduleTimer = null;
+
+function safeLog(message) {
+  try {
+    fs.mkdirSync(LOG_DIR, { recursive: true });
+    fs.appendFileSync(LOG_FILE, `[${new Date().toISOString()}] ${message}\n`, 'utf8');
+  } catch {}
+}
 
 function getRegistryStringValue(name) {
   try {
@@ -30,14 +43,94 @@ function getRegistryStringValue(name) {
   }
 }
 
-const APP_URL = getRegistryStringValue(REG_APIURL_KEY) || process.env.APP_URL || 'http://localhost:3000';
-const DEFER_FILE = 'C:\\ProgramData\\FortDefend\\defer-state.json';
-
-function safeLog(message) {
+function readConfigJsonFile(filePath) {
   try {
-    fs.mkdirSync(LOG_DIR, { recursive: true });
-    fs.appendFileSync(LOG_FILE, `[${new Date().toISOString()}] ${message}\n`, 'utf8');
-  } catch {}
+    if (!fs.existsSync(filePath)) return null;
+    const text = fs.readFileSync(filePath, 'utf8');
+    return JSON.parse(text);
+  } catch (err) {
+    safeLog(`config read failed ${filePath}: ${err.message}`);
+    return null;
+  }
+}
+
+function getExeConfigPath() {
+  try {
+    return path.join(path.dirname(process.execPath), 'config.json');
+  } catch {
+    return path.join(process.cwd(), 'config.json');
+  }
+}
+
+/**
+ * Merges file-based config. heartbeatInterval = seconds (default 900 = 15 min if omitted).
+ */
+function normalizeFileConfig(obj) {
+  if (!obj || !obj.orgToken) return null;
+  const su =
+    (obj.serverUrl && String(obj.serverUrl).trim()) || process.env.APP_URL || 'http://localhost:3000';
+  const hi = obj.heartbeatInterval;
+  const intervalSec = Number.isFinite(Number(hi)) && Number(hi) > 0 ? Number(hi) : 900;
+  return {
+    token: String(obj.orgToken).trim(),
+    appUrl: String(su).replace(/\/$/, ''),
+    groupId: obj.groupId != null && String(obj.groupId).trim() !== '' ? String(obj.groupId).trim() : '',
+    heartbeatInterval: intervalSec,
+    groupName: obj.groupName != null ? String(obj.groupName) : '',
+    version: obj.version != null ? String(obj.version) : '1.0.0',
+  };
+}
+
+/**
+ * 1) config.json next to EXE
+ * 2) Windows registry
+ * 3) ORG_TOKEN / APP_URL / FORTDEFEND_GROUP_ID env
+ */
+function resolveCredentials() {
+  const beside = getExeConfigPath();
+  const cFile = readConfigJsonFile(beside);
+  const fromFile = cFile && normalizeFileConfig(cFile);
+  if (fromFile) return fromFile;
+
+  const regToken = (getRegistryStringValue(REG_ORG_KEY) || getRegistryStringValue(REG_TOKEN_KEY_LEGACY) || '').trim();
+  if (regToken) {
+    const u = (getRegistryStringValue(REG_APIURL_KEY) || process.env.APP_URL || 'http://localhost:3000').replace(
+      /\/$/,
+      '',
+    );
+    return {
+      token: regToken,
+      appUrl: u,
+      groupId: (getRegistryStringValue(REG_GROUP_KEY) || '').trim(),
+      heartbeatInterval: 900,
+      groupName: '',
+      version: '1.0.0',
+    };
+  }
+  const envTok = (process.env.ORG_TOKEN || '').trim();
+  if (envTok) {
+    return {
+      token: envTok,
+      appUrl: (process.env.APP_URL || 'http://localhost:3000').replace(/\/$/, ''),
+      groupId: (process.env.FORTDEFEND_GROUP_ID || process.env.ORG_GROUP_ID || '').trim(),
+      heartbeatInterval: 900,
+      groupName: '',
+      version: '1.0.0',
+    };
+  }
+  return {
+    token: '',
+    appUrl: (process.env.APP_URL || 'http://localhost:3000').replace(/\/$/, ''),
+    groupId: '',
+    heartbeatInterval: 900,
+    groupName: '',
+    version: '1.0.0',
+  };
+}
+
+function heartbeatIntervalMs(creds) {
+  const sec = Math.max(15, Number(creds.heartbeatInterval) > 0 ? Number(creds.heartbeatInterval) : 900);
+  return sec * 1000;
 }
 
 function run(command) {
@@ -59,17 +152,9 @@ function runJson(command) {
   }
 }
 
-function getRegistryToken() {
-  return getRegistryStringValue(REG_ORG_KEY) || getRegistryStringValue(REG_TOKEN_KEY_LEGACY);
-}
-
-function getRegistryGroupId() {
-  return getRegistryStringValue(REG_GROUP_KEY) || '';
-}
-
-function buildHeartbeatHeaders(token) {
+function buildHeartbeatHeaders(token, groupId) {
   const h = { 'Content-Type': 'application/json', 'x-org-token': token };
-  const g = getRegistryGroupId();
+  const g = (groupId || '').trim();
   if (g) h['x-fortdefend-group'] = g;
   return h;
 }
@@ -161,16 +246,26 @@ async function collectSysinternalsData() {
 
 async function heartbeat() {
   try {
-    const token = getRegistryToken();
-    if (!token) {
-      safeLog('no org token found, skipping heartbeat');
+    const creds = resolveCredentials();
+    if (!creds.token) {
+      if (!warnedNoToken) {
+        warnedNoToken = true;
+        console.error(NO_ORG_TOKEN_MSG);
+        safeLog(NO_ORG_TOKEN_MSG);
+      } else {
+        safeLog('no org token, skipping heartbeat');
+      }
       return;
     }
     const body = collectTelemetry();
     body.sysinternals = await collectSysinternalsData();
-    const res = await fetchImpl(`${APP_URL}/api/agent/heartbeat`, {
+    if (creds.groupId) {
+      body.groupId = creds.groupId;
+      body.enrollmentGroupId = creds.groupId;
+    }
+    const res = await fetchImpl(`${creds.appUrl}/api/agent/heartbeat`, {
       method: 'POST',
-      headers: buildHeartbeatHeaders(token),
+      headers: buildHeartbeatHeaders(creds.token, creds.groupId),
       body: JSON.stringify(body),
     });
     const json = await res.json().catch(() => ({}));
@@ -216,10 +311,11 @@ function showToast(message) {
 
 async function reportDefer(count) {
   try {
-    const token = getRegistryToken();
-    await fetchImpl(`${APP_URL}/api/agent/heartbeat`, {
+    const creds = resolveCredentials();
+    if (!creds.token) return;
+    await fetchImpl(`${creds.appUrl}/api/agent/heartbeat`, {
       method: 'POST',
-      headers: buildHeartbeatHeaders(token),
+      headers: buildHeartbeatHeaders(creds.token, creds.groupId),
       body: JSON.stringify({ event: 'reboot_defer', deferCount: count, hostname: process.env.COMPUTERNAME || 'windows-device' }),
     });
   } catch {}
@@ -242,5 +338,15 @@ async function handleRebootCommand(cmd) {
   run(`shutdown /r /t 300 /c "${String(message).replace(/"/g, "'")}"`);
 }
 
-setInterval(() => heartbeat().catch(() => {}), 15 * 60 * 1000);
-heartbeat().catch(() => {});
+function runHeartbeatLoop() {
+  heartbeat()
+    .catch(() => {})
+    .finally(() => {
+      const creds = resolveCredentials();
+      const delay = heartbeatIntervalMs(creds);
+      if (scheduleTimer) clearTimeout(scheduleTimer);
+      scheduleTimer = setTimeout(runHeartbeatLoop, delay);
+    });
+}
+
+runHeartbeatLoop();

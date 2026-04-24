@@ -1,0 +1,8 @@
+{
+  "orgToken": "YOUR_ORG_TOKEN_HERE",
+  "groupId": "",
+  "groupName": "General",
+  "serverUrl": "https://app.fortdefend.com",
+  "heartbeatInterval": 30,
+  "version": "1.0.0"
+}

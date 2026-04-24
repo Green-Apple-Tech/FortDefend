@@ -133,6 +133,15 @@ export default function Install() {
     );
   }, [data?.token, selectedGroupId]);
 
+  const windowsAgentConfigUrl = useMemo(() => {
+    const t = data?.token;
+    if (!t) return '';
+    const p = new URLSearchParams();
+    p.set('org', t);
+    if (selectedGroupId) p.set('group', selectedGroupId);
+    return `/api/agent/config.json?${p.toString()}`;
+  }, [data?.token, selectedGroupId]);
+
   // GET /api/orgs/me/enrollment: { token, installUrl, psCommand } with psCommand = iex (irm '.../api/agent/install.ps1?org=...')
   const psOneliner = data?.psCommand
     ? data.psCommand
@@ -219,7 +228,7 @@ export default function Install() {
           <p className="mt-3 rounded-lg border border-amber-200 bg-amber-50/90 px-3 py-2.5 text-sm text-amber-950">
             Windows agent installer coming soon. Use the PowerShell command below to enroll now.
           </p>
-          <div className="mt-4 flex flex-wrap gap-3">
+          <div className="mt-4 flex flex-wrap items-center gap-3">
             <a
               href="/api/agent/download"
               className={btnPrimary}
@@ -227,7 +236,27 @@ export default function Install() {
             >
               Download Agent (.exe)
             </a>
+            <a
+              href={windowsAgentConfigUrl || '#'}
+              className={!windowsAgentConfigUrl ? `${btnOutline} pointer-events-none opacity-50` : btnOutline}
+              download
+            >
+              Download Config
+            </a>
           </div>
+          {windowsAgentConfigUrl && (
+            <div className="mt-3 space-y-2 text-sm text-gray-600">
+              <p>
+                <span className="font-medium text-gray-900">Manual install:</span> Download both files to the{' '}
+                <strong>same folder</strong>, then run <strong>FortDefendAgent.exe as Administrator</strong>.
+              </p>
+              <p className="rounded-md border border-gray-200 bg-gray-50/90 px-3 py-2 text-gray-700">
+                The config file tells the agent which organization and group this device belongs to, the FortDefend server
+                URL, and how often to check in. You can also use the PowerShell one-liner below to install and register
+                via the registry instead.
+              </p>
+            </div>
+          )}
           <h3 className="mt-6 text-sm font-semibold text-gray-900">PowerShell (copy and run as Administrator)</h3>
           <p className="mt-1 text-xs text-gray-600">
             One line: <code className="rounded bg-gray-100 px-1">iex (irm &apos;…&apos;)</code> fetches the script and runs it. The URL is in

@@ -124,6 +124,43 @@ router.get('/install.ps1', async (req, res) => {
   }
 });
 
+// GET /api/agent/config.json?org=ORG_ID&group=GROUP_ID — dynamic config (org must exist in DB)
+router.get('/config.json', async (req, res, next) => {
+  try {
+    const org = String(req.query.org || '').trim();
+    if (!org) {
+      return res.status(400).json({ error: 'Query parameter org is required.' });
+    }
+    const group = String(req.query.group || '').trim();
+    const check = await resolveOrgAndGroupForInstall(org, group || null);
+    if (check.error) {
+      return res.status(check.error).json({ error: check.message });
+    }
+    let baseUrl = (process.env.APP_URL || '').trim().replace(/\/$/, '');
+    if (!baseUrl) {
+      baseUrl = `${req.protocol}://${req.get('host')}`;
+    }
+    let groupName = 'General';
+    if (group) {
+      const g = await db('groups').where({ id: group, org_id: org }).first();
+      if (g && g.name) groupName = String(g.name);
+    }
+    const body = {
+      orgToken: org,
+      groupId: group || '',
+      groupName,
+      serverUrl: baseUrl,
+      heartbeatInterval: 30,
+      version: '1.0.0',
+    };
+    res.setHeader('Content-Type', 'application/json; charset=utf-8');
+    res.setHeader('Content-Disposition', 'attachment; filename="config.json"');
+    return res.status(200).send(`${JSON.stringify(body, null, 2)}\n`);
+  } catch (err) {
+    return next(err);
+  }
+});
+
 // GET /api/agent/uninstall.ps1
 router.get('/uninstall.ps1', (req, res) => {
   try {
@@ -156,6 +193,13 @@ router.post('/heartbeat', async (req, res) => {
     const source = 'agent';
     const orgId = auth.orgId;
 
+    const groupFromBody =
+      (payload.groupId != null && String(payload.groupId).trim() !== '')
+        ? String(payload.groupId).trim()
+        : (payload.enrollmentGroupId != null && String(payload.enrollmentGroupId).trim() !== '')
+          ? String(payload.enrollmentGroupId).trim()
+          : null;
+
     const existing = await db('devices')
       .where({ org_id: orgId, source, external_id: externalId })
       .first();
@@ -184,12 +228,18 @@ router.post('/heartbeat', async (req, res) => {
     };
 
     const groupHint = req.headers['x-fortdefend-group'];
-    let enrollGroupId = auth.groupId;
-    if (!enrollGroupId && groupHint) {
+    let targetGroupId = auth.groupId || null;
+    if (groupFromBody) {
+      const gb = await db('groups')
+        .where({ id: String(groupFromBody), org_id: orgId })
+        .first();
+      if (gb) targetGroupId = gb.id;
+    }
+    if (!targetGroupId && groupHint) {
       const g = await db('groups')
         .where({ id: String(groupHint), org_id: orgId })
         .first();
-      if (g) enrollGroupId = g.id;
+      if (g) targetGroupId = g.id;
     }
 
     if (!existing) {
@@ -205,13 +255,15 @@ router.post('/heartbeat', async (req, res) => {
         })
         .returning(['id']);
       deviceId = row.id;
-      if (auth.kind === 'enrollment' && enrollGroupId) {
-        await addDeviceToGroupIfValid(deviceId, orgId, enrollGroupId);
-      }
     } else {
       await db('devices')
         .where('id', existing.id)
         .update({ ...updateFields, updated_at: new Date() });
+    }
+
+    const firstGroup = await db('device_groups').where({ device_id: deviceId }).first();
+    if (!firstGroup && targetGroupId) {
+      await addDeviceToGroupIfValid(deviceId, orgId, targetGroupId);
     }
 
     await db('scan_results').insert({

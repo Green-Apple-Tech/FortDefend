@@ -83,7 +83,7 @@ router.post('/apps', requireAdmin, async (req, res, next) => {
 // GET /api/software/matrix
 router.get('/matrix', async (req, res, next) => {
   try {
-    const [devicesRaw, apps, rawInstallations, scanAgg] = await Promise.all([
+    const [devicesRaw, apps, scanAgg] = await Promise.all([
       db('devices')
         .where('org_id', req.user.orgId)
         .select('id', 'name', 'status', 'last_seen')
@@ -92,9 +92,6 @@ router.get('/matrix', async (req, res, next) => {
         .where('org_id', req.user.orgId)
         .select('id', 'name', 'winget_id', 'category', 'publisher')
         .orderBy('name', 'asc'),
-      db('sm_device_apps')
-        .where('org_id', req.user.orgId)
-        .select('device_id', 'winget_id', 'app_name', 'installed_version', 'latest_version', 'update_available', 'last_scanned_at'),
       db('sm_device_apps')
         .where('org_id', req.user.orgId)
         .groupBy('device_id')
@@ -110,27 +107,43 @@ router.get('/matrix', async (req, res, next) => {
         winget_scan_status: wingetScanStatus(lastWingetScanAt),
       };
     });
-    const appByWinget = new Map(
-      apps
-        .filter((a) => a?.winget_id)
-        .map((a) => [String(a.winget_id).trim().toLowerCase(), a])
-    );
-    const appByName = new Map(
-      apps
-        .filter((a) => a?.name)
-        .map((a) => [String(a.name).trim().toLowerCase(), a])
-    );
-    const installations = [];
-    for (const item of rawInstallations) {
-      const wingetKey = item?.winget_id ? String(item.winget_id).trim().toLowerCase() : '';
-      const nameKey = item?.app_name ? String(item.app_name).trim().toLowerCase() : '';
-      const match = (wingetKey && appByWinget.get(wingetKey)) || (nameKey && appByName.get(nameKey)) || null;
-      if (!match?.winget_id) continue;
-      installations.push({
-        ...item,
-        winget_id: match.winget_id,
-      });
+    const matchedRows = await db('sm_device_apps as sda')
+      .join('sm_apps as sa', function joinMatchedApps() {
+        this.on('sa.org_id', '=', 'sda.org_id')
+          .andOn(function onAnyMatch() {
+            this.on('sda.winget_id', '=', 'sa.winget_id')
+              .orOn(db.raw("LOWER(sda.app_name) LIKE '%' || LOWER(sa.name) || '%'"))
+              .orOn(db.raw("LOWER(sa.name) LIKE '%' || LOWER(sda.app_name) || '%'"));
+          });
+      })
+      .where('sda.org_id', req.user.orgId)
+      .select(
+        'sda.device_id',
+        'sa.winget_id as matched_winget_id',
+        'sda.installed_version',
+        'sda.latest_version',
+        'sda.update_available',
+        'sda.last_scanned_at',
+      )
+      .orderByRaw("CASE WHEN sda.winget_id = sa.winget_id THEN 0 ELSE 1 END ASC");
+
+    const deduped = new Map();
+    for (const row of matchedRows) {
+      const matchedWingetId = row.matched_winget_id ? String(row.matched_winget_id).trim() : '';
+      if (!matchedWingetId) continue;
+      const key = `${row.device_id}::${matchedWingetId}`;
+      if (!deduped.has(key)) {
+        deduped.set(key, {
+          device_id: row.device_id,
+          winget_id: matchedWingetId,
+          installed_version: row.installed_version,
+          latest_version: row.latest_version,
+          update_available: row.update_available,
+          last_scanned_at: row.last_scanned_at,
+        });
+      }
     }
+    const installations = Array.from(deduped.values());
 
     res.json({
       devices,

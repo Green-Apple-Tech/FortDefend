@@ -219,6 +219,27 @@ router.get('/devices', requireAuth, async (req, res) => {
       .whereIn('source', ['agent', 'android', 'extension', 'intune', 'google_admin', 'google_mobile'])
       .andWhere({ org_id: req.user.orgId });
 
+    const agentIds = agentDevices.map((d) => d.id).filter(Boolean);
+    if (agentIds.length) {
+      const groupJoin = await db('device_groups as dg')
+        .join('groups as g', 'g.id', 'dg.group_id')
+        .where('g.org_id', req.user.orgId)
+        .whereIn('dg.device_id', agentIds)
+        .select('dg.device_id', 'g.id as group_id', 'g.name as group_name')
+        .orderBy('g.name', 'asc');
+      const firstByDevice = new Map();
+      for (const row of groupJoin) {
+        if (!firstByDevice.has(row.device_id)) firstByDevice.set(row.device_id, row);
+      }
+      for (const d of agentDevices) {
+        const g = firstByDevice.get(d.id);
+        if (g) {
+          d.group_id = g.group_id;
+          d.group_name = g.group_name;
+        }
+      }
+    }
+
     res.json({ devices: [...integrationDevices, ...agentDevices], errors });
   } catch (err) {
     console.error('Integrations devices error:', err);

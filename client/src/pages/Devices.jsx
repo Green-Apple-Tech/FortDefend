@@ -1,8 +1,10 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { Link, useNavigate, useSearchParams } from 'react-router-dom';
 import { api } from '../lib/api';
 import { Button, Card, Input } from '../components/ui';
 import { StatusBadge } from '../components/fds';
 import ScriptRunnerModal from '../components/ScriptRunnerModal';
+import { SoftwareManagerPanel } from './SoftwareManager';
 
 const PAGE_SIZE = 25;
 const POLL_MS = 60_000;
@@ -159,6 +161,53 @@ function appInstallSource(row) {
   return 'Get-Package';
 }
 
+function findGroupPath(nodes, id, trail = []) {
+  if (!Array.isArray(nodes) || !id) return null;
+  for (const n of nodes) {
+    if (n.id === id) return [...trail, n.name];
+    const sub = findGroupPath(n.children, id, [...trail, n.name]);
+    if (sub) return sub;
+  }
+  return null;
+}
+
+function flattenGroups(nodes, depth = 0, out = []) {
+  if (!Array.isArray(nodes)) return out;
+  for (const n of nodes) {
+    out.push({ id: n.id, name: n.name, depth, device_count: n.device_count });
+    if (n.children?.length) flattenGroups(n.children, depth + 1, out);
+  }
+  return out;
+}
+
+function GroupTreeRows({ nodes, depth, groupParam, smartParam, onSelectGroup }) {
+  if (!Array.isArray(nodes) || !nodes.length) return null;
+  return (
+    <>
+      {nodes.map((g) => (
+        <div key={g.id}>
+          <button
+            type="button"
+            onClick={() => onSelectGroup(g.id)}
+            className={`flex w-full items-center gap-1 rounded px-2 py-1 text-left text-xs ${
+              groupParam === g.id && !smartParam ? 'bg-brand/15 font-semibold text-brand' : 'text-slate-700 hover:bg-slate-100 dark:hover:bg-slate-800'
+            }`}
+            style={{ paddingLeft: `${6 + depth * 10}px` }}
+          >
+            <span className="min-w-0 flex-1 truncate">{g.name}</span>
+            {g.device_count != null && (
+              <span className="shrink-0 rounded bg-slate-100 px-1 py-0.5 text-[10px] font-medium text-slate-600 dark:bg-slate-700 dark:text-slate-300">
+                {g.device_count}
+              </span>
+            )}
+          </button>
+          <GroupTreeRows nodes={g.children} depth={depth + 1} groupParam={groupParam} smartParam={smartParam} onSelectGroup={onSelectGroup} />
+        </div>
+      ))}
+    </>
+  );
+}
+
 const SORT_KEYS = {
   device: (d) => (d.name || d.id || '').toLowerCase(),
   os: (d) => `${normalizeOs(d)} ${osVersionOf(d) || ''}`.toLowerCase(),
@@ -189,7 +238,62 @@ function escapeCsv(s) {
   return str;
 }
 
+const TAB_IDS = ['devices', 'software', 'scripts', 'alerts', 'settings'];
+
 export default function Devices() {
+  const [searchParams, setSearchParams] = useSearchParams();
+  const navigate = useNavigate();
+  const tab = TAB_IDS.includes(searchParams.get('tab') || '') ? searchParams.get('tab') : 'devices';
+  const groupParam = searchParams.get('group') || '';
+  const smartParam = searchParams.get('smart') || '';
+
+  const setTab = useCallback(
+    (t) => {
+      setSearchParams(
+        (prev) => {
+          const n = new URLSearchParams(prev);
+          if (t === 'devices') n.delete('tab');
+          else n.set('tab', t);
+          return n;
+        },
+        { replace: true },
+      );
+    },
+    [setSearchParams],
+  );
+
+  const selectScope = useCallback(
+    (next) => {
+      setSearchParams(
+        (prev) => {
+          const n = new URLSearchParams(prev);
+          n.delete('group');
+          n.delete('smart');
+          if (next.type === 'all') {
+            /* only clears */
+          } else if (next.type === 'ungrouped') {
+            n.set('group', 'ungrouped');
+          } else if (next.type === 'smart' && next.smart) {
+            n.set('smart', next.smart);
+          } else if (next.type === 'group' && next.id) {
+            n.set('group', next.id);
+          }
+          return n;
+        },
+        { replace: true },
+      );
+    },
+    [setSearchParams],
+  );
+
+  const [groupsTree, setGroupsTree] = useState([]);
+  const [groupsLoading, setGroupsLoading] = useState(true);
+  const [groupFilterIds, setGroupFilterIds] = useState(null);
+  const [newGroupOpen, setNewGroupOpen] = useState(false);
+  const [newGroupName, setNewGroupName] = useState('');
+  const [newGroupSaving, setNewGroupSaving] = useState(false);
+  const softwarePanelRef = useRef(null);
+
   const [rows, setRows] = useState([]);
   const [integrationErrors, setIntegrationErrors] = useState(null);
   const [loading, setLoading] = useState(true);
@@ -254,6 +358,44 @@ export default function Devices() {
       .then((res) => setScripts(Array.isArray(res?.scripts) ? res.scripts : []))
       .catch(() => setScripts([]));
   }, []);
+
+  useEffect(() => {
+    let cancelled = false;
+    setGroupsLoading(true);
+    api('/api/groups')
+      .then((res) => {
+        if (!cancelled) setGroupsTree(Array.isArray(res?.groups) ? res.groups : []);
+      })
+      .catch(() => {
+        if (!cancelled) setGroupsTree([]);
+      })
+      .finally(() => {
+        if (!cancelled) setGroupsLoading(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  useEffect(() => {
+    if (!groupParam || groupParam === 'ungrouped' || smartParam) {
+      setGroupFilterIds(null);
+      return;
+    }
+    let cancelled = false;
+    setGroupFilterIds(undefined);
+    api(`/api/groups/${encodeURIComponent(groupParam)}/devices`)
+      .then((data) => {
+        if (cancelled) return;
+        setGroupFilterIds(new Set((data.devices || []).map((d) => d.id)));
+      })
+      .catch(() => {
+        if (!cancelled) setGroupFilterIds(new Set());
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [groupParam, smartParam]);
 
   useEffect(() => {
     try {
@@ -382,8 +524,35 @@ export default function Devices() {
     });
   }, [rows, q, sourceFilter, statusFilter, osFilter]);
 
+  const scopeFiltered = useMemo(() => {
+    if (smartParam === 'online') return filtered.filter((d) => deriveStatus(d) === 'online');
+    if (smartParam === 'offline') return filtered.filter((d) => deriveStatus(d) === 'offline');
+    if (smartParam === 'updates') return filtered.filter((d) => (getPendingPatchCount(d) || 0) > 0);
+    if (smartParam === 'risk') {
+      return filtered.filter((d) => d.security_score != null && Number(d.security_score) < 50);
+    }
+    if (groupParam === 'ungrouped') {
+      return filtered.filter((d) => !d.group_id && !d.group_name);
+    }
+    if (groupParam) {
+      if (groupFilterIds === undefined) return [];
+      if (!groupFilterIds) return filtered;
+      return filtered.filter((d) => groupFilterIds.has(d.id));
+    }
+    return filtered;
+  }, [filtered, smartParam, groupParam, groupFilterIds]);
+
+  const scopeDeviceIdsForSoftware = useMemo(() => {
+    if (!groupParam && !smartParam) return null;
+    const s = new Set();
+    for (const d of scopeFiltered) {
+      if (d.id) s.add(d.id);
+    }
+    return s;
+  }, [groupParam, smartParam, scopeFiltered]);
+
   const sorted = useMemo(() => {
-    const list = [...filtered];
+    const list = [...scopeFiltered];
     const fn = SORT_KEYS[sortKey] || SORT_KEYS.device;
     list.sort((a, b) => {
       const va = fn(a);
@@ -393,7 +562,7 @@ export default function Devices() {
       return 0;
     });
     return list;
-  }, [filtered, sortKey, sortDir]);
+  }, [scopeFiltered, sortKey, sortDir]);
 
   const total = sorted.length;
   const pageCount = Math.max(1, Math.ceil(total / PAGE_SIZE));
@@ -423,6 +592,56 @@ export default function Devices() {
     return { online, offline, warning, alert, total: rows.length };
   }, [rows]);
 
+  const ungroupedCount = useMemo(
+    () => rows.filter((d) => !d.group_id && !d.group_name).length,
+    [rows],
+  );
+
+  const smartCounts = useMemo(() => {
+    let online = 0;
+    let offline = 0;
+    let updates = 0;
+    let risk = 0;
+    for (const d of rows) {
+      if (deriveStatus(d) === 'online') online += 1;
+      if (deriveStatus(d) === 'offline') offline += 1;
+      if ((getPendingPatchCount(d) || 0) > 0) updates += 1;
+      if (d.security_score != null && Number(d.security_score) < 50) risk += 1;
+    }
+    return { online, offline, updates, risk };
+  }, [rows]);
+
+  const scopeTitle = useMemo(() => {
+    if (smartParam === 'online') return 'Online Devices';
+    if (smartParam === 'offline') return 'Offline Devices';
+    if (smartParam === 'updates') return 'Needs Updates';
+    if (smartParam === 'risk') return 'High Risk';
+    if (groupParam === 'ungrouped') return 'Ungrouped';
+    if (groupParam) {
+      const path = findGroupPath(groupsTree, groupParam);
+      return path ? path.join(' › ') : 'Group';
+    }
+    return 'All Devices';
+  }, [smartParam, groupParam, groupsTree]);
+
+  const onCreateGroup = async () => {
+    const name = newGroupName.trim();
+    if (!name) return;
+    setNewGroupSaving(true);
+    try {
+      await api('/api/groups', { method: 'POST', body: { name } });
+      setNewGroupOpen(false);
+      setNewGroupName('');
+      const res = await api('/api/groups');
+      setGroupsTree(Array.isArray(res?.groups) ? res.groups : []);
+      setToast('Group created.');
+    } catch (e) {
+      setToast(e.message || 'Failed to create group.');
+    } finally {
+      setNewGroupSaving(false);
+    }
+  };
+
   const filteredPanelApps = useMemo(() => {
     const needle = appSearch.trim().toLowerCase();
     if (!needle) return panelApps;
@@ -444,7 +663,7 @@ export default function Devices() {
 
   useEffect(() => {
     setPage(1);
-  }, [q, sourceFilter, statusFilter, osFilter, sortKey, sortDir]);
+  }, [q, sourceFilter, statusFilter, osFilter, sortKey, sortDir, groupParam, smartParam, groupFilterIds]);
 
   const toggleSort = (key) => {
     if (sortKey === key) {

@@ -1,4 +1,5 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { forwardRef, useCallback, useEffect, useImperativeHandle, useMemo, useRef, useState } from 'react';
+import { Navigate } from 'react-router-dom';
 import { api } from '../lib/api';
 import { Button, Card, Input } from '../components/ui';
 
@@ -190,7 +191,10 @@ function HeaderContextMenu({ position, items, onClose }) {
   );
 }
 
-export default function SoftwareManager() {
+export const SoftwareManagerPanel = forwardRef(function SoftwareManagerPanel(
+  { embedded = false, scopeDeviceIds = null, hideBottomDeployDock = false },
+  ref,
+) {
   const [loading, setLoading] = useState(true);
   const [devices, setDevices] = useState([]);
   const [apps, setApps] = useState([]);
@@ -270,6 +274,14 @@ export default function SoftwareManager() {
   }, [toast]);
 
   useEffect(() => {
+    if (embedded) {
+      setSelectedGroupId('');
+      setGroupDeviceIds(null);
+    }
+  }, [embedded]);
+
+  useEffect(() => {
+    if (embedded) return;
     if (!selectedGroupId) {
       setGroupDeviceIds(null);
       return;
@@ -289,9 +301,9 @@ export default function SoftwareManager() {
     return () => {
       cancelled = true;
     };
-  }, [selectedGroupId]);
+  }, [selectedGroupId, embedded]);
 
-  const groupDevicesLoading = Boolean(selectedGroupId && groupDeviceIds === undefined);
+  const groupDevicesLoading = Boolean(!embedded && selectedGroupId && groupDeviceIds === undefined);
 
   const installCountByWinget = useMemo(() => {
     const sets = new Map();
@@ -309,10 +321,15 @@ export default function SoftwareManager() {
   const lookup = useMemo(() => installLookup(installations), [installations]);
 
   const filteredDevices = useMemo(() => {
+    if (embedded) {
+      if (scopeDeviceIds == null) return devices;
+      if (scopeDeviceIds.size === 0) return [];
+      return devices.filter((d) => scopeDeviceIds.has(d.id));
+    }
     if (!selectedGroupId) return devices;
     if (groupDeviceIds === undefined) return [];
     return devices.filter((d) => groupDeviceIds.has(d.id));
-  }, [devices, selectedGroupId, groupDeviceIds]);
+  }, [devices, embedded, scopeDeviceIds, selectedGroupId, groupDeviceIds]);
 
   const columnApps = useMemo(() => {
     return [...apps].sort((a, b) => {
@@ -361,14 +378,22 @@ export default function SoftwareManager() {
   const selectedCount = selectedDeviceIds.size;
   const selectedIdsArray = useMemo(() => [...selectedDeviceIds], [selectedDeviceIds]);
 
-  const openDeploy = () => {
+  const openDeploy = useCallback(() => {
     if (selectedCount === 0) return;
     setDeploySearch('');
     setDeployCategory('All');
     setDeploySelectedWinget(new Set());
     setDeployAutoUpdate(false);
     setDeployOpen(true);
-  };
+  }, [selectedCount]);
+
+  useImperativeHandle(
+    ref,
+    () => ({
+      openDeploy,
+    }),
+    [openDeploy],
+  );
 
   const deployAppsFiltered = useMemo(() => {
     return apps.filter((app) => {
@@ -475,30 +500,40 @@ export default function SoftwareManager() {
   };
 
   return (
-    <div className="space-y-3 pb-24">
-      <div className="flex flex-wrap items-end justify-end gap-2">
-        <label className="block min-w-[12rem]">
-          <span className="mb-0.5 block text-[11px] font-medium text-slate-600">Group</span>
-          <select
-            value={selectedGroupId}
-            onChange={(e) => {
-              setSelectedGroupId(e.target.value);
-              setSelectedDeviceIds(new Set());
-            }}
-            className="w-full min-w-[12rem] rounded-md border border-slate-300 bg-white px-2 py-1.5 text-sm focus:border-brand focus:outline-none focus:ring-1 focus:ring-brand"
-          >
-            <option value="">All Devices</option>
-            {flatGroups.map((g) => (
-              <option key={g.id} value={g.id}>
-                {groupLabel(g)}
-              </option>
-            ))}
-          </select>
-        </label>
-        <Button variant="outline" className="h-8 text-xs" type="button" onClick={() => setAddModalOpen(true)}>
-          Add catalogue app
-        </Button>
-      </div>
+    <div className={`space-y-3 ${hideBottomDeployDock ? '' : 'pb-24'}`}>
+      {!embedded && (
+        <div className="flex flex-wrap items-end justify-end gap-2">
+          <label className="block min-w-[12rem]">
+            <span className="mb-0.5 block text-[11px] font-medium text-slate-600">Group</span>
+            <select
+              value={selectedGroupId}
+              onChange={(e) => {
+                setSelectedGroupId(e.target.value);
+                setSelectedDeviceIds(new Set());
+              }}
+              className="w-full min-w-[12rem] rounded-md border border-slate-300 bg-white px-2 py-1.5 text-sm focus:border-brand focus:outline-none focus:ring-1 focus:ring-brand"
+            >
+              <option value="">All Devices</option>
+              {flatGroups.map((g) => (
+                <option key={g.id} value={g.id}>
+                  {groupLabel(g)}
+                </option>
+              ))}
+            </select>
+          </label>
+          <Button variant="outline" className="h-8 text-xs" type="button" onClick={() => setAddModalOpen(true)}>
+            Add catalogue app
+          </Button>
+        </div>
+      )}
+
+      {embedded && (
+        <div className="flex justify-end">
+          <Button variant="outline" className="h-8 text-xs" type="button" onClick={() => setAddModalOpen(true)}>
+            Add catalogue app
+          </Button>
+        </div>
+      )}
 
       <Card className="overflow-hidden border-fds-border p-0 shadow-sm ring-1 ring-slate-950/5">
         {loading ? (
@@ -577,7 +612,7 @@ export default function SoftwareManager() {
         )}
       </Card>
 
-      {selectedCount > 0 && (
+      {selectedCount > 0 && !hideBottomDeployDock && (
         <div className="fixed bottom-0 left-0 right-0 z-40 border-t border-blue-200 bg-blue-600 px-4 py-3 text-white shadow-lg md:left-[var(--fds-sidebar-width,0px)]">
           <div className="mx-auto flex max-w-6xl flex-wrap items-center justify-between gap-3">
             <span className="text-sm font-medium">{selectedCount} device{selectedCount === 1 ? '' : 's'} selected</span>
@@ -804,4 +839,8 @@ export default function SoftwareManager() {
       )}
     </div>
   );
+});
+
+export default function SoftwareManager() {
+  return <Navigate to="/devices?tab=software" replace />;
 }

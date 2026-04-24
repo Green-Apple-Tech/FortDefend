@@ -25,7 +25,13 @@ exports.up = async function up(knex) {
     });
   }
 
-  await knex.raw("ALTER TYPE sm_commands_command_type_enum ADD VALUE IF NOT EXISTS 'run_script'");
+  await knex.raw(`
+DO $$ BEGIN
+  IF EXISTS (SELECT 1 FROM pg_type WHERE typname = 'sm_commands_command_type_enum') THEN
+    ALTER TYPE sm_commands_command_type_enum ADD VALUE IF NOT EXISTS 'run_script';
+  END IF;
+END $$;
+  `);
 };
 
 exports.down = async function down(knex) {

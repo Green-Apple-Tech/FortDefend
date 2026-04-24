@@ -22,6 +22,15 @@ function isValidCommandType(value) {
   return ['install', 'update', 'uninstall', 'update_all'].includes(normalizeCommandType(value));
 }
 
+function wingetScanStatus(lastScannedAt) {
+  if (!lastScannedAt) return 'never';
+  const ageMs = Date.now() - new Date(lastScannedAt).getTime();
+  if (!Number.isFinite(ageMs) || ageMs < 0) return 'unknown';
+  if (ageMs <= 15 * 60 * 1000) return 'ok';
+  if (ageMs <= 60 * 60 * 1000) return 'stale';
+  return 'old';
+}
+
 // GET /api/software/apps
 router.get('/apps', async (req, res, next) => {
   try {
@@ -74,7 +83,7 @@ router.post('/apps', requireAdmin, async (req, res, next) => {
 // GET /api/software/matrix
 router.get('/matrix', async (req, res, next) => {
   try {
-    const [devices, apps, installations] = await Promise.all([
+    const [devicesRaw, apps, installations, scanAgg] = await Promise.all([
       db('devices')
         .where('org_id', req.user.orgId)
         .select('id', 'name', 'status', 'last_seen')
@@ -86,12 +95,48 @@ router.get('/matrix', async (req, res, next) => {
       db('sm_device_apps')
         .where('org_id', req.user.orgId)
         .select('device_id', 'winget_id', 'installed_version', 'latest_version', 'update_available', 'last_scanned_at'),
+      db('sm_device_apps')
+        .where('org_id', req.user.orgId)
+        .groupBy('device_id')
+        .select('device_id')
+        .max('last_scanned_at as last_scanned_at'),
     ]);
+    const scanByDevice = new Map(scanAgg.map((r) => [r.device_id, r.last_scanned_at || null]));
+    const devices = devicesRaw.map((d) => {
+      const lastWingetScanAt = scanByDevice.get(d.id) || null;
+      return {
+        ...d,
+        last_winget_scan_at: lastWingetScanAt,
+        winget_scan_status: wingetScanStatus(lastWingetScanAt),
+      };
+    });
 
     res.json({
       devices,
       apps,
       installations,
+    });
+  } catch (err) {
+    next(err);
+  }
+});
+
+// GET /api/software/devices/:id/winget-status
+router.get('/devices/:id/winget-status', async (req, res, next) => {
+  try {
+    const device = await db('devices')
+      .where({ id: req.params.id, org_id: req.user.orgId })
+      .first();
+    if (!device) return res.status(404).json({ error: 'Device not found.' });
+    const agg = await db('sm_device_apps')
+      .where({ org_id: req.user.orgId, device_id: req.params.id })
+      .max('last_scanned_at as last_scanned_at')
+      .first();
+    const lastScannedAt = agg?.last_scanned_at || null;
+    res.json({
+      deviceId: req.params.id,
+      lastScannedAt,
+      status: wingetScanStatus(lastScannedAt),
     });
   } catch (err) {
     next(err);

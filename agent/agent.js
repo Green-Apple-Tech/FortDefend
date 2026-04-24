@@ -26,6 +26,9 @@ const NO_ORG_TOKEN_MSG =
 const DEFER_FILE = 'C:\\ProgramData\\FortDefend\\defer-state.json';
 let warnedNoToken = false;
 let scheduleTimer = null;
+let lastFullInventoryAt = 0;
+const MIN_HEARTBEAT_MS = 30 * 1000;
+const FULL_INVENTORY_MS = 15 * 60 * 1000;
 
 function safeLog(message) {
   try {
@@ -194,14 +197,58 @@ function commandExistsWin(command) {
   }
 }
 
-function ensureWinget() {
-  if (commandExistsWin('winget')) return true;
+function wingetVersion() {
+  try {
+    const out = execFileSync('winget', ['--version'], {
+      encoding: 'utf8',
+      windowsHide: true,
+      timeout: 20000,
+    });
+    return String(out || '').trim();
+  } catch {
+    return '';
+  }
+}
+
+function installWinget() {
+  safeLog('winget install: checking existing installation');
+  const existing = wingetVersion();
+  if (existing) {
+    safeLog(`winget install: already installed (${existing})`);
+    return true;
+  }
+
+  safeLog('winget install: method 1 (RegisterByFamilyName)');
   try {
     run('Add-AppxPackage -RegisterByFamilyName -MainPackage Microsoft.DesktopAppInstaller_8wekyb3d8bbwe');
-  } catch {
-    /* ignore */
+  } catch (err) {
+    safeLog(`winget install: method 1 failed: ${err.message}`);
   }
-  return commandExistsWin('winget');
+  const afterMethod1 = wingetVersion();
+  if (afterMethod1) {
+    safeLog(`winget install: method 1 succeeded (${afterMethod1})`);
+    return true;
+  }
+
+  safeLog('winget install: method 2 (download MSIX bundle)');
+  try {
+    run(
+      `$url = "https://github.com/microsoft/winget-cli/releases/latest/download/Microsoft.DesktopAppInstaller_8wekyb3d8bbwe.msixbundle"; ` +
+      `$out = "$env:TEMP\\AppInstaller.msixbundle"; ` +
+      `Invoke-WebRequest -Uri $url -OutFile $out; ` +
+      `Add-AppxPackage $out`
+    );
+  } catch (err) {
+    safeLog(`winget install: method 2 failed: ${err.message}`);
+  }
+  const afterMethod2 = wingetVersion();
+  if (afterMethod2) {
+    safeLog(`winget install: method 2 succeeded (${afterMethod2})`);
+    return true;
+  }
+
+  safeLog('winget install: method 3 fallback (Get-Package inventory only)');
+  return false;
 }
 
 function fallbackInstalledApps() {
@@ -217,7 +264,7 @@ function fallbackInstalledApps() {
 }
 
 function collectInstalledApps() {
-  const hasWinget = ensureWinget();
+  const hasWinget = !!wingetVersion();
   if (!hasWinget) return fallbackInstalledApps();
   try {
     const out = execFileSync(
@@ -249,6 +296,24 @@ function collectInstalledApps() {
     safeLog(`winget list failed, using Get-Package fallback: ${err.message}`);
     return fallbackInstalledApps();
   }
+}
+
+function getMachineGuid() {
+  try {
+    const raw = execFileSync(
+      'reg',
+      ['query', 'HKLM\\SOFTWARE\\Microsoft\\Cryptography', '/v', 'MachineGuid'],
+      { encoding: 'utf8', windowsHide: true, timeout: 20000 }
+    );
+    const parts = raw.trim().split(/\s{2,}/);
+    return (parts[parts.length - 1] || '').trim();
+  } catch {
+    return '';
+  }
+}
+
+function getDeviceId() {
+  return getMachineGuid() || os.hostname() || process.env.COMPUTERNAME || 'windows-device';
 }
 
 function buildHeartbeatHeaders(token, groupId) {
@@ -411,8 +476,33 @@ async function heartbeat() {
       }
       return;
     }
-    const body = collectTelemetry();
-    body.sysinternals = await collectSysinternalsData();
+    const now = Date.now();
+    const shouldSendFull = now - lastFullInventoryAt >= FULL_INVENTORY_MS;
+    const deviceId = getDeviceId();
+    const baseBody = {
+      deviceId,
+      timestamp: new Date().toISOString(),
+      status: 'online',
+      hostname: os.hostname(),
+      deviceName: os.hostname(),
+    };
+    let body = baseBody;
+    if (shouldSendFull) {
+      const full = collectTelemetry();
+      full.deviceId = deviceId;
+      full.timestamp = baseBody.timestamp;
+      full.status = 'online';
+      full.hostname = baseBody.hostname;
+      full.deviceName = baseBody.deviceName;
+      full.osVersion = full.osVersion || os.release();
+      full.installedApps = collectInstalledApps();
+      full.sysinternals = await collectSysinternalsData();
+      body = full;
+      lastFullInventoryAt = now;
+      safeLog(`heartbeat mode=full apps=${Array.isArray(full.installedApps) ? full.installedApps.length : 0}`);
+    } else {
+      safeLog('heartbeat mode=minimal');
+    }
     if (creds.groupId) {
       body.groupId = creds.groupId;
       body.enrollmentGroupId = creds.groupId;
@@ -537,16 +627,15 @@ function runHeartbeatLoop() {
   heartbeat()
     .catch(() => {})
     .finally(() => {
-      const creds = resolveCredentials();
-      const delay = heartbeatIntervalMs(creds);
       if (scheduleTimer) clearTimeout(scheduleTimer);
-      scheduleTimer = setTimeout(runHeartbeatLoop, delay);
+      scheduleTimer = setTimeout(runHeartbeatLoop, MIN_HEARTBEAT_MS);
     });
 }
 
 try {
-  const wingetReady = ensureWinget();
-  safeLog(`winget startup check: ${wingetReady ? 'available' : 'not available, fallback mode'}`);
+  const wingetReady = installWinget();
+  const v = wingetVersion();
+  safeLog(`winget startup final: ${wingetReady && v ? `available (${v})` : 'not available, using Get-Package fallback'}`);
 } catch (err) {
   safeLog(`winget startup check failed: ${err.message}`);
 }

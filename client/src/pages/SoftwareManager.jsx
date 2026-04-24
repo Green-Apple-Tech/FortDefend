@@ -4,72 +4,55 @@ import { Button, Card, Input } from '../components/ui';
 
 const CATEGORY_TABS = ['All', 'Browsers', 'Security', 'Productivity', 'Dev Tools', 'Utilities', 'Media'];
 
-/** App display name → direct icon image URL (Wikimedia / vendor CDN) */
+/** App display name → Clearbit Logo API URL (https://logo.clearbit.com/{domain}) */
 const APP_ICONS = {
-  'Google Chrome':
-    'https://upload.wikimedia.org/wikipedia/commons/thumb/a/a5/Google_Chrome_icon_%28September_2014%29.svg/64px-Google_Chrome_icon_%28September_2014%29.svg.png',
-  'Mozilla Firefox':
-    'https://upload.wikimedia.org/wikipedia/commons/thumb/a/a0/Firefox_logo%2C_2019.svg/64px-Firefox_logo%2C_2019.svg.png',
-  'Microsoft Edge':
-    'https://upload.wikimedia.org/wikipedia/commons/thumb/9/98/Microsoft_Edge_logo_%282019%29.svg/64px-Microsoft_Edge_logo_%282019%29.svg.png',
-  Brave: 'https://upload.wikimedia.org/wikipedia/commons/thumb/5/51/Brave_icon_lionface.png/64px-Brave_icon_lionface.png',
-  Opera: 'https://upload.wikimedia.org/wikipedia/commons/thumb/4/49/Opera_2015_icon.svg/64px-Opera_2015_icon.svg.png',
-  Vivaldi:
-    'https://upload.wikimedia.org/wikipedia/commons/thumb/8/82/Vivaldi_web_browser_logo.svg/64px-Vivaldi_web_browser_logo.svg.png',
-  Zoom: 'https://upload.wikimedia.org/wikipedia/commons/thumb/1/11/Zoom_Logo_2022.svg/64px-Zoom_Logo_2022.svg.png',
-  Slack: 'https://upload.wikimedia.org/wikipedia/commons/thumb/d/d5/Slack_icon_2019.svg/64px-Slack_icon_2019.svg.png',
-  'Microsoft Teams':
-    'https://upload.wikimedia.org/wikipedia/commons/thumb/c/c9/Microsoft_Office_Teams_%282018%E2%80%93present%29.svg/64px-Microsoft_Office_Teams_%282018%E2%80%93present%29.svg.png',
-  Discord: 'https://upload.wikimedia.org/wikipedia/commons/thumb/e/e9/Discord_logo.svg/64px-Discord_logo.svg.png',
-  Thunderbird:
-    'https://upload.wikimedia.org/wikipedia/commons/thumb/6/60/Thunderbird_Logo.png/64px-Thunderbird_Logo.png',
-  Spotify: 'https://upload.wikimedia.org/wikipedia/commons/thumb/8/84/Spotify_icon.svg/64px-Spotify_icon.svg.png',
-  VLC: 'https://upload.wikimedia.org/wikipedia/commons/thumb/e/e8/VLC_media_player_logo_%282018%29.svg/64px-VLC_media_player_logo_%282018%29.svg.png',
-  Audacity: 'https://upload.wikimedia.org/wikipedia/commons/thumb/f/f6/Audacity_Logo.svg/64px-Audacity_Logo.svg.png',
-  HandBrake: 'https://upload.wikimedia.org/wikipedia/commons/thumb/7/75/HandBrake_logo.png/64px-HandBrake_logo.png',
-  iTunes: 'https://upload.wikimedia.org/wikipedia/commons/thumb/5/5f/Apple_Music_icon.svg/64px-Apple_Music_icon.svg.png',
-  Malwarebytes:
-    'https://upload.wikimedia.org/wikipedia/commons/thumb/8/8e/Malwarebytes_logo.png/64px-Malwarebytes_logo.png',
-  'KeePass 2': 'https://upload.wikimedia.org/wikipedia/commons/thumb/8/8d/KeePass_icon.svg/64px-KeePass_icon.svg.png',
-  Dropbox: 'https://upload.wikimedia.org/wikipedia/commons/thumb/7/78/Dropbox_Icon.svg/64px-Dropbox_Icon.svg.png',
-  'Google Drive':
-    'https://upload.wikimedia.org/wikipedia/commons/thumb/1/12/Google_Drive_icon_%282020%29.svg/64px-Google_Drive_icon_%282020%29.svg.png',
-  OneDrive:
-    'https://upload.wikimedia.org/wikipedia/commons/thumb/3/3c/Microsoft_Office_OneDrive_%282019%E2%80%93present%29.svg/64px-Microsoft_Office_OneDrive_%282019%E2%80%93present%29.svg.png',
-  LibreOffice:
-    'https://upload.wikimedia.org/wikipedia/commons/thumb/0/02/LibreOffice_Community_Edition_Icon.svg/64px-LibreOffice_Community_Edition_Icon.svg.png',
-  'Adobe Acrobat Reader':
-    'https://upload.wikimedia.org/wikipedia/commons/thumb/0/0a/Adobe_Acrobat_DC_logo_2020.svg/64px-Adobe_Acrobat_DC_logo_2020.svg.png',
-  'Foxit Reader': 'https://upload.wikimedia.org/wikipedia/commons/thumb/8/8c/Foxit_logo.png/240px-Foxit_logo.png',
-  SumatraPDF:
-    'https://upload.wikimedia.org/wikipedia/commons/thumb/d/d2/Sumatra_PDF_icon.svg/64px-Sumatra_PDF_icon.svg.png',
-  GIMP: 'https://upload.wikimedia.org/wikipedia/commons/thumb/4/45/The_GIMP_icon_-_gnome.svg/64px-The_GIMP_icon_-_gnome.svg.png',
-  'Paint.NET': 'https://upload.wikimedia.org/wikipedia/commons/thumb/2/2d/Paint.NET_icon.png/64px-Paint.NET_icon.png',
-  Greenshot:
-    'https://upload.wikimedia.org/wikipedia/commons/thumb/1/12/Greenshot_logo.svg/64px-Greenshot_logo.svg.png',
-  ShareX: 'https://upload.wikimedia.org/wikipedia/commons/thumb/d/d8/ShareX_Logo.png/64px-ShareX_Logo.png',
-  Inkscape: 'https://upload.wikimedia.org/wikipedia/commons/thumb/0/0d/Inkscape_Logo.svg/64px-Inkscape_Logo.svg.png',
-  Blender: 'https://upload.wikimedia.org/wikipedia/commons/thumb/0/06/Blender_logo.svg/64px-Blender_logo.svg.png',
-  Krita: 'https://upload.wikimedia.org/wikipedia/commons/thumb/e/e6/Krita_Logo_2.9_branding_update.png/64px-Krita_Logo_2.9_branding_update.png',
-  'Visual Studio Code':
-    'https://upload.wikimedia.org/wikipedia/commons/thumb/9/9a/Visual_Studio_Code_1.35_icon.svg/64px-Visual_Studio_Code_1.35_icon.svg.png',
-  Git: 'https://upload.wikimedia.org/wikipedia/commons/thumb/3/3f/Git_icon.svg/64px-Git_icon.svg.png',
-  'Notepad++':
-    'https://upload.wikimedia.org/wikipedia/commons/thumb/0/08/Notepad%2B%2B_logo.svg/64px-Notepad%2B%2B_logo.svg.png',
-  'Python 3': 'https://upload.wikimedia.org/wikipedia/commons/thumb/c/c3/Python-logo-notext.svg/64px-Python-logo-notext.svg.png',
-  PuTTY: 'https://upload.wikimedia.org/wikipedia/commons/thumb/e/e5/PuTTY_icon.svg/64px-PuTTY_icon.svg.png',
-  WinSCP: 'https://upload.wikimedia.org/wikipedia/commons/thumb/4/4b/WinSCP_logo.png/64px-WinSCP_logo.png',
-  FileZilla: 'https://upload.wikimedia.org/wikipedia/commons/thumb/0/01/FileZilla_logo.svg/64px-FileZilla_logo.svg.png',
-  '7-Zip': 'https://upload.wikimedia.org/wikipedia/commons/thumb/6/69/7z_logo.svg/64px-7z_logo.svg.png',
-  WinRAR: 'https://upload.wikimedia.org/wikipedia/commons/thumb/5/51/WinRAR_logo.svg/64px-WinRAR_logo.svg.png',
-  TeamViewer:
-    'https://upload.wikimedia.org/wikipedia/commons/thumb/a/a2/TeamViewer_Logo_Icon_only.svg/64px-TeamViewer_Logo_Icon_only.svg.png',
-  AnyDesk: 'https://upload.wikimedia.org/wikipedia/commons/thumb/4/46/AnyDesk_logo.svg/64px-AnyDesk_logo.svg.png',
-  CCleaner: 'https://upload.wikimedia.org/wikipedia/commons/thumb/0/04/CCleaner_logo_2023.svg/64px-CCleaner_logo_2023.svg.png',
-  Everything:
-    'https://upload.wikimedia.org/wikipedia/en/thumb/d/d6/Everything_search_engine_icon.png/64px-Everything_search_engine_icon.png',
-  Cursor: 'https://www.cursor.com/apple-touch-icon.png',
-  IrfanView: 'https://upload.wikimedia.org/wikipedia/en/thumb/1/1d/IrfanView_logo.png/64px-IrfanView_logo.png',
+  'Google Chrome': 'https://logo.clearbit.com/google.com',
+  'Mozilla Firefox': 'https://logo.clearbit.com/mozilla.org',
+  'Microsoft Edge': 'https://logo.clearbit.com/microsoft.com',
+  Brave: 'https://logo.clearbit.com/brave.com',
+  Opera: 'https://logo.clearbit.com/opera.com',
+  Vivaldi: 'https://logo.clearbit.com/vivaldi.com',
+  Zoom: 'https://logo.clearbit.com/zoom.us',
+  Slack: 'https://logo.clearbit.com/slack.com',
+  'Microsoft Teams': 'https://logo.clearbit.com/microsoft.com',
+  Discord: 'https://logo.clearbit.com/discord.com',
+  Thunderbird: 'https://logo.clearbit.com/thunderbird.net',
+  Spotify: 'https://logo.clearbit.com/spotify.com',
+  VLC: 'https://logo.clearbit.com/videolan.org',
+  Audacity: 'https://logo.clearbit.com/audacityteam.org',
+  HandBrake: 'https://logo.clearbit.com/handbrake.fr',
+  iTunes: 'https://logo.clearbit.com/apple.com',
+  Malwarebytes: 'https://logo.clearbit.com/malwarebytes.com',
+  'KeePass 2': 'https://logo.clearbit.com/keepass.info',
+  Dropbox: 'https://logo.clearbit.com/dropbox.com',
+  'Google Drive': 'https://logo.clearbit.com/google.com',
+  OneDrive: 'https://logo.clearbit.com/microsoft.com',
+  LibreOffice: 'https://logo.clearbit.com/libreoffice.org',
+  'Adobe Acrobat Reader': 'https://logo.clearbit.com/adobe.com',
+  'Foxit Reader': 'https://logo.clearbit.com/foxit.com',
+  SumatraPDF: 'https://logo.clearbit.com/sumatrapdfreader.org',
+  GIMP: 'https://logo.clearbit.com/gimp.org',
+  'Paint.NET': 'https://logo.clearbit.com/getpaint.net',
+  Greenshot: 'https://logo.clearbit.com/getgreenshot.org',
+  ShareX: 'https://logo.clearbit.com/getsharex.com',
+  Inkscape: 'https://logo.clearbit.com/inkscape.org',
+  Blender: 'https://logo.clearbit.com/blender.org',
+  Krita: 'https://logo.clearbit.com/krita.org',
+  'Visual Studio Code': 'https://logo.clearbit.com/microsoft.com',
+  Git: 'https://logo.clearbit.com/git-scm.com',
+  'Notepad++': 'https://logo.clearbit.com/notepad-plus-plus.org',
+  'Python 3': 'https://logo.clearbit.com/python.org',
+  PuTTY: 'https://logo.clearbit.com/putty.org',
+  WinSCP: 'https://logo.clearbit.com/winscp.net',
+  FileZilla: 'https://logo.clearbit.com/filezilla-project.org',
+  '7-Zip': 'https://logo.clearbit.com/7-zip.org',
+  WinRAR: 'https://logo.clearbit.com/rarlab.com',
+  TeamViewer: 'https://logo.clearbit.com/teamviewer.com',
+  AnyDesk: 'https://logo.clearbit.com/anydesk.com',
+  CCleaner: 'https://logo.clearbit.com/ccleaner.com',
+  Everything: 'https://logo.clearbit.com/voidtools.com',
+  Cursor: 'https://logo.clearbit.com/cursor.com',
+  IrfanView: 'https://logo.clearbit.com/irfanview.com',
 };
 
 function iconUrlForAppName(name) {

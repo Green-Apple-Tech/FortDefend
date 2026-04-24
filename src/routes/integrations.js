@@ -148,8 +148,11 @@ router.post('/google/connect', requireAuth, requireAdmin, async (req, res) => {
 router.get('/devices', requireAuth, async (req, res) => {
   try {
     const mgr = new IntegrationManager(req.user.orgId);
-    const { devices, errors } = await mgr.getAllDevices();
-    res.json({ devices, errors });
+    const { devices: integrationDevices, errors } = await mgr.getAllDevices();
+    const agentDevices = await db('devices')
+      .where({ org_id: req.user.orgId, source: 'agent' });
+
+    res.json({ devices: [...integrationDevices, ...agentDevices], errors });
   } catch (err) {
     console.error('Integrations devices error:', err);
     res.status(500).json({ error: 'Failed to list integration devices.' });

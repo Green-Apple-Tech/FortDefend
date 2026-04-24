@@ -67,7 +67,7 @@ async function addDeviceToGroupIfValid(deviceId, orgId, groupId) {
 }
 
 const agentResourceDir = path.join(__dirname, '..', '..', 'agent');
-const agentDistExe = path.join(agentResourceDir, 'dist', 'FortDefendAgent.exe');
+const agentDistExe = path.join(__dirname, '../../agent/dist/FortDefendAgent.exe');
 const agentInstallTemplate = path.join(agentResourceDir, 'install.ps1');
 const agentUninstallScript = path.join(agentResourceDir, 'uninstall.ps1');
 
@@ -234,10 +234,24 @@ router.post('/heartbeat', async (req, res) => {
   }
 });
 
-// GET /api/agent/download?org=UUID&group= — FortDefendAgent.exe (pkg); ?token= JWT = legacy agent.exe
+// GET /api/agent/download — FortDefendAgent.exe; ?org= / ?token= for tracked downloads (see below)
 router.get('/download', async (req, res) => {
   try {
     const { token, org, group } = req.query;
+    const hasOrg = org != null && String(org).trim() !== '';
+    const hasToken = token != null && String(token).trim() !== '';
+    if (!hasOrg && !hasToken) {
+      if (group != null && String(group).trim() !== '') {
+        return res.status(400).json({ error: 'Token or org query required when group is set.' });
+      }
+      if (!fs.existsSync(agentDistExe)) {
+        return res.status(404).json({
+          error: 'Agent binary not found. Build it: cd agent && npm install && npm run build:installer (or npm run build).',
+        });
+      }
+      res.setHeader('Content-Disposition', 'attachment; filename="FortDefendAgent.exe"');
+      return res.sendFile(agentDistExe);
+    }
     if (org && !token) {
       const o = await db('orgs').where({ id: String(org) }).first();
       if (!o) return res.status(404).json({ error: 'Organization not found.' });

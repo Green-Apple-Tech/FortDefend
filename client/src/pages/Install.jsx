@@ -219,6 +219,15 @@ export default function Install() {
           <p className="mt-3 rounded-lg border border-amber-200 bg-amber-50/90 px-3 py-2.5 text-sm text-amber-950">
             Windows agent installer coming soon. Use the PowerShell command below to enroll now.
           </p>
+          <div className="mt-4 flex flex-wrap gap-3">
+            <a
+              href="/api/agent/download"
+              className={btnPrimary}
+              download
+            >
+              Download Agent (.exe)
+            </a>
+          </div>
           <h3 className="mt-6 text-sm font-semibold text-gray-900">PowerShell (copy and run as Administrator)</h3>
           <p className="mt-1 text-xs text-gray-600">
             One line: <code className="rounded bg-gray-100 px-1">iex (irm &apos;…&apos;)</code> fetches the script and runs it. The URL is in

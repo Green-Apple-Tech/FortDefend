@@ -25,9 +25,6 @@ import RebootPolicies from './pages/RebootPolicies';
 import MspDashboard from './pages/MspDashboard';
 import MspOverview from './pages/MspOverview';
 import ApiDocs from './pages/ApiDocs';
-import Groups from './pages/groups';
-import SoftwareManager from './pages/SoftwareManager';
-
 export default function App() {
   return (
     <BrowserRouter>
@@ -48,8 +45,8 @@ export default function App() {
             <Route element={<AppLayout />}>
               <Route path="/dashboard" element={<Dashboard />} />
               <Route path="/devices" element={<Devices />} />
-              <Route path="/software" element={<ProtectedRoute><SoftwareManager /></ProtectedRoute>} />
-              <Route path="/groups" element={<Groups />} />
+              <Route path="/software" element={<Navigate to="/devices?tab=software" replace />} />
+              <Route path="/groups" element={<Navigate to="/devices" replace />} />
               <Route path="/reports" element={<Reports />} />
               <Route path="/alerts" element={<Alerts />} />
               <Route path="/billing" element={<Billing />} />

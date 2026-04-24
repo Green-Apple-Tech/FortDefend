@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { Link, useNavigate, useSearchParams } from 'react-router-dom';
+import { Link, useSearchParams } from 'react-router-dom';
 import { api } from '../lib/api';
 import { Button, Card, Input } from '../components/ui';
 import { StatusBadge } from '../components/fds';
@@ -171,15 +171,6 @@ function findGroupPath(nodes, id, trail = []) {
   return null;
 }
 
-function flattenGroups(nodes, depth = 0, out = []) {
-  if (!Array.isArray(nodes)) return out;
-  for (const n of nodes) {
-    out.push({ id: n.id, name: n.name, depth, device_count: n.device_count });
-    if (n.children?.length) flattenGroups(n.children, depth + 1, out);
-  }
-  return out;
-}
-
 function GroupTreeRows({ nodes, depth, groupParam, smartParam, onSelectGroup }) {
   if (!Array.isArray(nodes) || !nodes.length) return null;
   return (
@@ -242,7 +233,6 @@ const TAB_IDS = ['devices', 'software', 'scripts', 'alerts', 'settings'];
 
 export default function Devices() {
   const [searchParams, setSearchParams] = useSearchParams();
-  const navigate = useNavigate();
   const tab = TAB_IDS.includes(searchParams.get('tab') || '') ? searchParams.get('tab') : 'devices';
   const groupParam = searchParams.get('group') || '';
   const smartParam = searchParams.get('smart') || '';
@@ -396,6 +386,20 @@ export default function Devices() {
       cancelled = true;
     };
   }, [groupParam, smartParam]);
+
+  useEffect(() => {
+    if (searchParams.get('newGroup') !== '1') return;
+    setNewGroupOpen(true);
+    setNewGroupName('');
+    setSearchParams(
+      (prev) => {
+        const n = new URLSearchParams(prev);
+        n.delete('newGroup');
+        return n;
+      },
+      { replace: true },
+    );
+  }, [searchParams, setSearchParams]);
 
   useEffect(() => {
     try {
@@ -844,7 +848,136 @@ export default function Devices() {
   };
 
   return (
-    <div className="space-y-3">
+    <>
+    <div className="flex w-full max-w-full flex-1 flex-col gap-0 lg:flex-row">
+      <aside className="flex max-h-[40vh] w-full shrink-0 flex-col overflow-hidden border-b border-fds-border bg-fds-sidebar lg:max-h-none lg:w-[250px] lg:border-b-0 lg:border-r">
+        <div className="flex items-center justify-between border-b border-fds-border px-2 py-2">
+          <span className="text-[10px] font-bold uppercase tracking-wide text-slate-500">Scope</span>
+          <button type="button" className="text-lg leading-none text-brand" title="New group" onClick={() => setNewGroupOpen(true)}>
+            +
+          </button>
+        </div>
+        <div className="min-h-0 flex-1 space-y-2 overflow-y-auto px-1 py-2 text-xs">
+          <button
+            type="button"
+            onClick={() => selectScope({ type: 'all' })}
+            className={`flex w-full items-center justify-between rounded px-2 py-1.5 text-left ${
+              !groupParam && !smartParam ? 'bg-brand/15 font-semibold text-brand' : 'hover:bg-slate-100 dark:hover:bg-slate-800'
+            }`}
+          >
+            <span>All Devices</span>
+            <span className="rounded bg-slate-100 px-1.5 py-0.5 text-[10px] font-medium dark:bg-slate-700">{rows.length}</span>
+          </button>
+          <button
+            type="button"
+            onClick={() => selectScope({ type: 'ungrouped' })}
+            className={`flex w-full items-center justify-between rounded px-2 py-1.5 text-left ${
+              groupParam === 'ungrouped' && !smartParam ? 'bg-brand/15 font-semibold text-brand' : 'hover:bg-slate-100 dark:hover:bg-slate-800'
+            }`}
+          >
+            <span>Ungrouped</span>
+            <span className="rounded bg-slate-100 px-1.5 py-0.5 text-[10px] font-medium dark:bg-slate-700">{ungroupedCount}</span>
+          </button>
+          <div className="pt-1">
+            <p className="mb-1 px-1 text-[10px] font-bold uppercase text-slate-400">Smart groups</p>
+            <button
+              type="button"
+              onClick={() => selectScope({ type: 'smart', smart: 'online' })}
+              className={`flex w-full justify-between rounded px-2 py-1 text-left ${smartParam === 'online' ? 'bg-brand/15 font-semibold text-brand' : 'hover:bg-slate-100 dark:hover:bg-slate-800'}`}
+            >
+              <span>Online Devices</span>
+              <span className="text-[10px] text-slate-500">{smartCounts.online}</span>
+            </button>
+            <button
+              type="button"
+              onClick={() => selectScope({ type: 'smart', smart: 'offline' })}
+              className={`flex w-full justify-between rounded px-2 py-1 text-left ${smartParam === 'offline' ? 'bg-brand/15 font-semibold text-brand' : 'hover:bg-slate-100 dark:hover:bg-slate-800'}`}
+            >
+              <span>Offline Devices</span>
+              <span className="text-[10px] text-slate-500">{smartCounts.offline}</span>
+            </button>
+            <button
+              type="button"
+              onClick={() => selectScope({ type: 'smart', smart: 'updates' })}
+              className={`flex w-full justify-between rounded px-2 py-1 text-left ${smartParam === 'updates' ? 'bg-brand/15 font-semibold text-brand' : 'hover:bg-slate-100 dark:hover:bg-slate-800'}`}
+            >
+              <span>Needs Updates</span>
+              <span className="text-[10px] text-slate-500">{smartCounts.updates}</span>
+            </button>
+            <button
+              type="button"
+              onClick={() => selectScope({ type: 'smart', smart: 'risk' })}
+              className={`flex w-full justify-between rounded px-2 py-1 text-left ${smartParam === 'risk' ? 'bg-brand/15 font-semibold text-brand' : 'hover:bg-slate-100 dark:hover:bg-slate-800'}`}
+            >
+              <span>High Risk</span>
+              <span className="text-[10px] text-slate-500">{smartCounts.risk}</span>
+            </button>
+          </div>
+          <div className="pt-1">
+            <p className="mb-1 px-1 text-[10px] font-bold uppercase text-slate-400">My groups</p>
+            {groupsLoading ? (
+              <p className="px-2 text-slate-500">Loading…</p>
+            ) : (
+              <GroupTreeRows nodes={groupsTree} depth={0} groupParam={groupParam} smartParam={smartParam} onSelectGroup={(id) => selectScope({ type: 'group', id })} />
+            )}
+          </div>
+          <button
+            type="button"
+            className="mt-1 w-full rounded border border-dashed border-slate-300 py-1.5 text-xs text-slate-600 hover:bg-slate-50 dark:hover:bg-slate-800"
+            onClick={() => setNewGroupOpen(true)}
+          >
+            New Group
+          </button>
+        </div>
+      </aside>
+      <div className="flex min-h-0 min-w-0 flex-1 flex-col">
+        <div className="flex flex-wrap items-center gap-2 border-b border-fds-border bg-fds-card px-2 py-2">
+          <div className="min-w-0 flex-1">
+            <p className="truncate text-xs font-medium text-slate-500 dark:text-slate-400">{scopeTitle}</p>
+            <p className="truncate text-[11px] text-slate-400">
+              {scopeFiltered.length} device{scopeFiltered.length === 1 ? '' : 's'}
+            </p>
+          </div>
+          <input
+            type="search"
+            value={q}
+            onChange={(e) => setQ(e.target.value)}
+            placeholder="Search…"
+            className="h-8 w-36 rounded-md border border-fds-border bg-white px-2 text-sm dark:bg-slate-900 lg:w-48"
+          />
+          <Link to="/install">
+            <Button variant="outline" className="h-8 text-xs">
+              Enroll Device
+            </Button>
+          </Link>
+          <Button
+            className="h-8 text-xs"
+            type="button"
+            onClick={() => {
+              setTab('software');
+              requestAnimationFrame(() => softwarePanelRef.current?.openDeploy());
+            }}
+          >
+            Deploy Apps
+          </Button>
+        </div>
+        <div className="flex flex-wrap gap-1 border-b border-fds-border bg-fds-muted-surface/50 px-2 py-1 dark:bg-slate-900/40">
+          {TAB_IDS.map((tid) => (
+            <button
+              key={tid}
+              type="button"
+              onClick={() => setTab(tid)}
+              className={`rounded-md px-3 py-1.5 text-xs font-medium capitalize ${
+                tab === tid ? 'bg-brand text-white' : 'text-slate-600 hover:bg-slate-100 dark:text-slate-300 dark:hover:bg-slate-800'
+              }`}
+            >
+              {tid}
+            </button>
+          ))}
+        </div>
+        <div className="min-h-0 flex-1 space-y-3 overflow-y-auto p-2 sm:p-3">
+          {tab === 'devices' && (
+            <>
       {integrationErrors && Object.keys(integrationErrors).length > 0 && (
         <div className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-900">
           <p className="font-semibold">Some integrations reported errors</p>
@@ -1224,6 +1357,42 @@ export default function Devices() {
           </div>
         )}
       </Card>
+            </>
+          )}
+
+          {tab === 'software' && (
+            <SoftwareManagerPanel
+              ref={softwarePanelRef}
+              embedded
+              hideBottomDeployDock
+              scopeDeviceIds={scopeDeviceIdsForSoftware}
+            />
+          )}
+
+          {tab === 'scripts' && (
+            <Card className="border-fds-border p-4">
+              <p className="text-sm text-slate-600 dark:text-slate-300">Run saved scripts on devices in this page scope.</p>
+              <Button className="mt-2" type="button" onClick={() => setShowScriptRunner(true)}>
+                Open script runner
+              </Button>
+              <p className="mt-2 text-xs text-slate-500">Uses checkbox selections from the Devices tab.</p>
+            </Card>
+          )}
+
+          {tab === 'alerts' && (
+            <Card className="border-fds-border p-4 text-sm text-slate-600 dark:text-slate-300">
+              Alerts for this scope are not filtered yet. Use the Alerts page for the full feed.
+            </Card>
+          )}
+
+          {tab === 'settings' && (
+            <Card className="border-fds-border p-4 text-sm text-slate-600 dark:text-slate-300">
+              Group policies and reboot schedule for this selection (placeholder).
+            </Card>
+          )}
+        </div>
+      </div>
+    </div>
 
       {panelDevice && (
         <div className="fixed inset-0 z-50 flex flex-col md:flex-row">
@@ -1567,6 +1736,30 @@ export default function Devices() {
         scripts={scripts}
         title="Run Script on Devices"
       />
-    </div>
+
+      {newGroupOpen && (
+        <div
+          className="fixed inset-0 z-[70] flex items-center justify-center bg-black/40 px-4"
+          onClick={() => setNewGroupOpen(false)}
+          onKeyDown={(e) => e.key === 'Escape' && setNewGroupOpen(false)}
+          role="presentation"
+        >
+          <div className="w-full max-w-sm rounded-xl bg-white p-4 shadow-xl dark:bg-slate-900" onClick={(e) => e.stopPropagation()} role="dialog" aria-modal>
+            <h3 className="font-semibold text-slate-900 dark:text-slate-100">New group</h3>
+            <div className="mt-3">
+              <Input label="Name" value={newGroupName} onChange={(e) => setNewGroupName(e.target.value)} placeholder="e.g. Lincoln Elementary" />
+            </div>
+            <div className="mt-4 flex justify-end gap-2">
+              <Button variant="outline" type="button" onClick={() => setNewGroupOpen(false)}>
+                Cancel
+              </Button>
+              <Button type="button" disabled={newGroupSaving || !newGroupName.trim()} onClick={onCreateGroup}>
+                {newGroupSaving ? 'Creating…' : 'Create'}
+              </Button>
+            </div>
+          </div>
+        </div>
+      )}
+    </>
   );
 }

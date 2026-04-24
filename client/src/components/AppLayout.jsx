@@ -1,4 +1,6 @@
 import { Link, NavLink, Outlet, useLocation } from 'react-router-dom';
+import { useEffect, useState } from 'react';
+import { api } from '../lib/api';
 import { useAuth } from '../context/AuthContext';
 import { ThemeCycleButton } from '../context/ThemeContext';
 import { Banner2FA } from './Banner2FA';
@@ -6,8 +8,8 @@ import { Banner2FA } from './Banner2FA';
 const PATH_TITLES = {
   '/dashboard': 'Dashboard',
   '/devices': 'Devices',
-  '/groups': 'Groups',
-  '/software': 'Software Manager',
+  '/groups': 'Devices',
+  '/software': 'Devices',
   '/alerts': 'Alerts',
   '/scripts': 'Scripts',
   '/reboot-policies': 'Reboot Policies',
@@ -46,27 +48,6 @@ const sections = [
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75">
             <rect x="3" y="4" width="18" height="12" rx="2" />
             <path d="M8 20h8" strokeLinecap="round" />
-          </svg>
-        ),
-      },
-      {
-        to: '/groups',
-        label: 'Groups',
-        icon: (
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75">
-            <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2M9 11a4 4 0 1 0 0-8 4 4 0 0 0 0 8zM23 21v-2a4 4 0 0 0-3-3.87M16 3.13a4 4 0 0 1 0 7.75" strokeLinecap="round" />
-          </svg>
-        ),
-      },
-      {
-        to: '/software',
-        label: 'Software Manager',
-        icon: (
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75">
-            <rect x="3" y="3" width="7" height="7" rx="1.5" />
-            <rect x="14" y="3" width="7" height="7" rx="1.5" />
-            <rect x="3" y="14" width="7" height="7" rx="1.5" />
-            <rect x="14" y="14" width="7" height="7" rx="1.5" />
           </svg>
         ),
       },
@@ -181,6 +162,174 @@ function breadcrumbFromPath(pathname) {
   return ['Home', ...parts.map((p) => p.charAt(0).toUpperCase() + p.slice(1).replace(/-/g, ' '))];
 }
 
+function findGroupPath(nodes, id, ancestors = []) {
+  for (const n of nodes || []) {
+    if (n.id === id) return [...ancestors, n.id];
+    const sub = findGroupPath(n.children || [], id, [...ancestors, n.id]);
+    if (sub.length) return sub;
+  }
+  return [];
+}
+
+function SidebarGroupTreeRows({ nodes, depth, groupParam, expanded, onToggle, onSelectLink }) {
+  if (!nodes?.length) return null;
+  return (
+    <>
+      {nodes.map((node) => {
+        const hasKids = node.children?.length > 0;
+        const isOpen = expanded.has(node.id);
+        const isSel = groupParam === node.id;
+        return (
+          <div key={node.id}>
+            <div
+              className="flex min-w-0 items-center gap-0.5 rounded-md pr-1"
+              style={{ paddingLeft: `${6 + depth * 12}px` }}
+            >
+              {hasKids ? (
+                <button
+                  type="button"
+                  aria-expanded={isOpen}
+                  className="flex h-6 w-6 shrink-0 items-center justify-center rounded text-slate-500 hover:bg-slate-100 dark:text-slate-400 dark:hover:bg-slate-800"
+                  onClick={() => onToggle(node.id)}
+                >
+                  <svg className={`h-3.5 w-3.5 transition-transform ${isOpen ? 'rotate-90' : ''}`} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                    <path d="M9 18l6-6-6-6" strokeLinecap="round" strokeLinejoin="round" />
+                  </svg>
+                </button>
+              ) : (
+                <span className="inline-block w-6 shrink-0" aria-hidden />
+              )}
+              <Link
+                to={onSelectLink(node.id)}
+                className={`min-w-0 flex-1 truncate rounded-md px-1.5 py-1 text-xs font-medium ${
+                  isSel
+                    ? 'bg-blue-50 text-brand dark:bg-blue-950/50 dark:text-blue-300'
+                    : 'text-slate-600 hover:bg-slate-100 dark:text-slate-400 dark:hover:bg-slate-800'
+                }`}
+              >
+                <span className="truncate">{node.name}</span>
+                <span className="ml-1 shrink-0 tabular-nums text-[10px] text-slate-400 dark:text-slate-500">({node.device_count ?? 0})</span>
+              </Link>
+            </div>
+            {hasKids && isOpen ? (
+              <SidebarGroupTreeRows
+                nodes={node.children}
+                depth={depth + 1}
+                groupParam={groupParam}
+                expanded={expanded}
+                onToggle={onToggle}
+                onSelectLink={onSelectLink}
+              />
+            ) : null}
+          </div>
+        );
+      })}
+    </>
+  );
+}
+
+function DevicesSidebarTree() {
+  const { pathname, search } = useLocation();
+  const [tree, setTree] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [expanded, setExpanded] = useState(() => new Set());
+
+  const params = new URLSearchParams(search);
+  const groupParam = params.get('group') || '';
+  const smartParam = params.get('smart') || '';
+
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      setLoading(true);
+      try {
+        const data = await api('/api/groups');
+        if (!cancelled) setTree(Array.isArray(data?.groups) ? data.groups : []);
+      } catch {
+        if (!cancelled) setTree([]);
+      } finally {
+        if (!cancelled) setLoading(false);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  useEffect(() => {
+    if (!groupParam || groupParam === 'ungrouped') return;
+    const path = findGroupPath(tree, groupParam);
+    if (!path.length) return;
+    setExpanded((prev) => {
+      const next = new Set(prev);
+      path.slice(0, -1).forEach((id) => next.add(id));
+      return next;
+    });
+  }, [groupParam, tree]);
+
+  if (pathname !== '/devices') return null;
+
+  const isAll = !groupParam && !smartParam;
+  const isUngrouped = groupParam === 'ungrouped';
+
+  const rowCls = (active) =>
+    `ml-5 flex items-center justify-between gap-1 rounded-md px-2 py-1 text-xs font-medium ${
+      active
+        ? 'bg-blue-50 text-brand dark:bg-blue-950/50 dark:text-blue-300'
+        : 'text-slate-600 hover:bg-slate-100 dark:text-slate-400 dark:hover:bg-slate-800'
+    }`;
+
+  const toggle = (id) => {
+    setExpanded((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  };
+
+  const groupHref = (id) => {
+    const n = new URLSearchParams(search);
+    n.delete('smart');
+    n.set('group', id);
+    const q = n.toString();
+    return q ? `/devices?${q}` : `/devices?group=${id}`;
+  };
+
+  return (
+    <div className="mt-1 space-y-0.5 border-l border-fds-border pl-1">
+      <div className="mb-1 flex items-center justify-between gap-1 pl-4 pr-1">
+        <span className="text-[10px] font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">Groups</span>
+        <Link
+          to="/devices?newGroup=1"
+          className="flex h-6 w-6 items-center justify-center rounded-md text-sm font-semibold text-brand hover:bg-blue-50 dark:hover:bg-blue-950/40"
+          title="New group"
+        >
+          +
+        </Link>
+      </div>
+      <Link to="/devices" className={rowCls(isAll)}>
+        <span className="truncate">All Devices</span>
+      </Link>
+      <Link to="/devices?group=ungrouped" className={rowCls(isUngrouped)}>
+        <span className="truncate">Ungrouped</span>
+      </Link>
+      {loading ? (
+        <p className="ml-5 py-1 text-[11px] text-slate-400">Loading…</p>
+      ) : (
+        <SidebarGroupTreeRows
+          nodes={tree}
+          depth={0}
+          groupParam={groupParam}
+          expanded={expanded}
+          onToggle={toggle}
+          onSelectLink={groupHref}
+        />
+      )}
+    </div>
+  );
+}
+
 export function AppLayout() {
   const { user, org, logout } = useAuth();
   const location = useLocation();
@@ -222,22 +371,41 @@ export function AppLayout() {
                       {section.label}
                     </p>
                     <div className="flex flex-col gap-0.5">
-                      {items.map(({ to, label, icon }) => (
-                        <NavLink
-                          key={to}
-                          to={to}
-                          className={({ isActive }) =>
-                            `flex items-center gap-3 rounded-lg border-l-[3px] px-3 py-1.5 text-sm font-medium transition ${
-                              isActive
-                                ? 'border-brand bg-blue-50/80 text-brand dark:bg-blue-950/50 dark:text-blue-300'
-                                : 'border-transparent text-slate-600 hover:bg-blue-50/60 hover:text-slate-900 dark:text-slate-300 dark:hover:bg-slate-800/60 dark:hover:text-slate-50'
-                            }`
-                          }
-                        >
-                          <Icon>{icon}</Icon>
-                          <span className="truncate">{label}</span>
-                        </NavLink>
-                      ))}
+                      {items.map(({ to, label, icon }) =>
+                        to === '/devices' ? (
+                          <div key={to}>
+                            <NavLink
+                              to={to}
+                              className={({ isActive }) =>
+                                `flex items-center gap-3 rounded-lg border-l-[3px] px-3 py-1.5 text-sm font-medium transition ${
+                                  isActive
+                                    ? 'border-brand bg-blue-50/80 text-brand dark:bg-blue-950/50 dark:text-blue-300'
+                                    : 'border-transparent text-slate-600 hover:bg-blue-50/60 hover:text-slate-900 dark:text-slate-300 dark:hover:bg-slate-800/60 dark:hover:text-slate-50'
+                                }`
+                              }
+                            >
+                              <Icon>{icon}</Icon>
+                              <span className="truncate">{label}</span>
+                            </NavLink>
+                            <DevicesSidebarTree />
+                          </div>
+                        ) : (
+                          <NavLink
+                            key={to}
+                            to={to}
+                            className={({ isActive }) =>
+                              `flex items-center gap-3 rounded-lg border-l-[3px] px-3 py-1.5 text-sm font-medium transition ${
+                                isActive
+                                  ? 'border-brand bg-blue-50/80 text-brand dark:bg-blue-950/50 dark:text-blue-300'
+                                  : 'border-transparent text-slate-600 hover:bg-blue-50/60 hover:text-slate-900 dark:text-slate-300 dark:hover:bg-slate-800/60 dark:hover:text-slate-50'
+                              }`
+                            }
+                          >
+                            <Icon>{icon}</Icon>
+                            <span className="truncate">{label}</span>
+                          </NavLink>
+                        ),
+                      )}
                     </div>
                   </div>
                 );

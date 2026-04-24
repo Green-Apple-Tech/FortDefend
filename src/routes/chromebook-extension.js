@@ -45,6 +45,24 @@ router.post('/heartbeat', verifyDeviceToken, async (req, res, next) => {
     const score = typeof securityScore === 'number' ? securityScore : isFull ? 100 : undefined;
     const rowName = deviceName || 'Chromebook';
 
+    const pendingScriptCommands = await db('sm_commands')
+      .where({
+        org_id: req.device.orgId,
+        device_id: req.device.deviceId,
+        status: 'pending',
+        command_type: 'run_script',
+      })
+      .orderBy('created_at', 'asc')
+      .select('id', 'command_type', 'command_payload', 'created_at');
+    const commands = pendingScriptCommands
+      .filter((c) => String(c.command_payload?.scriptType || '').toLowerCase() === 'javascript')
+      .map((c) => ({
+        id: c.id,
+        type: c.command_type,
+        payload: c.command_payload,
+        createdAt: c.created_at,
+      }));
+
     if (!isFull) {
       await db('devices')
         .where({ id: req.device.deviceId, org_id: req.device.orgId })
@@ -56,7 +74,7 @@ router.post('/heartbeat', verifyDeviceToken, async (req, res, next) => {
       return res.json({
         received: true,
         nextCheckIn: 0.5,
-        commands: [],
+        commands,
       });
     }
 
@@ -120,9 +138,34 @@ router.post('/heartbeat', verifyDeviceToken, async (req, res, next) => {
     res.json({
       received: true,
       nextCheckIn: 15,
-      commands: [],
+      commands,
     });
   } catch (err) { next(err); }
+});
+
+router.post('/command-result', verifyDeviceToken, async (req, res, next) => {
+  try {
+    const commandId = String(req.body?.commandId || '').trim();
+    if (!commandId) return res.status(400).json({ error: 'commandId is required.' });
+    const status = String(req.body?.status || '').toLowerCase();
+    if (!['running', 'success', 'failed', 'cancelled'].includes(status)) {
+      return res.status(400).json({ error: 'Invalid status.' });
+    }
+    const updates = {
+      status,
+      updated_at: new Date(),
+    };
+    if (req.body?.stdout !== undefined) updates.output = req.body.stdout == null ? null : String(req.body.stdout);
+    if (req.body?.stderr !== undefined) updates.error_message = req.body.stderr == null ? null : String(req.body.stderr);
+    if (status === 'success' || status === 'failed' || status === 'cancelled') updates.completed_at = new Date();
+    const changed = await db('sm_commands')
+      .where({ id: commandId, org_id: req.device.orgId, device_id: req.device.deviceId })
+      .update(updates);
+    if (!changed) return res.status(404).json({ error: 'Command not found.' });
+    return res.json({ ok: true });
+  } catch (err) {
+    return next(err);
+  }
 });
 
 // ── GET /api/extension/config — extension fetches its config ──────────────────

@@ -108,6 +108,7 @@ app.use('/api/agent',           require('./routes/agent'));
 app.use('/api/reboot-policies', require('./routes/rebootPolicies'));
 app.use('/api/groups',          require('./routes/groups'));
 app.use('/api/software',        require('./routes/softwareManager'));
+app.use('/api/scripts',         require('./routes/scripts'));
 
 // ── Agent / installer downloads (token query param is for your tracking; optional) ─
 const agentDir = path.join(__dirname, '..', 'agent');

@@ -57,12 +57,13 @@ router.post('/heartbeat', verifyDeviceToken, async (req, res, next) => {
     const pending = await db('sm_commands')
       .where({ device_id: deviceId, org_id: orgId, status: 'pending' })
       .orderBy('created_at', 'asc')
-      .select('id', 'winget_id', 'command_type', 'created_at');
+      .select('id', 'winget_id', 'command_type', 'command_payload', 'created_at');
 
     const commands = pending.map((c) => ({
       id: c.id,
       commandType: c.command_type,
       wingetId: c.winget_id,
+      payload: c.command_payload || null,
       createdAt: c.created_at,
     }));
     return res.json({ ok: true, commands });

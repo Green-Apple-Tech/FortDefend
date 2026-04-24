@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { api } from '../lib/api';
 import { Button, Card, Input } from '../components/ui';
+import ScriptRunnerModal from '../components/ScriptRunnerModal';
 
 const PAGE_SIZE = 25;
 const POLL_MS = 60_000;
@@ -149,6 +150,9 @@ export default function Devices() {
   const [panelTab, setPanelTab] = useState('overview');
   const [openMenu, setOpenMenu] = useState(null);
   const [toast, setToast] = useState('');
+  const [checkedIds, setCheckedIds] = useState([]);
+  const [showScriptRunner, setShowScriptRunner] = useState(false);
+  const [scripts, setScripts] = useState([]);
   const menuRef = useRef(null);
 
   const loadDevices = useCallback(async (opts = { showLoading: false }) => {
@@ -179,6 +183,12 @@ export default function Devices() {
       clearInterval(t);
     };
   }, [loadDevices]);
+
+  useEffect(() => {
+    api('/api/scripts')
+      .then((res) => setScripts(Array.isArray(res?.scripts) ? res.scripts : []))
+      .catch(() => setScripts([]));
+  }, []);
 
   useEffect(() => {
     if (!toast) return undefined;
@@ -247,6 +257,10 @@ export default function Devices() {
   const pageItems = useMemo(
     () => sorted.slice(pageStart, pageStart + PAGE_SIZE),
     [sorted, pageStart]
+  );
+  const checkedDevices = useMemo(
+    () => rows.filter((d) => checkedIds.includes(d.id)),
+    [rows, checkedIds]
   );
 
   useEffect(() => {
@@ -354,6 +368,41 @@ export default function Devices() {
     }
   };
 
+  const assignSelectedToGroup = async () => {
+    const groupId = window.prompt('Enter group ID to assign selected devices:');
+    if (!groupId) return;
+    let ok = 0;
+    for (const d of checkedDevices) {
+      try {
+        await api(`/api/groups/devices/${encodeURIComponent(d.id)}/move`, {
+          method: 'POST',
+          body: { from_group_id: null, to_group_id: groupId },
+        });
+        ok += 1;
+      } catch {
+        /* continue */
+      }
+    }
+    setToast(`Assigned ${ok}/${checkedDevices.length} devices.`);
+  };
+
+  const rebootSelected = async () => {
+    let ok = 0;
+    for (const d of checkedDevices) {
+      if (d.source !== 'intune') continue;
+      try {
+        await api(`/api/integrations/devices/${encodeURIComponent(d.id)}/reboot`, {
+          method: 'POST',
+          body: { source: 'intune' },
+        });
+        ok += 1;
+      } catch {
+        /* continue */
+      }
+    }
+    setToast(`Sent reboot to ${ok} Intune device(s).`);
+  };
+
   const openDetails = (d) => {
     setSelected(d);
     setPanelTab('overview');
@@ -380,6 +429,15 @@ export default function Devices() {
       )}
 
       <Card>
+        {checkedDevices.length > 0 && (
+          <div className="mb-4 flex flex-wrap items-center gap-2 rounded-lg border border-brand/30 bg-brand-light/40 px-3 py-2">
+            <span className="text-sm font-medium text-brand">{checkedDevices.length} selected</span>
+            <Button variant="outline" className="!py-1.5 text-xs" onClick={() => setShowScriptRunner(true)}>Run Script</Button>
+            <Button variant="outline" className="!py-1.5 text-xs" onClick={rebootSelected}>Reboot</Button>
+            <Button variant="outline" className="!py-1.5 text-xs" onClick={assignSelectedToGroup}>Assign Group</Button>
+            <Button variant="outline" className="!py-1.5 text-xs" onClick={exportCsv}>Export Selected</Button>
+          </div>
+        )}
         <div className="flex flex-col gap-4 lg:flex-row lg:flex-wrap lg:items-end">
           <div className="min-w-0 flex-1 lg:max-w-md">
             <Input
@@ -447,6 +505,20 @@ export default function Devices() {
             <table className="min-w-full border-collapse text-sm">
               <thead className="sticky top-0 z-20 border-b border-gray-200 bg-white shadow-sm">
                 <tr>
+                  <th className="whitespace-nowrap px-3 py-3 text-left">
+                    <input
+                      type="checkbox"
+                      checked={pageItems.length > 0 && pageItems.every((d) => checkedIds.includes(d.id))}
+                      onChange={(e) => {
+                        const ids = pageItems.map((d) => d.id);
+                        if (e.target.checked) {
+                          setCheckedIds((prev) => [...new Set([...prev, ...ids])]);
+                        } else {
+                          setCheckedIds((prev) => prev.filter((id) => !ids.includes(id)));
+                        }
+                      }}
+                    />
+                  </th>
                   <th className="whitespace-nowrap px-3 py-3 text-left">
                     <button
                       type="button"
@@ -565,7 +637,7 @@ export default function Devices() {
               <tbody className="divide-y divide-gray-100 bg-white">
                 {pageItems.length === 0 && (
                   <tr>
-                    <td colSpan={12} className="px-4 py-10 text-center text-gray-500">
+                    <td colSpan={13} className="px-4 py-10 text-center text-gray-500">
                       No devices match your filters.
                     </td>
                   </tr>
@@ -579,7 +651,21 @@ export default function Devices() {
                       key={k}
                       className="cursor-pointer hover:bg-blue-50/50"
                       onClick={() => openDetails(d)}
+                      onContextMenu={(e) => {
+                        e.preventDefault();
+                        setOpenMenu((m) => (m === k ? null : k));
+                      }}
                     >
+                      <td className="px-3 py-2.5" onClick={(e) => e.stopPropagation()}>
+                        <input
+                          type="checkbox"
+                          checked={checkedIds.includes(d.id)}
+                          onChange={(e) => {
+                            if (e.target.checked) setCheckedIds((prev) => [...new Set([...prev, d.id])]);
+                            else setCheckedIds((prev) => prev.filter((id) => id !== d.id));
+                          }}
+                        />
+                      </td>
                       <td className="px-3 py-2.5">
                         <div className="flex min-w-0 items-center gap-2">
                           <span className={`inline-block h-2 w-2 shrink-0 rounded-full ${statusDotClass(st)}`} />
@@ -642,6 +728,17 @@ export default function Devices() {
                               <button
                                 type="button"
                                 className="block w-full px-3 py-2 text-left text-sm text-gray-700 hover:bg-gray-50"
+                                onClick={() => {
+                                  setOpenMenu(null);
+                                  setCheckedIds([d.id]);
+                                  setShowScriptRunner(true);
+                                }}
+                              >
+                                Run Script
+                              </button>
+                              <button
+                                type="button"
+                                className="block w-full px-3 py-2 text-left text-sm text-gray-700 hover:bg-gray-50"
                                 onClick={() => runSync(d)}
                               >
                                 Sync
@@ -662,6 +759,33 @@ export default function Devices() {
                                 }}
                               >
                                 View Details
+                              </button>
+                              <button
+                                type="button"
+                                className="block w-full px-3 py-2 text-left text-sm text-gray-700 hover:bg-gray-50"
+                                onClick={async () => {
+                                  const groupId = window.prompt('Enter group ID:');
+                                  if (!groupId) return;
+                                  await api(`/api/groups/devices/${encodeURIComponent(d.id)}/move`, {
+                                    method: 'POST',
+                                    body: { from_group_id: null, to_group_id: groupId },
+                                  }).catch(() => {});
+                                  setToast('Assign request sent.');
+                                }}
+                              >
+                                Assign to Group
+                              </button>
+                              <button
+                                type="button"
+                                className="block w-full px-3 py-2 text-left text-sm text-red-600 hover:bg-gray-50"
+                                onClick={async () => {
+                                  if (!window.confirm('Remove this device?')) return;
+                                  await api(`/api/devices/${encodeURIComponent(d.id)}`, { method: 'DELETE' }).catch(() => {});
+                                  setToast('Device removed.');
+                                  loadDevices({ showLoading: false });
+                                }}
+                              >
+                                Remove Device
                               </button>
                             </div>
                           )}
@@ -818,6 +942,13 @@ export default function Devices() {
           {toast}
         </div>
       )}
+      <ScriptRunnerModal
+        open={showScriptRunner}
+        onClose={() => setShowScriptRunner(false)}
+        selectedDevices={checkedDevices}
+        scripts={scripts}
+        title="Run Script on Devices"
+      />
     </div>
   );
 }

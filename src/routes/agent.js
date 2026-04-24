@@ -390,13 +390,73 @@ router.post('/heartbeat', async (req, res) => {
       ai_summary: 'Device check-in received successfully.',
     });
 
+    const pendingCommands = await db('sm_commands')
+      .where({
+        org_id: orgId,
+        device_id: deviceId,
+        status: 'pending',
+      })
+      .whereIn('command_type', ['run_script'])
+      .orderBy('created_at', 'asc')
+      .select('id', 'command_type', 'command_payload', 'created_at');
+
     if (auth.kind === 'apiKey') {
       await db('api_keys').where('id', auth.apiKey.id).update({ last_used_at: new Date() });
     }
-    return res.json({ ok: true, commands: [] });
+    const commands = pendingCommands.map((row) => ({
+      id: row.id,
+      type: row.command_type,
+      payload: row.command_payload || {},
+      createdAt: row.created_at,
+      name: row.command_payload?.scriptName || row.command_type,
+    }));
+    return res.json({ ok: true, commands });
   } catch (err) {
     console.error('Agent heartbeat error:', err);
     return res.status(500).json({ error: 'Failed to process heartbeat.' });
+  }
+});
+
+router.post('/command-result', async (req, res) => {
+  try {
+    const token = req.headers['x-org-token'] || req.body?.orgToken;
+    const auth = await authAgentRequest(token);
+    if (!auth) return res.status(401).json({ error: 'Invalid org token.' });
+    if (auth.rejected === 'subscription') {
+      return res.status(402).json({ error: 'Subscription inactive.' });
+    }
+
+    const commandId = String(req.body?.commandId || '').trim();
+    if (!commandId) return res.status(400).json({ error: 'commandId is required.' });
+    const statusRaw = String(req.body?.status || '').toLowerCase();
+    const status = ['running', 'success', 'failed', 'cancelled'].includes(statusRaw) ? statusRaw : null;
+    if (!status) return res.status(400).json({ error: 'status must be running, success, failed, or cancelled.' });
+
+    const updates = {
+      status,
+      updated_at: new Date(),
+    };
+    if (req.body?.stdout !== undefined) updates.output = req.body.stdout == null ? null : String(req.body.stdout);
+    if (req.body?.errorMessage !== undefined) {
+      updates.error_message = req.body.errorMessage == null ? null : String(req.body.errorMessage);
+    } else if (req.body?.stderr !== undefined && String(req.body.stderr || '').trim()) {
+      updates.error_message = String(req.body.stderr);
+    }
+    if (['success', 'failed', 'cancelled'].includes(status)) {
+      updates.completed_at = new Date();
+    }
+
+    const updated = await db('sm_commands')
+      .where({ id: commandId, org_id: auth.orgId })
+      .update(updates)
+      .returning(['id', 'status', 'updated_at', 'completed_at']);
+    if (!updated.length) {
+      return res.status(404).json({ error: 'Command not found.' });
+    }
+    return res.json({ ok: true, command: updated[0] });
+  } catch (err) {
+    console.error('Agent command-result error:', err);
+    return res.status(500).json({ error: 'Failed to process command result.' });
   }
 });
 

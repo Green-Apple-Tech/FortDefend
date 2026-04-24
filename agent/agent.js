@@ -142,6 +142,38 @@ function run(command) {
   }
 }
 
+function runScriptByType(scriptType, scriptContent) {
+  const type = String(scriptType || '').toLowerCase();
+  const content = String(scriptContent || '');
+  if (!content.trim()) {
+    throw new Error('Script content is empty.');
+  }
+  if (type === 'powershell') {
+    return execFileSync(
+      'powershell.exe',
+      ['-NoProfile', '-ExecutionPolicy', 'Bypass', '-Command', content],
+      { encoding: 'utf8', windowsHide: true, timeout: 180000, maxBuffer: 10 * 1024 * 1024 }
+    );
+  }
+  if (type === 'cmd') {
+    return execFileSync('cmd.exe', ['/c', content], {
+      encoding: 'utf8',
+      windowsHide: true,
+      timeout: 180000,
+      maxBuffer: 10 * 1024 * 1024,
+    });
+  }
+  if (type === 'python') {
+    return execFileSync('python.exe', ['-c', content], {
+      encoding: 'utf8',
+      windowsHide: true,
+      timeout: 180000,
+      maxBuffer: 10 * 1024 * 1024,
+    });
+  }
+  throw new Error(`Unsupported scriptType for Windows agent: ${type}`);
+}
+
 function runJson(command) {
   try {
     const out = run(command);
@@ -274,18 +306,59 @@ async function heartbeat() {
       for (const cmd of json.commands) {
         try {
           safeLog(`executing command: ${cmd.name || 'unnamed'}`);
-          if (String(cmd.type || '').toLowerCase() === 'reboot') {
+          const type = String(cmd.type || '').toLowerCase();
+          if (type === 'reboot') {
             await handleRebootCommand(cmd);
+          } else if (type === 'run_script') {
+            await postCommandResult(creds, cmd.id, {
+              status: 'running',
+              stdout: '',
+              stderr: '',
+            });
+            const payload = cmd.payload || {};
+            const output = runScriptByType(payload.scriptType, payload.scriptContent);
+            await postCommandResult(creds, cmd.id, {
+              status: 'success',
+              stdout: output || '',
+              stderr: '',
+            });
           } else {
             run(cmd.powershell || '');
           }
         } catch (err) {
           safeLog(`command failed: ${err.message}`);
+          if (cmd && cmd.id) {
+            await postCommandResult(creds, cmd.id, {
+              status: 'failed',
+              stdout: err.stdout ? String(err.stdout) : '',
+              stderr: err.stderr ? String(err.stderr) : '',
+              errorMessage: err.message,
+            });
+          }
         }
       }
     }
   } catch (err) {
     safeLog(`heartbeat failed: ${err.message}`);
+  }
+}
+
+async function postCommandResult(creds, commandId, result) {
+  if (!commandId) return;
+  try {
+    await fetchImpl(`${creds.appUrl}/api/agent/command-result`, {
+      method: 'POST',
+      headers: buildHeartbeatHeaders(creds.token, creds.groupId),
+      body: JSON.stringify({
+        commandId,
+        status: result.status,
+        stdout: result.stdout,
+        stderr: result.stderr,
+        errorMessage: result.errorMessage || null,
+      }),
+    });
+  } catch (err) {
+    safeLog(`command-result post failed (${commandId}): ${err.message}`);
   }
 }
 

@@ -1,5 +1,6 @@
 import { useState, useEffect, useRef } from 'react';
 import { api } from '../lib/api';
+import ScriptRunnerModal from '../components/ScriptRunnerModal';
 
 const FolderIcon = ({ open }) => (
   <svg width="16" height="16" viewBox="0 0 24 24" fill={open ? '#185FA5' : '#6B7280'} className="flex-shrink-0">
@@ -133,8 +134,11 @@ export default function Groups() {
   const [modal, setModal] = useState(null);
   const [modalInput, setModalInput] = useState('');
   const [dragOverUngrouped, setDragOverUngrouped] = useState(false);
+  const [scripts, setScripts] = useState([]);
+  const [runnerDevices, setRunnerDevices] = useState([]);
+  const [showRunner, setShowRunner] = useState(false);
 
-  useEffect(() => { loadGroups(); loadAllDevices(); }, []);
+  useEffect(() => { loadGroups(); loadAllDevices(); loadScripts(); }, []);
   useEffect(() => { if (selectedGroup) loadGroupDevices(selectedGroup.id); }, [selectedGroup]);
 
   async function loadGroups() {
@@ -155,6 +159,11 @@ export default function Groups() {
     } catch (err) {
       console.error(err);
     }
+  }
+
+  async function loadScripts() {
+    const data = await api('/api/scripts').catch(() => ({ scripts: [] }));
+    setScripts(Array.isArray(data?.scripts) ? data.scripts : []);
   }
 
   async function loadGroupDevices(groupId) {
@@ -223,6 +232,25 @@ export default function Groups() {
     setContextMenu({
       x: e.clientX, y: e.clientY,
       items: [
+        { label: '▶️ Run Script on All Devices', action: async () => {
+          const data = await api(`/api/groups/${group.id}/devices`).catch(() => ({ devices: [] }));
+          const list = Array.isArray(data?.devices) ? data.devices : [];
+          setRunnerDevices(list);
+          setShowRunner(true);
+        } },
+        { label: '🔁 Reboot All', action: async () => {
+          const data = await api(`/api/groups/${group.id}/devices`).catch(() => ({ devices: [] }));
+          const list = Array.isArray(data?.devices) ? data.devices : [];
+          for (const d of list) {
+            if (d.source !== 'intune') continue;
+            await api(`/api/integrations/devices/${encodeURIComponent(d.id)}/reboot`, {
+              method: 'POST',
+              body: { source: 'intune' },
+            }).catch(() => {});
+          }
+        } },
+        { label: '👁️ View Devices', action: async () => { setSelectedGroup(group); } },
+        'divider',
         { label: '📁 Add subgroup', action: () => { setModal({ type: 'create', parent: group }); setModalInput(''); } },
         { label: '✏️ Rename', action: () => { setModal({ type: 'rename', group }); setModalInput(group.name); } },
         'divider',
@@ -353,6 +381,13 @@ export default function Groups() {
           </div>
         </div>
       )}
+      <ScriptRunnerModal
+        open={showRunner}
+        onClose={() => setShowRunner(false)}
+        scripts={scripts}
+        selectedDevices={runnerDevices}
+        title="Run Script on Group Devices"
+      />
     </div>
   );
 }

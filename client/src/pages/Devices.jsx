@@ -5,6 +5,20 @@ import ScriptRunnerModal from '../components/ScriptRunnerModal';
 
 const PAGE_SIZE = 25;
 const POLL_MS = 60_000;
+const DEVICE_COLUMNS_LS_KEY = 'fortdefend_devices_column_order_v1';
+const DEFAULT_COLUMN_ORDER = [
+  'device',
+  'os',
+  'source',
+  'status',
+  'compliance',
+  'security_score',
+  'last_seen',
+  'group',
+  'disk',
+  'ram',
+  'patches',
+];
 
 function formatRelativeTime(iso) {
   if (!iso) return '—';
@@ -153,6 +167,8 @@ export default function Devices() {
   const [checkedIds, setCheckedIds] = useState([]);
   const [showScriptRunner, setShowScriptRunner] = useState(false);
   const [scripts, setScripts] = useState([]);
+  const [columnOrder, setColumnOrder] = useState(DEFAULT_COLUMN_ORDER);
+  const [draggedColumn, setDraggedColumn] = useState(null);
   const menuRef = useRef(null);
 
   const loadDevices = useCallback(async (opts = { showLoading: false }) => {
@@ -189,6 +205,25 @@ export default function Devices() {
       .then((res) => setScripts(Array.isArray(res?.scripts) ? res.scripts : []))
       .catch(() => setScripts([]));
   }, []);
+
+  useEffect(() => {
+    try {
+      const raw = localStorage.getItem(DEVICE_COLUMNS_LS_KEY);
+      if (!raw) return;
+      const parsed = JSON.parse(raw);
+      if (!Array.isArray(parsed)) return;
+      const valid = parsed.filter((key) => DEFAULT_COLUMN_ORDER.includes(key));
+      const missing = DEFAULT_COLUMN_ORDER.filter((key) => !valid.includes(key));
+      const merged = [...valid, ...missing];
+      if (merged.length === DEFAULT_COLUMN_ORDER.length) setColumnOrder(merged);
+    } catch {
+      /* ignore */
+    }
+  }, []);
+
+  useEffect(() => {
+    localStorage.setItem(DEVICE_COLUMNS_LS_KEY, JSON.stringify(columnOrder));
+  }, [columnOrder]);
 
   useEffect(() => {
     if (!toast) return undefined;
@@ -279,6 +314,36 @@ export default function Devices() {
   const sortIndicator = (key) => {
     if (sortKey !== key) return <span className="ml-1 text-gray-300">↕</span>;
     return <span className="ml-1 text-brand">{sortDir === 'asc' ? '↑' : '↓'}</span>;
+  };
+
+  const columnLabel = (key) => {
+    const map = {
+      device: 'Device',
+      os: 'OS',
+      source: 'Source',
+      status: 'Status',
+      compliance: 'Compliance',
+      security_score: 'Security score',
+      last_seen: 'Last seen',
+      group: 'Group',
+      disk: 'Disk',
+      ram: 'RAM',
+      patches: 'Patches',
+    };
+    return map[key] || key;
+  };
+
+  const moveColumn = (from, to) => {
+    if (!from || !to || from === to) return;
+    setColumnOrder((prev) => {
+      const next = [...prev];
+      const fromIdx = next.indexOf(from);
+      const toIdx = next.indexOf(to);
+      if (fromIdx < 0 || toIdx < 0) return prev;
+      const [item] = next.splice(fromIdx, 1);
+      next.splice(toIdx, 0, item);
+      return next;
+    });
   };
 
   const exportCsv = () => {
@@ -519,116 +584,27 @@ export default function Devices() {
                       }}
                     />
                   </th>
-                  <th className="whitespace-nowrap px-3 py-3 text-left">
-                    <button
-                      type="button"
-                      className="font-semibold text-gray-900 hover:text-brand"
-                      onClick={() => toggleSort('device')}
+                  {columnOrder.map((colKey) => (
+                    <th
+                      key={colKey}
+                      className={`whitespace-nowrap px-3 py-3 ${colKey === 'security_score' ? 'text-right' : 'text-left'}`}
+                      draggable
+                      onDragStart={() => setDraggedColumn(colKey)}
+                      onDragOver={(e) => e.preventDefault()}
+                      onDrop={() => moveColumn(draggedColumn, colKey)}
+                      onDragEnd={() => setDraggedColumn(null)}
                     >
-                      Device
-                      {sortIndicator('device')}
-                    </button>
-                  </th>
-                  <th className="whitespace-nowrap px-3 py-3 text-left">
-                    <button
-                      type="button"
-                      className="font-semibold text-gray-900 hover:text-brand"
-                      onClick={() => toggleSort('os')}
-                    >
-                      OS
-                      {sortIndicator('os')}
-                    </button>
-                  </th>
-                  <th className="whitespace-nowrap px-3 py-3 text-left">
-                    <button
-                      type="button"
-                      className="font-semibold text-gray-900 hover:text-brand"
-                      onClick={() => toggleSort('source')}
-                    >
-                      Source
-                      {sortIndicator('source')}
-                    </button>
-                  </th>
-                  <th className="whitespace-nowrap px-3 py-3 text-left">
-                    <button
-                      type="button"
-                      className="font-semibold text-gray-900 hover:text-brand"
-                      onClick={() => toggleSort('status')}
-                    >
-                      Status
-                      {sortIndicator('status')}
-                    </button>
-                  </th>
-                  <th className="whitespace-nowrap px-3 py-3 text-left">
-                    <button
-                      type="button"
-                      className="font-semibold text-gray-900 hover:text-brand"
-                      onClick={() => toggleSort('compliance')}
-                    >
-                      Compliance
-                      {sortIndicator('compliance')}
-                    </button>
-                  </th>
-                  <th className="whitespace-nowrap px-3 py-3 text-right">
-                    <button
-                      type="button"
-                      className="font-semibold text-gray-900 hover:text-brand"
-                      onClick={() => toggleSort('security_score')}
-                    >
-                      Security score
-                      {sortIndicator('security_score')}
-                    </button>
-                  </th>
-                  <th className="whitespace-nowrap px-3 py-3 text-left">
-                    <button
-                      type="button"
-                      className="font-semibold text-gray-900 hover:text-brand"
-                      onClick={() => toggleSort('last_seen')}
-                    >
-                      Last seen
-                      {sortIndicator('last_seen')}
-                    </button>
-                  </th>
-                  <th className="whitespace-nowrap px-3 py-3 text-left">
-                    <button
-                      type="button"
-                      className="font-semibold text-gray-900 hover:text-brand"
-                      onClick={() => toggleSort('group')}
-                    >
-                      Group
-                      {sortIndicator('group')}
-                    </button>
-                  </th>
-                  <th className="whitespace-nowrap px-3 py-3 text-left">
-                    <button
-                      type="button"
-                      className="font-semibold text-gray-900 hover:text-brand"
-                      onClick={() => toggleSort('disk')}
-                    >
-                      Disk
-                      {sortIndicator('disk')}
-                    </button>
-                  </th>
-                  <th className="whitespace-nowrap px-3 py-3 text-left">
-                    <button
-                      type="button"
-                      className="font-semibold text-gray-900 hover:text-brand"
-                      onClick={() => toggleSort('ram')}
-                    >
-                      RAM
-                      {sortIndicator('ram')}
-                    </button>
-                  </th>
-                  <th className="whitespace-nowrap px-3 py-3 text-left">
-                    <button
-                      type="button"
-                      className="font-semibold text-gray-900 hover:text-brand"
-                      onClick={() => toggleSort('patches')}
-                    >
-                      Patches
-                      {sortIndicator('patches')}
-                    </button>
-                  </th>
+                      <button
+                        type="button"
+                        className="font-semibold text-gray-900 hover:text-brand"
+                        onClick={() => toggleSort(colKey)}
+                        title="Drag to reorder column"
+                      >
+                        {columnLabel(colKey)}
+                        {sortIndicator(colKey)}
+                      </button>
+                    </th>
+                  ))}
                   <th className="sticky right-0 z-20 whitespace-nowrap border-l border-gray-100 bg-white px-3 py-3 text-right font-semibold text-gray-900">
                     Actions
                   </th>
@@ -637,7 +613,7 @@ export default function Devices() {
               <tbody className="divide-y divide-gray-100 bg-white">
                 {pageItems.length === 0 && (
                   <tr>
-                    <td colSpan={13} className="px-4 py-10 text-center text-gray-500">
+                    <td colSpan={columnOrder.length + 2} className="px-4 py-10 text-center text-gray-500">
                       No devices match your filters.
                     </td>
                   </tr>
@@ -666,47 +642,72 @@ export default function Devices() {
                           }}
                         />
                       </td>
-                      <td className="px-3 py-2.5">
-                        <div className="flex min-w-0 items-center gap-2">
-                          <span className={`inline-block h-2 w-2 shrink-0 rounded-full ${statusDotClass(st)}`} />
-                          <div className="min-w-0">
-                            <div className="truncate font-medium text-gray-900">{d.name || d.id}</div>
-                            <div className="truncate text-xs text-gray-500">{d.serial || '—'}</div>
-                          </div>
-                        </div>
-                      </td>
-                      <td className="px-3 py-2.5 text-gray-600">
-                        {d.os} {d.osVersion ? `· ${d.osVersion}` : ''}
-                      </td>
-                      <td className="px-3 py-2.5">
-                        <span className="inline-flex rounded-full bg-gray-100 px-2 py-0.5 text-xs font-medium text-gray-800">
-                          {displaySource(d.source)}
-                        </span>
-                      </td>
-                      <td className="px-3 py-2.5 capitalize text-gray-700">{st}</td>
-                      <td className="px-3 py-2.5 text-gray-600">{d.compliance || '—'}</td>
-                      <td className="px-3 py-2.5 text-right font-semibold text-brand">
-                        {d.security_score ?? '—'}
-                      </td>
-                      <td className="whitespace-nowrap px-3 py-2.5 text-gray-600">
-                        {formatRelativeTime(getLastSeen(d))}
-                      </td>
-                      <td className="px-3 py-2.5 text-gray-700">{d.group_name || 'Ungrouped'}</td>
-                      <td className="px-3 py-2.5 text-gray-600">{formatDisk(d)}</td>
-                      <td className="px-3 py-2.5 text-gray-600">{formatRam(d)}</td>
-                      <td className="px-3 py-2.5">
-                        {patchN == null ? (
-                          '—'
-                        ) : patchN > 0 ? (
-                          <span className="inline-flex rounded-full bg-amber-100 px-2 py-0.5 text-xs font-semibold text-amber-900">
-                            {patchN} pending
-                          </span>
-                        ) : (
-                          <span className="text-lg text-emerald-600" title="0 pending">
-                            ✓
-                          </span>
-                        )}
-                      </td>
+                      {columnOrder.map((colKey) => {
+                        if (colKey === 'device') {
+                          return (
+                            <td key={colKey} className="px-3 py-2.5">
+                              <div className="flex min-w-0 items-center gap-2">
+                                <span className={`inline-block h-2 w-2 shrink-0 rounded-full ${statusDotClass(st)}`} />
+                                <div className="min-w-0">
+                                  <div className="truncate font-medium text-gray-900">{d.name || d.id}</div>
+                                  <div className="truncate text-xs text-gray-500">{d.serial || '—'}</div>
+                                </div>
+                              </div>
+                            </td>
+                          );
+                        }
+                        if (colKey === 'os') {
+                          return <td key={colKey} className="px-3 py-2.5 text-gray-600">{d.os} {d.osVersion ? `· ${d.osVersion}` : ''}</td>;
+                        }
+                        if (colKey === 'source') {
+                          return (
+                            <td key={colKey} className="px-3 py-2.5">
+                              <span className="inline-flex rounded-full bg-gray-100 px-2 py-0.5 text-xs font-medium text-gray-800">
+                                {displaySource(d.source)}
+                              </span>
+                            </td>
+                          );
+                        }
+                        if (colKey === 'status') {
+                          return <td key={colKey} className="px-3 py-2.5 capitalize text-gray-700">{st}</td>;
+                        }
+                        if (colKey === 'compliance') {
+                          return <td key={colKey} className="px-3 py-2.5 text-gray-600">{d.compliance || '—'}</td>;
+                        }
+                        if (colKey === 'security_score') {
+                          return <td key={colKey} className="px-3 py-2.5 text-right font-semibold text-brand">{d.security_score ?? '—'}</td>;
+                        }
+                        if (colKey === 'last_seen') {
+                          return <td key={colKey} className="whitespace-nowrap px-3 py-2.5 text-gray-600">{formatRelativeTime(getLastSeen(d))}</td>;
+                        }
+                        if (colKey === 'group') {
+                          return <td key={colKey} className="px-3 py-2.5 text-gray-700">{d.group_name || 'Ungrouped'}</td>;
+                        }
+                        if (colKey === 'disk') {
+                          return <td key={colKey} className="px-3 py-2.5 text-gray-600">{formatDisk(d)}</td>;
+                        }
+                        if (colKey === 'ram') {
+                          return <td key={colKey} className="px-3 py-2.5 text-gray-600">{formatRam(d)}</td>;
+                        }
+                        if (colKey === 'patches') {
+                          return (
+                            <td key={colKey} className="px-3 py-2.5">
+                              {patchN == null ? (
+                                '—'
+                              ) : patchN > 0 ? (
+                                <span className="inline-flex rounded-full bg-amber-100 px-2 py-0.5 text-xs font-semibold text-amber-900">
+                                  {patchN} pending
+                                </span>
+                              ) : (
+                                <span className="text-lg text-emerald-600" title="0 pending">
+                                  ✓
+                                </span>
+                              )}
+                            </td>
+                          );
+                        }
+                        return <td key={colKey} className="px-3 py-2.5 text-gray-600">—</td>;
+                      })}
                       <td
                         className="sticky right-0 z-10 border-l border-gray-100 bg-white px-2 py-2 text-right"
                         onClick={(e) => e.stopPropagation()}

@@ -203,7 +203,7 @@ async function evaluateStaleCheckins(orgId) {
   const staleDevices = await db('devices')
     .where('org_id', orgId)
     .andWhere('source', 'agent')
-    .andWhereNotNull('last_seen')
+    .whereNotNull('last_seen')
     .andWhere('last_seen', '<', cutoff)
     .select('id', 'name', 'last_seen');
   const staleIds = new Set(staleDevices.map((d) => d.id));
@@ -460,7 +460,7 @@ router.post('/heartbeat', async (req, res) => {
   const heartbeatStartedAt = new Date().toISOString();
   const safe200 = (body) => res.status(200).json(body);
   try {
-    console.log('[heartbeat] received from device:', req.body?.deviceId, 'apps:', req.body?.installedApps?.length);
+    console.log('[heartbeat] installedApps keys check:', Object.keys(req.body || {}));
     console.log('[agent/heartbeat] start', {
       at: heartbeatStartedAt,
       hasTokenHeader: Boolean(req.headers['x-org-token']),
@@ -489,7 +489,12 @@ router.post('/heartbeat', async (req, res) => {
 
     const payload = req.body || {};
     const telemetry = payload.telemetry || {};
-    const installedApps = Array.isArray(payload.installedApps) ? payload.installedApps : [];
+    const installedApps = Array.isArray(payload.installedApps)
+      ? payload.installedApps
+      : Array.isArray(payload.apps)
+        ? payload.apps
+        : [];
+    console.log('[heartbeat] received from device:', payload.deviceId, 'apps:', installedApps.length);
     const deviceName = payload.deviceName || payload.hostname || 'Unknown Device';
     const externalId = payload.deviceId || payload.machineGuid || payload.hostname || crypto.randomUUID();
     const source = 'agent';

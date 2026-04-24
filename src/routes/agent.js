@@ -81,6 +81,17 @@ function toDateOrNull(value) {
   return Number.isNaN(d.getTime()) ? null : d;
 }
 
+function normalizeOsName(value, fallback = 'Microsoft Windows') {
+  const raw = String(value || '').trim();
+  if (!raw) return fallback;
+  const lower = raw.toLowerCase();
+  if (lower === 'windows') return 'Microsoft Windows';
+  if (lower === 'android') return 'Android';
+  if (lower === 'ios') return 'iOS';
+  if (lower === 'chromeos' || lower === 'chrome os') return 'ChromeOS';
+  return raw;
+}
+
 async function ensureAlert({ orgId, deviceId, type, severity, message, aiAnalysis = null }) {
   const existing = await db('alerts')
     .where({ org_id: orgId, device_id: deviceId, type, resolved: false })
@@ -510,6 +521,8 @@ router.post('/heartbeat', async (req, res) => {
     const rebootRequiredReason = ['windows_update', 'patch', 'pending_file_ops'].includes(telemetry.rebootRequiredReason)
       ? telemetry.rebootRequiredReason
       : null;
+    const normalizedOs = normalizeOsName(telemetry.osName || payload.os || existing?.os || 'Microsoft Windows');
+    const normalizedOsVersion = telemetry.osVersion || payload.osVersion || payload.os_version || existing?.os_version || null;
     const now = new Date();
     const cpuUsagePct = toNum(telemetry.cpuUsagePct ?? payload.cpuUsage, existing?.cpu_usage_pct ?? null);
     const ramUsagePct = toNum(telemetry.ramUsagePct, existing?.ram_usage_pct ?? null);
@@ -522,8 +535,8 @@ router.post('/heartbeat', async (req, res) => {
       name: deviceName,
       hostname: payload.hostname || deviceName,
       serial: telemetry.serialNumber || payload.serialNumber || existing?.serial || null,
-      os: telemetry.osName || payload.os || existing?.os || 'windows',
-      os_version: telemetry.osVersion || payload.osVersion || existing?.os_version || null,
+      os: normalizedOs,
+      os_version: normalizedOsVersion,
       logged_in_user: telemetry.loggedInUser || existing?.logged_in_user || null,
       cpu_model: telemetry.cpuModel || existing?.cpu_model || null,
       cpu_usage_pct: cpuUsagePct,
@@ -601,7 +614,7 @@ router.post('/heartbeat', async (req, res) => {
             name: deviceName,
             source,
             external_id: externalId,
-            os: telemetry.osName || 'windows',
+            os: normalizedOs,
             ...updateFields,
           })
           .returning(['id']);

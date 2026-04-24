@@ -16,20 +16,6 @@ function statusColor(status) {
   return 'bg-gray-400';
 }
 
-function scanStatusTone(status) {
-  if (status === 'ok') return 'bg-emerald-100 text-emerald-700';
-  if (status === 'stale') return 'bg-amber-100 text-amber-800';
-  if (status === 'old') return 'bg-red-100 text-red-700';
-  return 'bg-gray-100 text-gray-600';
-}
-
-function scanStatusLabel(status) {
-  if (status === 'ok') return 'Winget fresh';
-  if (status === 'stale') return 'Winget stale';
-  if (status === 'old') return 'Winget old';
-  return 'Winget never';
-}
-
 export default function SoftwareManager() {
   const [loading, setLoading] = useState(true);
   const [matrix, setMatrix] = useState({ devices: [], apps: [], installations: [] });
@@ -471,9 +457,6 @@ export default function SoftwareManager() {
                         >
                           <span className={`inline-block h-2.5 w-2.5 rounded-full ${statusColor(device.status)}`} />
                           <span className="max-w-[160px] truncate text-sm font-medium text-gray-800">{device.name}</span>
-                          <span className={`inline-flex rounded-full px-2 py-0.5 text-[10px] font-semibold ${scanStatusTone(device.winget_scan_status)}`}>
-                            {scanStatusLabel(device.winget_scan_status)}
-                          </span>
                         </button>
                       </th>
                       {visibleApps.map((app) => renderCell(device, app))}
@@ -493,9 +476,6 @@ export default function SoftwareManager() {
                   >
                     <span className={`inline-block h-2.5 w-2.5 rounded-full ${statusColor(device.status)}`} />
                     <span className="font-semibold text-gray-900">{device.name}</span>
-                    <span className={`inline-flex rounded-full px-2 py-0.5 text-[10px] font-semibold ${scanStatusTone(device.winget_scan_status)}`}>
-                      {scanStatusLabel(device.winget_scan_status)}
-                    </span>
                   </button>
                   <div className="grid grid-cols-2 gap-2">
                     {visibleApps.map((app) => {

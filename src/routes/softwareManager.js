@@ -83,7 +83,7 @@ router.post('/apps', requireAdmin, async (req, res, next) => {
 // GET /api/software/matrix
 router.get('/matrix', async (req, res, next) => {
   try {
-    const [devicesRaw, apps, installations, scanAgg] = await Promise.all([
+    const [devicesRaw, apps, rawInstallations, scanAgg] = await Promise.all([
       db('devices')
         .where('org_id', req.user.orgId)
         .select('id', 'name', 'status', 'last_seen')
@@ -94,7 +94,7 @@ router.get('/matrix', async (req, res, next) => {
         .orderBy('name', 'asc'),
       db('sm_device_apps')
         .where('org_id', req.user.orgId)
-        .select('device_id', 'winget_id', 'installed_version', 'latest_version', 'update_available', 'last_scanned_at'),
+        .select('device_id', 'winget_id', 'app_name', 'installed_version', 'latest_version', 'update_available', 'last_scanned_at'),
       db('sm_device_apps')
         .where('org_id', req.user.orgId)
         .groupBy('device_id')
@@ -110,6 +110,27 @@ router.get('/matrix', async (req, res, next) => {
         winget_scan_status: wingetScanStatus(lastWingetScanAt),
       };
     });
+    const appByWinget = new Map(
+      apps
+        .filter((a) => a?.winget_id)
+        .map((a) => [String(a.winget_id).trim().toLowerCase(), a])
+    );
+    const appByName = new Map(
+      apps
+        .filter((a) => a?.name)
+        .map((a) => [String(a.name).trim().toLowerCase(), a])
+    );
+    const installations = [];
+    for (const item of rawInstallations) {
+      const wingetKey = item?.winget_id ? String(item.winget_id).trim().toLowerCase() : '';
+      const nameKey = item?.app_name ? String(item.app_name).trim().toLowerCase() : '';
+      const match = (wingetKey && appByWinget.get(wingetKey)) || (nameKey && appByName.get(nameKey)) || null;
+      if (!match?.winget_id) continue;
+      installations.push({
+        ...item,
+        winget_id: match.winget_id,
+      });
+    }
 
     res.json({
       devices,

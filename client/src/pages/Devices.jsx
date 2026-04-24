@@ -50,6 +50,21 @@ function normalizeOs(d) {
   return o || 'other';
 }
 
+function osVersionOf(d) {
+  return d.osVersion || d.os_version || null;
+}
+
+function displayOs(d) {
+  const raw = String(d.os || '').trim();
+  if (!raw) return '—';
+  const lower = raw.toLowerCase();
+  if (lower === 'windows') return 'Microsoft Windows';
+  if (lower === 'android') return 'Android';
+  if (lower === 'chromeos' || lower === 'chrome os') return 'ChromeOS';
+  if (lower === 'ios') return 'iOS';
+  return raw;
+}
+
 function getLastSeen(d) {
   return d.lastSeen || d.last_seen || null;
 }
@@ -115,7 +130,7 @@ function getUserEmail(d) {
 
 const SORT_KEYS = {
   device: (d) => (d.name || d.id || '').toLowerCase(),
-  os: (d) => `${normalizeOs(d)} ${d.osVersion || ''}`.toLowerCase(),
+  os: (d) => `${normalizeOs(d)} ${osVersionOf(d) || ''}`.toLowerCase(),
   source: (d) => String(d.source || '').toLowerCase(),
   compliance: (d) => String(d.compliance || '').toLowerCase(),
   security_score: (d) => (d.security_score != null ? Number(d.security_score) : -1),
@@ -364,8 +379,8 @@ export default function Devices() {
         [
           d.name || d.id,
           d.serial,
-          d.os,
-          d.osVersion,
+          displayOs(d),
+          osVersionOf(d),
           displaySource(d.source),
           deriveStatus(d),
           d.compliance,
@@ -700,7 +715,7 @@ export default function Devices() {
                           );
                         }
                         if (colKey === 'os') {
-                          return <td key={colKey} className="px-3 py-2.5 text-gray-600">{d.os} {d.osVersion ? `· ${d.osVersion}` : ''}</td>;
+                          return <td key={colKey} className="px-3 py-2.5 text-gray-600">{displayOs(d)} {osVersionOf(d) ? `· ${osVersionOf(d)}` : ''}</td>;
                         }
                         if (colKey === 'source') {
                           return (
@@ -933,7 +948,7 @@ export default function Devices() {
               {panelTab === 'overview' && (
                 <dl className="grid grid-cols-1 gap-3 sm:grid-cols-2">
                   {[
-                    ['OS', `${selected.os || '—'} ${selected.osVersion || ''}`.trim()],
+                    ['OS', `${displayOs(selected)} ${osVersionOf(selected) || ''}`.trim()],
                     ['Serial', selected.serial || '—'],
                     [
                       'Last seen',

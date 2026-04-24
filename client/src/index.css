@@ -6,7 +6,30 @@
   html {
     scroll-behavior: smooth;
   }
+
+  :root {
+    color-scheme: light;
+    --fds-page: #f1f5f9;
+    --fds-sidebar: #ffffff;
+    --fds-card: #ffffff;
+    --fds-border: #e2e8f0;
+    --fds-header: #ffffff;
+    --fds-muted-surface: #f8fafc;
+  }
+
+  .dark {
+    color-scheme: dark;
+    --fds-page: #0f172a;
+    --fds-sidebar: #1e293b;
+    --fds-card: #1e293b;
+    --fds-border: #334155;
+    --fds-header: #1e293b;
+    --fds-muted-surface: #0f172a;
+  }
+
   body {
-    @apply bg-fds-page text-slate-900 antialiased;
+    @apply antialiased;
+    background-color: var(--fds-page);
+    @apply text-slate-900 dark:text-slate-100;
   }
 }

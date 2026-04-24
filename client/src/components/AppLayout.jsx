@@ -1,5 +1,6 @@
 import { Link, NavLink, Outlet, useLocation } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
+import { ThemeCycleButton } from '../context/ThemeContext';
 import { Banner2FA } from './Banner2FA';
 
 const PATH_TITLES = {
@@ -199,13 +200,13 @@ export function AppLayout() {
       <div className="flex min-h-screen">
         <aside className="fixed inset-y-0 left-0 z-40 hidden w-[220px] shrink-0 flex-col border-r border-fds-border bg-fds-sidebar shadow-sm md:flex">
           <div className="flex h-full flex-col px-3 py-5">
-            <Link to="/dashboard" className="mb-8 flex items-center gap-2.5 px-2 text-slate-900">
+            <Link to="/dashboard" className="mb-8 flex items-center gap-2.5 px-2 text-slate-900 dark:text-slate-50">
               <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-brand text-white" aria-hidden>
                 <svg className="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
                   <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z" />
                 </svg>
               </span>
-              <span className="text-lg font-bold tracking-tight text-slate-900">FortDefend</span>
+              <span className="text-lg font-bold tracking-tight text-slate-900 dark:text-slate-50">FortDefend</span>
             </Link>
 
             <nav className="flex flex-1 flex-col gap-6 overflow-y-auto">
@@ -217,7 +218,7 @@ export function AppLayout() {
                 if (!items.length) return null;
                 return (
                   <div key={section.label}>
-                    <p className="mb-2 px-2 text-[10px] font-semibold uppercase tracking-wider text-brand">
+                    <p className="mb-2 px-2 text-[10px] font-semibold uppercase tracking-wider text-brand dark:text-blue-400">
                       {section.label}
                     </p>
                     <div className="flex flex-col gap-0.5">
@@ -228,8 +229,8 @@ export function AppLayout() {
                           className={({ isActive }) =>
                             `flex items-center gap-3 rounded-lg border-l-[3px] px-3 py-2 text-sm font-medium transition ${
                               isActive
-                                ? 'border-brand bg-blue-50/80 text-brand'
-                                : 'border-transparent text-slate-600 hover:bg-blue-50/60 hover:text-slate-900'
+                                ? 'border-brand bg-blue-50/80 text-brand dark:bg-blue-950/50 dark:text-blue-300'
+                                : 'border-transparent text-slate-600 hover:bg-blue-50/60 hover:text-slate-900 dark:text-slate-300 dark:hover:bg-slate-800/60 dark:hover:text-slate-50'
                             }`
                           }
                         >
@@ -249,14 +250,14 @@ export function AppLayout() {
                   {(user?.email || '?').charAt(0).toUpperCase()}
                 </div>
                 <div className="min-w-0 flex-1">
-                  <div className="truncate text-sm font-medium text-slate-800">{user?.email || '—'}</div>
-                  {org?.name && <div className="truncate text-xs text-slate-500">{org.name}</div>}
+                  <div className="truncate text-sm font-medium text-slate-800 dark:text-slate-100">{user?.email || '—'}</div>
+                  {org?.name && <div className="truncate text-xs text-slate-500 dark:text-slate-400">{org.name}</div>}
                 </div>
               </div>
               <button
                 type="button"
                 onClick={() => logout()}
-                className="mt-3 w-full rounded-lg px-2 py-2 text-left text-sm text-slate-500 hover:bg-slate-50 hover:text-slate-800"
+                className="mt-3 w-full rounded-lg px-2 py-2 text-left text-sm text-slate-500 hover:bg-slate-50 hover:text-slate-800 dark:text-slate-400 dark:hover:bg-slate-800 dark:hover:text-slate-100"
               >
                 Log out
               </button>
@@ -265,35 +266,38 @@ export function AppLayout() {
         </aside>
 
         <div className="flex min-w-0 flex-1 flex-col md:pl-[220px]">
-          <header className="sticky top-0 z-30 flex h-16 shrink-0 items-center justify-between gap-4 border-b border-fds-border bg-white px-4 shadow-sm sm:px-6">
+          <header className="sticky top-0 z-30 flex h-16 shrink-0 items-center justify-between gap-4 border-b border-fds-border bg-fds-header px-4 shadow-sm sm:px-6">
             <div className="min-w-0 flex-1">
-              <h1 className="truncate text-lg font-bold text-slate-900">{pageTitle}</h1>
-              <p className="truncate text-xs text-slate-500">
+              <h1 className="truncate text-lg font-bold text-slate-900 dark:text-slate-50">{pageTitle}</h1>
+              <p className="truncate text-xs text-slate-500 dark:text-slate-400">
                 {crumbs.join(' · ')}
               </p>
             </div>
-            <div className="hidden items-center gap-4 sm:flex">
+            <div className="hidden items-center gap-3 sm:flex">
               <input
                 type="search"
                 placeholder="Search…"
-                className="w-48 rounded-lg border border-fds-border bg-white px-3 py-2 text-sm text-slate-800 placeholder:text-slate-400 focus:border-brand focus:outline-none focus:ring-2 focus:ring-brand/20 lg:w-64"
+                className="w-48 rounded-lg border border-fds-border bg-fds-card px-3 py-2 text-sm text-slate-800 placeholder:text-slate-400 focus:border-brand focus:outline-none focus:ring-2 focus:ring-brand/20 dark:text-slate-100 dark:placeholder:text-slate-500 lg:w-64"
                 readOnly
                 title="Fleet search coming soon"
               />
+              <ThemeCycleButton />
               <button
                 type="button"
-                className="relative rounded-lg p-2 text-slate-500 hover:bg-slate-50 hover:text-slate-800"
+                className="relative rounded-lg p-2 text-slate-500 hover:bg-slate-100 hover:text-slate-800 dark:text-slate-400 dark:hover:bg-slate-800 dark:hover:text-slate-100"
                 title="Notifications"
               >
                 <svg className="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75">
                   <path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9M13.73 21a2 2 0 0 1-3.46 0" strokeLinecap="round" />
                 </svg>
-                <span className="absolute right-1 top-1 h-2 w-2 rounded-full bg-danger ring-2 ring-white" />
+                <span className="absolute right-1 top-1 h-2 w-2 rounded-full bg-danger ring-2 ring-fds-header dark:ring-fds-header" />
               </button>
               <div className="flex items-center gap-3 border-l border-fds-border pl-4">
                 <div className="hidden text-right text-xs leading-tight lg:block">
-                  {org?.name && <div className="max-w-[10rem] truncate font-semibold text-slate-800">{org.name}</div>}
-                  <div className="max-w-[10rem] truncate text-slate-500">{user?.email || '—'}</div>
+                  {org?.name && (
+                    <div className="max-w-[10rem] truncate font-semibold text-slate-800 dark:text-slate-100">{org.name}</div>
+                  )}
+                  <div className="max-w-[10rem] truncate text-slate-500 dark:text-slate-400">{user?.email || '—'}</div>
                 </div>
                 <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-brand text-xs font-bold text-white" title={user?.email || undefined}>
                   {(user?.email || '?').charAt(0).toUpperCase()}
@@ -302,20 +306,23 @@ export function AppLayout() {
             </div>
           </header>
 
-          <header className="flex items-center justify-between border-b border-fds-border bg-white px-3 py-2 md:hidden">
-            <Link to="/dashboard" className="flex items-center gap-2 font-bold text-slate-900">
-              <span className="flex h-8 w-8 items-center justify-center rounded-lg bg-brand text-white">
+          <header className="flex items-center justify-between gap-2 border-b border-fds-border bg-fds-header px-3 py-2 md:hidden">
+            <Link to="/dashboard" className="flex min-w-0 items-center gap-2 font-bold text-slate-900 dark:text-slate-50">
+              <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-brand text-white">
                 <svg className="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
                   <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z" strokeLinecap="round" strokeLinejoin="round" />
                 </svg>
               </span>
-              FortDefend
+              <span className="truncate">FortDefend</span>
             </Link>
-            <button type="button" onClick={() => logout()} className="text-sm font-medium text-brand">
-              Log out
-            </button>
+            <div className="flex shrink-0 items-center gap-1">
+              <ThemeCycleButton />
+              <button type="button" onClick={() => logout()} className="text-sm font-medium text-brand">
+                Log out
+              </button>
+            </div>
           </header>
-          <div className="border-b border-fds-border bg-white px-2 py-2 md:hidden">
+          <div className="border-b border-fds-border bg-fds-header px-2 py-2 md:hidden">
             <div className="flex max-h-36 flex-wrap gap-1 overflow-y-auto">
               {flatNav.map(({ to, label, icon }) => (
                 <NavLink
@@ -323,7 +330,7 @@ export function AppLayout() {
                   to={to}
                   className={({ isActive }) =>
                     `inline-flex items-center gap-1 rounded-md px-2 py-1 text-xs font-medium ${
-                      isActive ? 'bg-brand text-white' : 'bg-slate-100 text-slate-700'
+                      isActive ? 'bg-brand text-white' : 'bg-slate-100 text-slate-700 dark:bg-slate-800 dark:text-slate-200'
                     }`
                   }
                 >

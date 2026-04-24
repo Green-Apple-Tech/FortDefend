@@ -1,5 +1,6 @@
 /** @type {import('tailwindcss').Config} */
 export default {
+  darkMode: 'class',
   content: ['./index.html', './src/**/*.{js,jsx}'],
   theme: {
     extend: {
@@ -10,10 +11,11 @@ export default {
           light: '#dbeafe',
         },
         fds: {
-          sidebar: '#ffffff',
-          page: '#f1f5f9',
-          card: '#ffffff',
-          border: '#e2e8f0',
+          page: 'var(--fds-page)',
+          sidebar: 'var(--fds-sidebar)',
+          card: 'var(--fds-card)',
+          border: 'var(--fds-border)',
+          header: 'var(--fds-header)',
         },
         success: {
           DEFAULT: '#10b981',

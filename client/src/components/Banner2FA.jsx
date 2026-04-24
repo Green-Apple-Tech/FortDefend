@@ -5,7 +5,7 @@ export function Banner2FA() {
   const { user, needs2FASetup, isLoading } = useAuth();
   if (isLoading || !user || !needs2FASetup) return null;
   return (
-    <div className="border-b border-amber-200 bg-amber-50 px-4 py-3 text-center text-sm text-amber-900">
+    <div className="border-b border-amber-200 bg-amber-50 px-4 py-3 text-center text-sm text-amber-900 dark:border-amber-800 dark:bg-amber-950/50 dark:text-amber-100">
       <strong>Protect your account:</strong> enable two-factor authentication on the{' '}
       <Link to="/setup-2fa" className="font-semibold text-brand underline">
         2FA setup page

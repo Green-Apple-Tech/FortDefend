@@ -3,6 +3,7 @@ import { Link } from 'react-router-dom';
 import { api } from '../lib/api';
 import { Card, Button, Input } from '../components/ui';
 import { SectionHeader, ToggleCard } from '../components/fds';
+import { useTheme } from '../context/ThemeContext';
 
 const LS_PREFIX = 'fds_settings_v1_';
 
@@ -25,6 +26,7 @@ function saveBool(key, val) {
 }
 
 export default function Settings() {
+  const { theme, setTheme } = useTheme();
   const [orgName, setOrgName] = useState('');
   const [msg, setMsg] = useState('');
   const [loading, setLoading] = useState(true);
@@ -123,8 +125,8 @@ export default function Settings() {
   const section = (title, desc, children) => (
     <div className="space-y-3">
       <div>
-        <h2 className="text-xs font-bold uppercase tracking-wide text-slate-500">{title}</h2>
-        {desc && <p className="mt-1 text-sm text-slate-600">{desc}</p>}
+        <h2 className="text-xs font-bold uppercase tracking-wide text-slate-500 dark:text-slate-400">{title}</h2>
+        {desc && <p className="mt-1 text-sm text-slate-600 dark:text-slate-400">{desc}</p>}
       </div>
       <div className="space-y-3">{children}</div>
     </div>
@@ -138,12 +140,35 @@ export default function Settings() {
       />
 
       {msg && (
-        <div className="rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-2 text-sm text-emerald-900">{msg}</div>
+        <div className="rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-2 text-sm text-emerald-900 dark:border-emerald-800 dark:bg-emerald-950/40 dark:text-emerald-100">
+          {msg}
+        </div>
       )}
 
       <Card>
-        <h2 className="text-sm font-semibold text-slate-900">Organization</h2>
-        <p className="mt-1 text-sm text-slate-600">Display name used across FortDefend and reports.</p>
+        <h2 className="text-sm font-semibold text-slate-900 dark:text-slate-50">Appearance</h2>
+        <p className="mt-1 text-sm text-slate-600 dark:text-slate-400">Light, dark, or follow your system setting.</p>
+        <div className="mt-4 inline-flex rounded-lg border border-fds-border bg-fds-page p-1 dark:bg-slate-900/50">
+          {(['light', 'dark', 'system']).map((mode) => (
+            <button
+              key={mode}
+              type="button"
+              onClick={() => setTheme(mode)}
+              className={`rounded-md px-4 py-2 text-sm font-semibold capitalize transition ${
+                theme === mode
+                  ? 'bg-brand text-white shadow-sm'
+                  : 'text-slate-600 hover:bg-fds-card hover:text-slate-900 dark:text-slate-300 dark:hover:bg-slate-800 dark:hover:text-slate-50'
+              }`}
+            >
+              {mode}
+            </button>
+          ))}
+        </div>
+      </Card>
+
+      <Card>
+        <h2 className="text-sm font-semibold text-slate-900 dark:text-slate-50">Organization</h2>
+        <p className="mt-1 text-sm text-slate-600 dark:text-slate-400">Display name used across FortDefend and reports.</p>
         <form onSubmit={saveOrg} className="mt-4 space-y-4">
           <Input label="Organization name" value={orgName} onChange={(e) => setOrgName(e.target.value)} />
           <Button type="submit" disabled={loading}>
@@ -309,8 +334,8 @@ export default function Settings() {
       </Card>
 
       <Card>
-        <h2 className="text-sm font-semibold text-slate-900">Integrations</h2>
-        <p className="mt-1 text-sm text-slate-600">Connect Intune, Google Admin, and webhooks from the Integrations hub.</p>
+        <h2 className="text-sm font-semibold text-slate-900 dark:text-slate-50">Integrations</h2>
+        <p className="mt-1 text-sm text-slate-600 dark:text-slate-400">Connect Intune, Google Admin, and webhooks from the Integrations hub.</p>
         <Link to="/integrations" className="mt-3 inline-block text-sm font-semibold text-brand hover:underline">
           Open integrations →
         </Link>
@@ -329,19 +354,19 @@ export default function Settings() {
           className="flex w-full items-center justify-between text-left"
         >
           <div>
-            <h2 className="text-sm font-semibold text-slate-900">Advanced</h2>
-            <p className="mt-1 text-sm text-slate-600">Raw JSON mirror of the toggles above — power users only.</p>
+            <h2 className="text-sm font-semibold text-slate-900 dark:text-slate-50">Advanced</h2>
+            <p className="mt-1 text-sm text-slate-600 dark:text-slate-400">Raw JSON mirror of the toggles above — power users only.</p>
           </div>
           <span className="text-slate-400">{advancedOpen ? '▼' : '▶'}</span>
         </button>
         {advancedOpen && (
           <div className="mt-4 space-y-3 border-t border-fds-border pt-4">
-            <label className="block text-xs font-bold uppercase tracking-wide text-slate-500">Configuration JSON</label>
+            <label className="block text-xs font-bold uppercase tracking-wide text-slate-500 dark:text-slate-400">Configuration JSON</label>
             <textarea
               value={rawJson}
               onChange={(e) => setRawJson(e.target.value)}
               rows={14}
-              className="w-full rounded-lg border border-fds-border bg-slate-50 px-3 py-2 font-mono text-xs text-slate-900 shadow-inner focus:border-brand focus:outline-none focus:ring-1 focus:ring-brand"
+              className="w-full rounded-lg border border-fds-border bg-slate-50 px-3 py-2 font-mono text-xs text-slate-900 shadow-inner focus:border-brand focus:outline-none focus:ring-1 focus:ring-brand dark:bg-slate-900 dark:text-slate-100"
             />
             {jsonError && <p className="text-sm text-red-600">{jsonError}</p>}
             <div className="flex flex-wrap gap-2">

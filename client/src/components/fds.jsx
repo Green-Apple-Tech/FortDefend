@@ -5,8 +5,8 @@
 export function SectionHeader({ title, description, className = '' }) {
   return (
     <div className={`mb-6 ${className}`}>
-      <h1 className="text-2xl font-bold tracking-tight text-slate-900">{title}</h1>
-      {description && <p className="mt-1 text-sm text-slate-500">{description}</p>}
+      <h1 className="text-2xl font-bold tracking-tight text-slate-900 dark:text-slate-50">{title}</h1>
+      {description && <p className="mt-1 text-sm text-slate-500 dark:text-slate-400">{description}</p>}
     </div>
   );
 }
@@ -36,18 +36,18 @@ export function StatCard({ label, value, trend, icon, color = 'brand' }) {
     success: 'text-emerald-600',
     warning: 'text-amber-600',
     danger: 'text-red-600',
-    slate: 'text-slate-800',
+    slate: 'text-slate-800 dark:text-slate-200',
   };
   const c = colors[color] || colors.brand;
   return (
-    <div className="rounded-xl border border-slate-200 bg-white p-5 shadow-sm ring-1 ring-slate-950/5">
+    <div className="rounded-xl border border-fds-border bg-fds-card p-5 shadow-sm ring-1 ring-slate-950/5 dark:ring-slate-950/40">
       <div className="flex items-start justify-between gap-2">
-        <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">{label}</p>
+        <p className="text-xs font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">{label}</p>
         {icon && <span className="text-lg opacity-80" aria-hidden>{icon}</span>}
       </div>
       <p className={`mt-3 text-3xl font-bold tabular-nums ${c}`}>{value}</p>
       {trend != null && trend !== '' && (
-        <p className="mt-1 text-xs font-medium text-slate-500">{trend}</p>
+        <p className="mt-1 text-xs font-medium text-slate-500 dark:text-slate-400">{trend}</p>
       )}
     </div>
   );
@@ -64,17 +64,19 @@ export function ToggleCard({
   const checked = on !== undefined ? on : defaultOn;
   return (
     <div
-      className={`flex items-center justify-between gap-4 rounded-xl border border-slate-200 bg-white p-4 shadow-sm ring-1 ring-slate-950/5 transition ${
+      className={`flex items-center justify-between gap-4 rounded-xl border border-fds-border bg-fds-card p-4 shadow-sm ring-1 ring-slate-950/5 transition dark:ring-slate-950/40 ${
         checked ? 'border-l-4 border-l-emerald-500 pl-3' : 'border-l-4 border-l-transparent pl-3'
       }`}
     >
       <div className="flex min-w-0 flex-1 gap-3">
         {icon && (
-          <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-slate-100 text-slate-600">{icon}</div>
+          <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-slate-100 text-slate-600 dark:bg-slate-800 dark:text-slate-300">
+            {icon}
+          </div>
         )}
         <div className="min-w-0">
-          <p className="font-semibold text-slate-900">{title}</p>
-          {description && <p className="mt-0.5 text-sm text-slate-500">{description}</p>}
+          <p className="font-semibold text-slate-900 dark:text-slate-50">{title}</p>
+          {description && <p className="mt-0.5 text-sm text-slate-500 dark:text-slate-400">{description}</p>}
         </div>
       </div>
       <button
@@ -82,8 +84,8 @@ export function ToggleCard({
         role="switch"
         aria-checked={checked}
         onClick={() => onChange?.(!checked)}
-        className={`relative inline-flex h-8 w-14 shrink-0 cursor-pointer rounded-full transition-colors focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 ${
-          checked ? 'bg-emerald-500' : 'bg-slate-200'
+        className={`relative inline-flex h-8 w-14 shrink-0 cursor-pointer rounded-full transition-colors focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 dark:focus:ring-offset-slate-900 ${
+          checked ? 'bg-emerald-500' : 'bg-slate-200 dark:bg-slate-600'
         }`}
       >
         <span
@@ -98,10 +100,10 @@ export function ToggleCard({
 
 export function EmptyState({ icon, title, description, action }) {
   return (
-    <div className="flex flex-col items-center justify-center rounded-2xl border border-dashed border-slate-300 bg-slate-50/80 px-6 py-16 text-center">
-      {icon && <div className="mb-4 text-4xl text-slate-400">{icon}</div>}
-      <h3 className="text-lg font-semibold text-slate-900">{title}</h3>
-      {description && <p className="mt-2 max-w-md text-sm text-slate-500">{description}</p>}
+    <div className="flex flex-col items-center justify-center rounded-2xl border border-dashed border-slate-300 bg-slate-50/80 px-6 py-16 text-center dark:border-slate-600 dark:bg-slate-800/40">
+      {icon && <div className="mb-4 text-4xl text-slate-400 dark:text-slate-500">{icon}</div>}
+      <h3 className="text-lg font-semibold text-slate-900 dark:text-slate-50">{title}</h3>
+      {description && <p className="mt-2 max-w-md text-sm text-slate-500 dark:text-slate-400">{description}</p>}
       {action && <div className="mt-6">{action}</div>}
     </div>
   );

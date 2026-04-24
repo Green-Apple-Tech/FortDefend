@@ -117,9 +117,12 @@ export default function Install() {
   const links = data?.links || {};
   const extensionId = data?.extensionId || 'jpchjpcgcldplgfdjclgfljegdopkphc';
 
-  const psOneliner = links.installScript
-    ? `Invoke-WebRequest -Uri '${links.installScript}' -OutFile ($env:TEMP + '\\\\fortdefend-install.ps1') -UseBasicParsing; Start-Process powershell -Verb RunAs -ArgumentList '-NoProfile','-ExecutionPolicy','Bypass','-File',($env:TEMP + '\\\\fortdefend-install.ps1')`
-    : '';
+  // GET /api/orgs/me/enrollment returns { token, installUrl, psCommand }; older payloads used links.installScript
+  const psOneliner = data?.psCommand
+    ? data.psCommand
+    : links.installScript
+      ? `Invoke-WebRequest -Uri '${links.installScript}' -OutFile ($env:TEMP + '\\\\fortdefend-install.ps1') -UseBasicParsing; Start-Process powershell -Verb RunAs -ArgumentList '-NoProfile','-ExecutionPolicy','Bypass','-File',($env:TEMP + '\\\\fortdefend-install.ps1')`
+      : '';
 
   const macCmd = links.macPkg
     ? `curl -fSL '${links.macPkg}' -o /tmp/fortdefend.pkg && sudo installer -pkg /tmp/fortdefend.pkg -target /`

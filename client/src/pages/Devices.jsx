@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { Link, useSearchParams } from 'react-router-dom';
+import { useSearchParams } from 'react-router-dom';
 import { api } from '../lib/api';
 import { Button, Card, Input } from '../components/ui';
 import { StatusBadge } from '../components/fds';
@@ -270,24 +270,6 @@ function ScopeMenuPanel({
         <span>Offline Devices</span>
         <span className="shrink-0 tabular-nums text-slate-500">{smartCounts.offline}</span>
       </button>
-      <button
-        type="button"
-        role="menuitem"
-        className={itemCls(smartParam === 'updates')}
-        onClick={run(() => selectScope({ type: 'smart', smart: 'updates' }))}
-      >
-        <span>Needs Updates</span>
-        <span className="shrink-0 tabular-nums text-slate-500">{smartCounts.updates}</span>
-      </button>
-      <button
-        type="button"
-        role="menuitem"
-        className={itemCls(smartParam === 'risk')}
-        onClick={run(() => selectScope({ type: 'smart', smart: 'risk' }))}
-      >
-        <span>High Risk</span>
-        <span className="shrink-0 tabular-nums text-slate-500">{smartCounts.risk}</span>
-      </button>
       {sectionLabel('My groups')}
       {groupsLoading ? (
         <p className="px-3 py-2 text-sm text-slate-500">Loading…</p>
@@ -348,11 +330,12 @@ function escapeCsv(s) {
   return str;
 }
 
-const TAB_IDS = ['devices', 'software', 'scripts', 'alerts', 'settings'];
+const TAB_IDS = ['devices', 'software', 'alerts', 'settings'];
 
 export default function Devices() {
   const [searchParams, setSearchParams] = useSearchParams();
-  const tab = TAB_IDS.includes(searchParams.get('tab') || '') ? searchParams.get('tab') : 'devices';
+  const rawTab = searchParams.get('tab') || '';
+  const tab = TAB_IDS.includes(rawTab) ? rawTab : 'devices';
   const groupParam = searchParams.get('group') || '';
   const smartParam = searchParams.get('smart') || '';
 
@@ -439,9 +422,18 @@ export default function Devices() {
     if (opts.showLoading) setLoading(true);
     try {
       const res = await api('/api/integrations/devices');
-      setRows(Array.isArray(res?.devices) ? res.devices : []);
+      let devices = [];
+      if (Array.isArray(res?.devices)) devices = res.devices;
+      else if (Array.isArray(res)) devices = res;
+      else if (Array.isArray(res?.data?.devices)) devices = res.data.devices;
+      console.log('[Devices] GET /api/integrations/devices', {
+        count: devices.length,
+        responseKeys: res && typeof res === 'object' ? Object.keys(res) : typeof res,
+      });
+      setRows(devices);
       setIntegrationErrors(res?.errors && typeof res.errors === 'object' ? res.errors : null);
-    } catch {
+    } catch (err) {
+      console.warn('[Devices] GET /api/integrations/devices failed', err);
       setRows([]);
       setIntegrationErrors(null);
     } finally {
@@ -498,7 +490,10 @@ export default function Devices() {
     api(`/api/groups/${encodeURIComponent(groupParam)}/devices`)
       .then((data) => {
         if (cancelled) return;
-        setGroupFilterIds(new Set((data.devices || []).map((d) => d.id)));
+        const ids = (data.devices || [])
+          .map((d) => String(d?.id ?? d?.device_id ?? '').trim())
+          .filter(Boolean);
+        setGroupFilterIds(new Set(ids));
       })
       .catch(() => {
         if (!cancelled) setGroupFilterIds(new Set());
@@ -507,6 +502,19 @@ export default function Devices() {
       cancelled = true;
     };
   }, [groupParam, smartParam]);
+
+  /** Remove deprecated smart scopes from URL (no longer in UI). */
+  useEffect(() => {
+    if (smartParam !== 'updates' && smartParam !== 'risk') return;
+    setSearchParams(
+      (prev) => {
+        const n = new URLSearchParams(prev);
+        n.delete('smart');
+        return n;
+      },
+      { replace: true },
+    );
+  }, [smartParam, setSearchParams]);
 
   useEffect(() => {
     if (searchParams.get('newGroup') !== '1') return;
@@ -663,17 +671,16 @@ export default function Devices() {
   const scopeFiltered = useMemo(() => {
     if (smartParam === 'online') return filtered.filter((d) => deriveStatus(d) === 'online');
     if (smartParam === 'offline') return filtered.filter((d) => deriveStatus(d) === 'offline');
-    if (smartParam === 'updates') return filtered.filter((d) => (getPendingPatchCount(d) || 0) > 0);
-    if (smartParam === 'risk') {
-      return filtered.filter((d) => d.security_score != null && Number(d.security_score) < 50);
-    }
     if (groupParam === 'ungrouped') {
       return filtered.filter((d) => !d.group_id && !d.group_name);
     }
     if (groupParam) {
-      if (groupFilterIds === undefined) return [];
-      if (!groupFilterIds) return filtered;
-      return filtered.filter((d) => groupFilterIds.has(d.id));
+      if (!(groupFilterIds instanceof Set)) return [];
+      if (groupFilterIds.size === 0) return [];
+      return filtered.filter((d) => {
+        const id = String(d?.id ?? '').trim();
+        return id && groupFilterIds.has(id);
+      });
     }
     return filtered;
   }, [filtered, smartParam, groupParam, groupFilterIds]);
@@ -736,22 +743,16 @@ export default function Devices() {
   const smartCounts = useMemo(() => {
     let online = 0;
     let offline = 0;
-    let updates = 0;
-    let risk = 0;
     for (const d of rows) {
       if (deriveStatus(d) === 'online') online += 1;
       if (deriveStatus(d) === 'offline') offline += 1;
-      if ((getPendingPatchCount(d) || 0) > 0) updates += 1;
-      if (d.security_score != null && Number(d.security_score) < 50) risk += 1;
     }
-    return { online, offline, updates, risk };
+    return { online, offline };
   }, [rows]);
 
   const scopeTitle = useMemo(() => {
     if (smartParam === 'online') return 'Online Devices';
     if (smartParam === 'offline') return 'Offline Devices';
-    if (smartParam === 'updates') return 'Needs Updates';
-    if (smartParam === 'risk') return 'High Risk';
     if (groupParam === 'ungrouped') return 'Ungrouped';
     if (groupParam) {
       const path = findGroupPath(groupsTree, groupParam);
@@ -1034,11 +1035,6 @@ export default function Devices() {
             placeholder="Search…"
             className="h-8 w-full min-w-0 max-w-xs rounded-md border border-fds-border bg-white px-2 text-sm dark:bg-slate-900 sm:w-48"
           />
-          <Link to="/install">
-            <Button variant="outline" className="h-8 text-xs">
-              Enroll Device
-            </Button>
-          </Link>
           <Button
             className="h-8 text-xs"
             type="button"
@@ -1443,16 +1439,6 @@ export default function Devices() {
               hideBottomDeployDock
               scopeDeviceIds={scopeDeviceIdsForSoftware}
             />
-          )}
-
-          {tab === 'scripts' && (
-            <Card className="border-fds-border p-4">
-              <p className="text-sm text-slate-600 dark:text-slate-300">Run saved scripts on devices in this page scope.</p>
-              <Button className="mt-2" type="button" onClick={() => setShowScriptRunner(true)}>
-                Open script runner
-              </Button>
-              <p className="mt-2 text-xs text-slate-500">Uses checkbox selections from the Devices tab.</p>
-            </Card>
           )}
 
           {tab === 'alerts' && (

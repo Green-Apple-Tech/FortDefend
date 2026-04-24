@@ -175,7 +175,6 @@ export function AppLayout() {
 
   return (
     <div className="min-h-screen bg-fds-page">
-      <Banner2FA />
       <div className="flex min-h-screen">
         <aside className="fixed inset-y-0 left-0 z-40 hidden w-[220px] shrink-0 flex-col border-r border-fds-border bg-fds-sidebar shadow-sm md:flex">
           <div className="flex h-full flex-col px-3 py-3">
@@ -258,6 +257,12 @@ export function AppLayout() {
                 readOnly
                 title="Fleet search coming soon"
               />
+              <Link
+                to="/install"
+                className="inline-flex h-8 shrink-0 items-center rounded-md border border-fds-border bg-fds-card px-3 text-xs font-medium text-slate-800 hover:bg-slate-50 dark:border-slate-600 dark:bg-slate-900 dark:text-slate-100 dark:hover:bg-slate-800"
+              >
+                Enroll Device
+              </Link>
               <ThemeCycleButton />
               <button
                 type="button"
@@ -293,6 +298,9 @@ export function AppLayout() {
               <span className="truncate">FortDefend</span>
             </Link>
             <div className="flex shrink-0 items-center gap-1">
+              <Link to="/install" className="rounded-md border border-fds-border bg-fds-card px-2 py-1 text-xs font-medium text-slate-800 dark:border-slate-600 dark:bg-slate-900 dark:text-slate-100">
+                Enroll
+              </Link>
               <ThemeCycleButton />
               <button type="button" onClick={() => logout()} className="text-sm font-medium text-brand">
                 Log out

@@ -5,105 +5,23 @@ import { Button, Card, Input } from '../components/ui';
 
 const CATEGORY_TABS = ['All', 'Browsers', 'Security', 'Productivity', 'Dev Tools', 'Utilities', 'Media'];
 
-/** App display name → Clearbit Logo API URL (https://logo.clearbit.com/{domain}) */
-const APP_ICONS = {
-  'Google Chrome': 'https://logo.clearbit.com/google.com',
-  'Mozilla Firefox': 'https://logo.clearbit.com/mozilla.org',
-  'Microsoft Edge': 'https://logo.clearbit.com/microsoft.com',
-  Brave: 'https://logo.clearbit.com/brave.com',
-  Opera: 'https://logo.clearbit.com/opera.com',
-  Vivaldi: 'https://logo.clearbit.com/vivaldi.com',
-  Zoom: 'https://logo.clearbit.com/zoom.us',
-  Slack: 'https://logo.clearbit.com/slack.com',
-  'Microsoft Teams': 'https://logo.clearbit.com/microsoft.com',
-  Discord: 'https://logo.clearbit.com/discord.com',
-  Thunderbird: 'https://logo.clearbit.com/thunderbird.net',
-  Spotify: 'https://logo.clearbit.com/spotify.com',
-  VLC: 'https://logo.clearbit.com/videolan.org',
-  Audacity: 'https://logo.clearbit.com/audacityteam.org',
-  HandBrake: 'https://logo.clearbit.com/handbrake.fr',
-  iTunes: 'https://logo.clearbit.com/apple.com',
-  Malwarebytes: 'https://logo.clearbit.com/malwarebytes.com',
-  'KeePass 2': 'https://logo.clearbit.com/keepass.info',
-  Dropbox: 'https://logo.clearbit.com/dropbox.com',
-  'Google Drive': 'https://logo.clearbit.com/google.com',
-  OneDrive: 'https://logo.clearbit.com/microsoft.com',
-  LibreOffice: 'https://logo.clearbit.com/libreoffice.org',
-  'Adobe Acrobat Reader': 'https://logo.clearbit.com/adobe.com',
-  'Foxit Reader': 'https://logo.clearbit.com/foxit.com',
-  SumatraPDF: 'https://logo.clearbit.com/sumatrapdfreader.org',
-  GIMP: 'https://logo.clearbit.com/gimp.org',
-  'Paint.NET': 'https://logo.clearbit.com/getpaint.net',
-  Greenshot: 'https://logo.clearbit.com/getgreenshot.org',
-  ShareX: 'https://logo.clearbit.com/getsharex.com',
-  Inkscape: 'https://logo.clearbit.com/inkscape.org',
-  Blender: 'https://logo.clearbit.com/blender.org',
-  Krita: 'https://logo.clearbit.com/krita.org',
-  'Visual Studio Code': 'https://logo.clearbit.com/microsoft.com',
-  Git: 'https://logo.clearbit.com/git-scm.com',
-  'Notepad++': 'https://logo.clearbit.com/notepad-plus-plus.org',
-  'Python 3': 'https://logo.clearbit.com/python.org',
-  PuTTY: 'https://logo.clearbit.com/putty.org',
-  WinSCP: 'https://logo.clearbit.com/winscp.net',
-  FileZilla: 'https://logo.clearbit.com/filezilla-project.org',
-  '7-Zip': 'https://logo.clearbit.com/7-zip.org',
-  WinRAR: 'https://logo.clearbit.com/rarlab.com',
-  TeamViewer: 'https://logo.clearbit.com/teamviewer.com',
-  AnyDesk: 'https://logo.clearbit.com/anydesk.com',
-  CCleaner: 'https://logo.clearbit.com/ccleaner.com',
-  Everything: 'https://logo.clearbit.com/voidtools.com',
-  Cursor: 'https://logo.clearbit.com/cursor.com',
-  IrfanView: 'https://logo.clearbit.com/irfanview.com',
+const stringToColor = (str) => {
+  let hash = 0;
+  for (let i = 0; i < str.length; i++) hash = str.charCodeAt(i) + ((hash << 5) - hash);
+  const h = hash % 360;
+  return `hsl(${Math.abs(h)}, 60%, 45%)`;
 };
 
-function iconUrlForAppName(name) {
-  const key = String(name || '').trim();
-  return key ? APP_ICONS[key] ?? null : null;
-}
-
-function appInitialLetter(name) {
-  const t = String(name || '').trim();
-  if (!t) return '?';
-  return t.charAt(0).toUpperCase();
-}
-
-const LETTER_BG = ['bg-blue-600', 'bg-indigo-600', 'bg-violet-600', 'bg-brand', 'bg-teal-600', 'bg-cyan-600', 'bg-sky-600', 'bg-rose-600'];
-
-function letterBg(name) {
-  let h = 0;
-  const s = String(name);
-  for (let i = 0; i < s.length; i += 1) h += s.charCodeAt(i);
-  return LETTER_BG[h % LETTER_BG.length];
-}
-
-function AppFavicon({ appName, sizePx = 32, className = '' }) {
-  const src = iconUrlForAppName(appName);
-  const [failed, setFailed] = useState(!src);
-  useEffect(() => {
-    setFailed(!src);
-  }, [appName, src]);
-  const dim = `${sizePx}px`;
-  if (failed || !src) {
-    return (
-      <div
-        className={`inline-flex shrink-0 items-center justify-center rounded-full text-xs font-bold text-white ${letterBg(appName)} ${className}`}
-        style={{ width: dim, height: dim }}
-        aria-hidden
-      >
-        {appInitialLetter(appName)}
-      </div>
-    );
-  }
+function AppIconBadge({ name, className = '' }) {
+  const label = String(name || '').trim().substring(0, 2).toUpperCase() || '?';
   return (
-    <img
-      src={src}
-      alt=""
-      width={sizePx}
-      height={sizePx}
-      className={`shrink-0 rounded ${className}`}
-      loading="lazy"
-      onError={() => setFailed(true)}
-    />
+    <div
+      className={`flex h-8 w-8 items-center justify-center rounded text-xs font-bold text-white ${className}`}
+      style={{ backgroundColor: stringToColor(String(name || '')) }}
+      aria-hidden
+    >
+      {label}
+    </div>
   );
 }
 
@@ -572,7 +490,7 @@ export const SoftwareManagerPanel = forwardRef(function SoftwareManagerPanel(
                       }}
                     >
                       <div className="flex flex-col items-center gap-1">
-                        <AppFavicon appName={app.name} sizePx={24} />
+                        <AppIconBadge name={app.name} className="mx-auto mb-1" />
                         <span className="max-w-[3rem] truncate text-[10px] font-medium leading-tight text-slate-600" title={app.name}>
                           {app.name}
                         </span>
@@ -680,7 +598,7 @@ export const SoftwareManagerPanel = forwardRef(function SoftwareManagerPanel(
                                 });
                               }}
                             />
-                            <AppFavicon appName={app.name} sizePx={32} />
+                            <AppIconBadge name={app.name} className="shrink-0" />
                             <div className="min-w-0 flex-1">
                               <div className="truncate font-medium text-slate-900">{app.name}</div>
                               <span className="mt-0.5 inline-block rounded bg-slate-100 px-1.5 py-0.5 text-[10px] font-medium text-slate-600">

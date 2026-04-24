@@ -17,9 +17,9 @@ orgsMeApiRouter.get('/orgs/me/enrollment', requireAuth, async (req, res) => {
     if (!org) return res.status(404).json({ error: 'Organization not found.' });
     const token = org.id;
     const base = (process.env.APP_URL || 'https://app.fortdefend.com').replace(/\/$/, '');
-    const installUrl = `${base}/install?org=${token}`;
-    const psCommand = `$ProgressPreference='SilentlyContinue'; Invoke-Expression (Invoke-RestMethod -Uri "${installUrl}&action=ps1")`;
-    res.json({ token, installUrl, psCommand });
+    const installScriptUrl = `${base}/api/agent/install.ps1?org=${encodeURIComponent(token)}`;
+    const psCommand = `iex (irm '${installScriptUrl}')`;
+    res.json({ token, installUrl: installScriptUrl, psCommand });
   } catch (err) {
     console.error('GET /api/orgs/me/enrollment', err);
     res.status(500).json({ error: 'Failed to get enrollment info' });

@@ -10,7 +10,19 @@ const LOG_DIR = 'C:\\ProgramData\\FortDefend\\logs';
 const LOG_FILE = `${LOG_DIR}\\agent.log`;
 const REG_TOKEN_PATH = 'HKLM\\SOFTWARE\\FortDefend';
 const REG_TOKEN_KEY = 'Token';
-const APP_URL = process.env.APP_URL || 'http://localhost:3000';
+const REG_APIURL_KEY = 'ApiUrl';
+
+function getRegistryStringValue(name) {
+  try {
+    const raw = execFileSync('reg', ['query', REG_TOKEN_PATH, '/v', name], { encoding: 'utf8', windowsHide: true });
+    const parts = raw.trim().split(/\s{2,}/);
+    return (parts[parts.length - 1] || '').trim();
+  } catch (err) {
+    return '';
+  }
+}
+
+const APP_URL = getRegistryStringValue(REG_APIURL_KEY) || process.env.APP_URL || 'http://localhost:3000';
 const DEFER_FILE = 'C:\\ProgramData\\FortDefend\\defer-state.json';
 
 function safeLog(message) {
@@ -40,14 +52,7 @@ function runJson(command) {
 }
 
 function getRegistryToken() {
-  try {
-    const raw = execFileSync('reg', ['query', REG_TOKEN_PATH, '/v', REG_TOKEN_KEY], { encoding: 'utf8', windowsHide: true });
-    const parts = raw.trim().split(/\s{2,}/);
-    return parts[parts.length - 1] || '';
-  } catch (err) {
-    safeLog(`registry token read failed: ${err.message}`);
-    return '';
-  }
+  return getRegistryStringValue(REG_TOKEN_KEY);
 }
 
 function collectTelemetry() {

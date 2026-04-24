@@ -117,12 +117,14 @@ export default function Install() {
   const links = data?.links || {};
   const extensionId = data?.extensionId || 'jpchjpcgcldplgfdjclgfljegdopkphc';
 
-  // GET /api/orgs/me/enrollment returns { token, installUrl, psCommand }; older payloads used links.installScript
+  // GET /api/orgs/me/enrollment: { token, installUrl, psCommand } with psCommand = iex (irm '.../api/agent/install.ps1?org=...')
   const psOneliner = data?.psCommand
     ? data.psCommand
-    : links.installScript
-      ? `Invoke-WebRequest -Uri '${links.installScript}' -OutFile ($env:TEMP + '\\\\fortdefend-install.ps1') -UseBasicParsing; Start-Process powershell -Verb RunAs -ArgumentList '-NoProfile','-ExecutionPolicy','Bypass','-File',($env:TEMP + '\\\\fortdefend-install.ps1')`
-      : '';
+    : data?.installUrl
+      ? `iex (irm '${data.installUrl}')`
+      : links.installScript
+        ? `Invoke-WebRequest -Uri '${links.installScript}' -OutFile ($env:TEMP + '\\\\fortdefend-install.ps1') -UseBasicParsing; Start-Process powershell -Verb RunAs -ArgumentList '-NoProfile','-ExecutionPolicy','Bypass','-File',($env:TEMP + '\\\\fortdefend-install.ps1')`
+        : '';
 
   const macCmd = links.macPkg
     ? `curl -fSL '${links.macPkg}' -o /tmp/fortdefend.pkg && sudo installer -pkg /tmp/fortdefend.pkg -target /`
@@ -202,7 +204,11 @@ export default function Install() {
             Windows agent installer coming soon. Use the PowerShell command below to enroll now.
           </p>
           <h3 className="mt-6 text-sm font-semibold text-gray-900">PowerShell (copy and run as Administrator)</h3>
-          <p className="mt-1 text-xs text-gray-600">Downloads the install script from FortDefend and runs it elevated.</p>
+          <p className="mt-1 text-xs text-gray-600">
+            One line: <code className="rounded bg-gray-100 px-1">iex (irm &apos;…&apos;)</code> fetches the script and runs it. The URL is in
+            single quotes so <code className="rounded bg-gray-100 px-1">&amp;</code> in query strings is not a problem. Installs Node if needed, drops
+            the agent under <code className="rounded bg-gray-100 px-1">C:\ProgramData\FortDefend</code>, and schedules it every 15 minutes.
+          </p>
           <div className="mt-3">
             <button
               type="button"

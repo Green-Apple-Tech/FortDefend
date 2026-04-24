@@ -30,9 +30,22 @@ function tryEnrollmentPayload(token) {
   }
 }
 
+async function tryPlainOrgIdToken(token) {
+  if (!token || typeof token !== 'string') return null;
+  const t = String(token).trim();
+  if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(t)) return null;
+  const org = await db('orgs').where({ id: t }).first();
+  if (!org) return null;
+  if (org.subscription_status === 'canceled') return { rejected: 'subscription' };
+  return { kind: 'enrollment', orgId: org.id, groupId: null, org };
+}
+
 async function authAgentRequest(token) {
   const fromApi = await authByToken(token);
   if (fromApi) return { kind: 'apiKey', orgId: fromApi.org_id, apiKey: fromApi };
+  const plain = await tryPlainOrgIdToken(token);
+  if (plain?.rejected === 'subscription') return { rejected: 'subscription' };
+  if (plain) return plain;
   const enr = tryEnrollmentPayload(token);
   if (enr) {
     const org = await db('orgs').where({ id: enr.orgId }).first();
@@ -52,6 +65,81 @@ async function addDeviceToGroupIfValid(deviceId, orgId, groupId) {
     .onConflict(['device_id', 'group_id'])
     .ignore();
 }
+
+function escapeForPsSingleQuoted(s) {
+  return String(s).replace(/'/g, "''");
+}
+
+/** PowerShell body for GET /api/agent/install.ps1 */
+function buildInstallPs1Content(baseUrl, orgId) {
+  const b = escapeForPsSingleQuoted(baseUrl.replace(/\/$/, ''));
+  const o = escapeForPsSingleQuoted(orgId);
+  return [
+    '# FortDefend Windows agent — install (generated)',
+    '#Requires -RunAsAdministrator',
+    "$ErrorActionPreference = 'Stop'",
+    `$BaseUrl = '${b}'`,
+    `$OrgId = '${o}'`,
+    "$InstallDir = 'C:\\ProgramData\\FortDefend'",
+    "$AgentPath = Join-Path $InstallDir 'agent.js'",
+    '',
+    "if (-not (Get-Command node -ErrorAction SilentlyContinue)) {",
+    "  Write-Host 'Installing Node.js (winget)…' -ForegroundColor Cyan",
+    "  if (-not (Get-Command winget -ErrorAction SilentlyContinue)) {",
+    "    throw 'Node.js is required. Install LTS from https://nodejs.org then re-run this script.'",
+    '  }',
+    '  winget install -e --id OpenJS.NodeJS.LTS --accept-source-agreements --accept-package-agreements --silent',
+    "  $env:Path = [System.Environment]::GetEnvironmentVariable('Path','Machine') + ';' + [System.Environment]::GetEnvironmentVariable('Path','User')",
+    "  if (-not (Get-Command node -ErrorAction SilentlyContinue)) {",
+    "    throw 'Node was not found in PATH after install. Open a new Administrator PowerShell and run this install command again.'",
+    '  }',
+    '}',
+    'New-Item -ItemType Directory -Force -Path $InstallDir | Out-Null',
+    "$dl = $BaseUrl + '/api/agent/download?org=' + [uri]::EscapeDataString($OrgId)",
+    'Write-Host ("Downloading agent: $dl") -ForegroundColor Cyan',
+    'Invoke-WebRequest -Uri $dl -OutFile $AgentPath -UseBasicParsing',
+    "New-Item -Path 'HKLM:\\SOFTWARE\\FortDefend' -Force | Out-Null",
+    "Set-ItemProperty -Path 'HKLM:\\SOFTWARE\\FortDefend' -Name 'Token' -Value $OrgId",
+    "Set-ItemProperty -Path 'HKLM:\\SOFTWARE\\FortDefend' -Name 'ApiUrl' -Value $BaseUrl",
+    "$nodeExe = (Get-Command node).Source",
+    "$act = New-ScheduledTaskAction -Execute $nodeExe -Argument $AgentPath -WorkingDirectory $InstallDir",
+    '$tr = New-ScheduledTaskTrigger -Once -At (Get-Date) -RepetitionInterval (New-TimeSpan -Minutes 15) -RepetitionDuration (New-TimeSpan -Days 3650)',
+    '$st = New-ScheduledTaskSettingsSet -AllowStartIfOnBatteries -DontStopIfGoingOnBatteries -StartWhenAvailable',
+    "$principal = New-ScheduledTaskPrincipal -UserId 'S-1-5-18' -LogonType ServiceAccount -RunLevel Highest",
+    "Unregister-ScheduledTask -TaskName 'FortDefendAgent' -Confirm:$false -ErrorAction SilentlyContinue",
+    "Register-ScheduledTask -TaskName 'FortDefendAgent' -Action $act -Trigger $tr -Settings $st -Principal $principal -Force",
+    'Start-Process -FilePath $nodeExe -ArgumentList $AgentPath -WorkingDirectory $InstallDir -WindowStyle Hidden',
+    "Start-ScheduledTask -TaskName 'FortDefendAgent'",
+    "Write-Host 'FortDefend agent installed. Scheduled every 15 minutes; first run started.' -ForegroundColor Green",
+  ].join('\n');
+}
+
+// GET /api/agent/install.ps1?org=UUID — inline PowerShell installer (text/plain)
+router.get('/install.ps1', async (req, res) => {
+  try {
+    const org = String(req.query.org || '').trim();
+    if (!org) {
+      res.setHeader('Content-Type', 'text/plain; charset=utf-8');
+      return res.status(400).send('# Error: add query parameter org=<your-organization-id>');
+    }
+    const row = await db('orgs').where({ id: org }).first();
+    if (!row) {
+      res.setHeader('Content-Type', 'text/plain; charset=utf-8');
+      return res.status(404).send('# Error: organization not found');
+    }
+    let baseUrl = (process.env.APP_URL || '').trim().replace(/\/$/, '');
+    if (!baseUrl) {
+      baseUrl = `${req.protocol}://${req.get('host')}`;
+    }
+    res.setHeader('Content-Type', 'text/plain; charset=utf-8');
+    res.setHeader('Content-Disposition', 'inline; filename="fortdefend-install.ps1"');
+    return res.send(buildInstallPs1Content(baseUrl, org));
+  } catch (err) {
+    console.error('install.ps1 error:', err);
+    res.setHeader('Content-Type', 'text/plain; charset=utf-8');
+    return res.status(500).send('# Error: failed to build install script');
+  }
+});
 
 // POST /api/agent/heartbeat
 router.post('/heartbeat', async (req, res) => {
@@ -139,11 +227,19 @@ router.post('/heartbeat', async (req, res) => {
   }
 });
 
-// GET /api/agent/download — enrollment JWT; optional &group= must match token when present
+// GET /api/agent/download — ?org=UUID serves Node agent.js; ?token= JWT serves Windows agent.exe (legacy)
 router.get('/download', async (req, res) => {
   try {
     const { token, org, group } = req.query;
-    if (!token) return res.status(400).json({ error: 'Token required.' });
+    if (org && !token) {
+      const o = await db('orgs').where({ id: String(org) }).first();
+      if (!o) return res.status(404).json({ error: 'Organization not found.' });
+      const agentJs = path.join(__dirname, '..', '..', 'agent', 'agent.js');
+      if (!fs.existsSync(agentJs)) return res.status(404).json({ error: 'agent.js not found.' });
+      res.setHeader('Content-Type', 'application/javascript; charset=utf-8');
+      return res.sendFile(agentJs);
+    }
+    if (!token) return res.status(400).json({ error: 'Token or org query required.' });
     let payload;
     try {
       payload = jwt.verify(String(token), getJwtSecret());

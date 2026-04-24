@@ -124,7 +124,18 @@ async function runChecks() {
   );
   if (storageInfo && storageInfo.length > 0) {
     const mainStorage = storageInfo[0];
-    const freeGb = mainStorage.capacity / (1024 * 1024 * 1024);
+    let freeBytes = null;
+    if (mainStorage?.id && chrome.system.storage.getAvailableCapacity) {
+      const available = await new Promise(resolve =>
+        chrome.system.storage.getAvailableCapacity(mainStorage.id, resolve)
+      );
+      freeBytes = available?.availableCapacity ?? null;
+    }
+    if (freeBytes == null && mainStorage.capacity != null) {
+      // Fallback when free-capacity API is unavailable.
+      freeBytes = mainStorage.capacity;
+    }
+    const freeGb = (Number(freeBytes) || 0) / (1024 * 1024 * 1024);
     checks.push({
       id: 'cb_storage',
       name: 'Storage space',
@@ -181,10 +192,9 @@ async function runChecks() {
       }),
     });
 
-    await setStorage({ lastCheck: new Date().toISOString(), lastScore: score });
-
     // Alert if score dropped significantly
     const prevStored = await getStorage(['lastScore']);
+    await setStorage({ lastCheck: new Date().toISOString(), lastScore: score });
     if (prevStored.lastScore && score < prevStored.lastScore - 10) {
       showNotification(
         'FortDefend Security Alert',

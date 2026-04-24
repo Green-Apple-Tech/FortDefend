@@ -6,21 +6,35 @@ import { Button, Card, Input } from '../components/ui';
 const CATEGORY_TABS = ['All', 'Browsers', 'Security', 'Productivity', 'Dev Tools', 'Utilities', 'Media'];
 
 const stringToColor = (str) => {
+  const s = String(str || 'app');
   let hash = 0;
-  for (let i = 0; i < str.length; i++) hash = str.charCodeAt(i) + ((hash << 5) - hash);
-  const h = hash % 360;
-  return `hsl(${Math.abs(h)}, 60%, 45%)`;
+  for (let i = 0; i < s.length; i++) hash = s.charCodeAt(i) + ((hash << 5) - hash);
+  const h = Math.abs(hash) % 360;
+  return `hsl(${h}, 65%, 42%)`;
 };
 
-function AppIconBadge({ name, className = '' }) {
-  const label = String(name || '').trim().substring(0, 2).toUpperCase() || '?';
+function appDisplayLabel(app) {
+  const named = [app?.name, app?.app_name, app?.title].find((x) => x != null && String(x).trim());
+  const raw =
+    (named != null ? String(named).trim() : '') ||
+    (app?.winget_id ? String(app.winget_id).replace(/^.*\./, '').slice(0, 12) : '') ||
+    String(app?.id || '');
+  const t = String(raw).trim();
+  if (t.length >= 2) return t.substring(0, 2).toUpperCase();
+  if (t.length === 1) return `${t.charAt(0).toUpperCase()}·`;
+  return '??';
+}
+
+function AppIconBadge({ app, className = '' }) {
+  const key = String(app?.name ?? app?.winget_id ?? app?.id ?? '');
+  const initials = appDisplayLabel(app);
   return (
     <div
-      className={`flex h-8 w-8 items-center justify-center rounded text-xs font-bold text-white ${className}`}
-      style={{ backgroundColor: stringToColor(String(name || '')) }}
-      aria-hidden
+      className={`inline-flex h-8 w-8 shrink-0 select-none items-center justify-center rounded-md text-[11px] font-bold leading-none text-white shadow-sm ring-1 ring-black/25 dark:ring-white/20 ${className}`}
+      style={{ backgroundColor: stringToColor(key) }}
+      title={String(app?.name || app?.winget_id || '')}
     >
-      {label}
+      {initials}
     </div>
   );
 }
@@ -453,7 +467,13 @@ export const SoftwareManagerPanel = forwardRef(function SoftwareManagerPanel(
         </div>
       )}
 
-      <Card className="overflow-hidden border-fds-border p-0 shadow-sm ring-1 ring-slate-950/5">
+      {!loading && apps.length === 0 && (
+        <p className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-900 dark:border-amber-900/50 dark:bg-amber-950/40 dark:text-amber-100">
+          No apps in the software catalogue yet. Add apps to see columns and initials here.
+        </p>
+      )}
+
+      <Card className="max-w-full overflow-x-auto border-fds-border p-0 shadow-sm ring-1 ring-slate-950/5">
         {loading ? (
           <p className="p-4 text-center text-sm text-slate-500">Loading device matrix…</p>
         ) : groupDevicesLoading ? (
@@ -483,16 +503,19 @@ export const SoftwareManagerPanel = forwardRef(function SoftwareManagerPanel(
                   {columnApps.map((app) => (
                     <th
                       key={app.id}
-                      className="w-14 min-w-[3.25rem] px-1 py-2 text-center align-bottom"
+                      className="w-16 min-w-[4rem] px-1 py-2 text-center align-bottom"
                       onContextMenu={(e) => {
                         e.preventDefault();
                         setHeaderMenu({ x: e.clientX, y: e.clientY, app });
                       }}
                     >
                       <div className="flex flex-col items-center gap-1">
-                        <AppIconBadge name={app.name} className="mx-auto mb-1" />
-                        <span className="max-w-[3rem] truncate text-[10px] font-medium leading-tight text-slate-600" title={app.name}>
-                          {app.name}
+                        <AppIconBadge app={app} className="mx-auto mb-1" />
+                        <span
+                          className="max-w-[3.5rem] truncate text-[10px] font-medium leading-tight text-slate-700 dark:text-slate-200"
+                          title={String(app.name || app.winget_id || '')}
+                        >
+                          {app.name || app.winget_id || '—'}
                         </span>
                       </div>
                     </th>
@@ -598,7 +621,7 @@ export const SoftwareManagerPanel = forwardRef(function SoftwareManagerPanel(
                                 });
                               }}
                             />
-                            <AppIconBadge name={app.name} className="shrink-0" />
+                            <AppIconBadge app={app} className="shrink-0" />
                             <div className="min-w-0 flex-1">
                               <div className="truncate font-medium text-slate-900">{app.name}</div>
                               <span className="mt-0.5 inline-block rounded bg-slate-100 px-1.5 py-0.5 text-[10px] font-medium text-slate-600">
@@ -760,5 +783,5 @@ export const SoftwareManagerPanel = forwardRef(function SoftwareManagerPanel(
 });
 
 export default function SoftwareManager() {
-  return <Navigate to="/devices?tab=software" replace />;
+  return <Navigate to="/library" replace />;
 }

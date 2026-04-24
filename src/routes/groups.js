@@ -1,8 +1,22 @@
 const express = require('express');
 const router = express.Router();
 const { v4: uuidv4 } = require('uuid');
+const { z } = require('zod');
 const { requireAuth } = require('../middleware/auth');
 const db = require('../database');
+const { recordAudit } = require('../lib/recordAudit');
+
+const blueprintSettingsSchema = z
+  .object({
+    autoOs: z.boolean().optional(),
+    osSchedule: z.enum(['immediate', 'overnight', 'weekend']).optional(),
+    autoApps: z.boolean().optional(),
+    patchApproval: z.enum(['all', 'security', 'manual']).optional(),
+    maintStart: z.string().max(16).optional(),
+    maintEnd: z.string().max(16).optional(),
+    rebootPolicy: z.enum(['after_patches', 'window', 'manual']).optional(),
+  })
+  .strict();
 
 router.get('/', requireAuth, async (req, res) => {
   try {
@@ -62,7 +76,7 @@ router.post('/', requireAuth, async (req, res) => {
 
 router.patch('/:id', requireAuth, async (req, res) => {
   try {
-    const { name, parent_id, description, sort_order } = req.body;
+    const { name, parent_id, description, sort_order, blueprint_settings } = req.body;
     const existing = await db('groups')
       .where({ id: req.params.id, org_id: req.user.orgId })
       .first();
@@ -76,15 +90,34 @@ router.patch('/:id', requireAuth, async (req, res) => {
         return res.status(400).json({ error: 'Cannot move a group into its own descendant' });
       }
     }
+    if (blueprint_settings !== undefined && blueprint_settings !== null) {
+      const parsed = blueprintSettingsSchema.safeParse(blueprint_settings);
+      if (!parsed.success) {
+        return res.status(400).json({ error: parsed.error.errors[0]?.message || 'Invalid blueprint_settings' });
+      }
+    }
     const updates = { updated_at: new Date() };
     if (name !== undefined) updates.name = name.trim();
     if (parent_id !== undefined) updates.parent_id = parent_id || null;
     if (description !== undefined) updates.description = description;
     if (sort_order !== undefined) updates.sort_order = sort_order;
+    if (blueprint_settings !== undefined) {
+      updates.blueprint_settings =
+        blueprint_settings === null ? null : blueprintSettingsSchema.parse(blueprint_settings);
+    }
     const [updated] = await db('groups')
       .where({ id: req.params.id, org_id: req.user.orgId })
       .update(updates)
       .returning('*');
+    if (blueprint_settings !== undefined) {
+      await recordAudit({
+        orgId: req.user.orgId,
+        userId: req.user.id,
+        action: 'blueprint_updated',
+        resource: `group:${req.params.id}`,
+        details: { groupId: req.params.id, groupName: updated.name },
+      });
+    }
     res.json({ group: updated });
   } catch (err) {
     console.error('Update group error:', err);

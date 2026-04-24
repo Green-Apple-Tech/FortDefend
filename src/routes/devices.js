@@ -1,9 +1,17 @@
 const express = require('express');
+const { z } = require('zod');
 const router = express.Router();
 const db = require('../database');
 const { requireAuth } = require('../middleware/auth');
 const { checkTrialStatus } = require('../middleware/trial');
 const { getCapacityWarning } = require('../middleware/planEnforcement');
+const { recordAudit } = require('../lib/recordAudit');
+
+const patchDeviceSchema = z.object({
+  name: z.string().min(1).max(200).optional(),
+  asset_tag: z.union([z.string().max(120), z.null()]).optional(),
+  assigned_user: z.union([z.string().max(255), z.null()]).optional(),
+});
 
 router.use(requireAuth, checkTrialStatus);
 
@@ -136,7 +144,7 @@ router.get('/:id', async (req, res, next) => {
   } catch (err) { next(err); }
 });
 
-// PATCH /api/devices/:id — update device display name
+// PATCH /api/devices/:id — update display name, asset tag, or assigned user label
 router.patch('/:id', async (req, res, next) => {
   try {
     const device = await db('devices')
@@ -144,14 +152,42 @@ router.patch('/:id', async (req, res, next) => {
       .first();
     if (!device) return res.status(404).json({ error: 'Device not found.' });
 
-    if (req.body?.name == null) {
-      return res.status(400).json({ error: 'name is required.' });
+    const parsed = patchDeviceSchema.safeParse(req.body || {});
+    if (!parsed.success) {
+      return res.status(400).json({ error: parsed.error.errors[0]?.message || 'Invalid body.' });
     }
-    const name = String(req.body.name).trim();
-    if (!name) return res.status(400).json({ error: 'name cannot be empty.' });
+    const body = parsed.data;
+    if (Object.keys(body).length === 0) {
+      return res.status(400).json({ error: 'Provide at least one of: name, asset_tag, assigned_user.' });
+    }
 
-    await db('devices').where({ id: device.id }).update({ name, updated_at: new Date() });
+    const updates = { updated_at: new Date() };
+    const changes = [];
+    if (body.name !== undefined) {
+      const name = String(body.name).trim();
+      if (!name) return res.status(400).json({ error: 'name cannot be empty.' });
+      updates.name = name;
+      changes.push('name');
+    }
+    if (body.asset_tag !== undefined) {
+      updates.asset_tag = body.asset_tag === null || body.asset_tag === '' ? null : String(body.asset_tag).trim();
+      changes.push('asset_tag');
+    }
+    if (body.assigned_user !== undefined) {
+      updates.assigned_user =
+        body.assigned_user === null || body.assigned_user === '' ? null : String(body.assigned_user).trim();
+      changes.push('assigned_user');
+    }
+
+    await db('devices').where({ id: device.id }).update(updates);
     const updated = await db('devices').where({ id: device.id }).first();
+    await recordAudit({
+      orgId: req.user.orgId,
+      userId: req.user.id,
+      action: 'device_updated',
+      resource: `device:${device.id}`,
+      details: { deviceId: device.id, changes },
+    });
     res.json({ device: updated });
   } catch (err) {
     next(err);

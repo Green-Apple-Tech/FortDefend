@@ -64,6 +64,87 @@ router.get('/me', requireAuth, async (req, res) => {
   }
 });
 
+// ─── GET /api/orgs/me/activity ────────────────────────────────────────────────
+// Org audit log (and optional filter for one device)
+router.get('/me/activity', requireAuth, async (req, res) => {
+  try {
+    const limit = Math.min(Math.max(parseInt(String(req.query.limit || '200'), 10) || 200, 1), 500);
+    const deviceId = req.query.device_id || req.query.deviceId;
+
+    let q = db('audit_log')
+      .leftJoin('users', 'audit_log.user_id', 'users.id')
+      .where('audit_log.org_id', req.user.orgId)
+      .select(
+        'audit_log.id',
+        'audit_log.action',
+        'audit_log.resource',
+        'audit_log.created_at',
+        'audit_log.details',
+        'users.email as actor_email',
+      )
+      .orderBy('audit_log.created_at', 'desc')
+      .limit(limit);
+
+    if (deviceId) {
+      const idStr = String(deviceId);
+      q = q.andWhere(function filterDevice() {
+        this.where('audit_log.resource', `device:${idStr}`).orWhereRaw("coalesce(audit_log.details->>'deviceId','') = ?", [
+          idStr,
+        ]);
+      });
+    }
+
+    const entries = await q;
+    res.json({ entries });
+  } catch (err) {
+    console.error('List activity error:', err);
+    res.status(500).json({ error: 'Failed to load activity.' });
+  }
+});
+
+// ─── GET /api/orgs/me/directory ───────────────────────────────────────────────
+// All org members (read-only directory for console users page)
+router.get('/me/directory', requireAuth, async (req, res) => {
+  try {
+    const users = await db('users')
+      .where('org_id', req.user.orgId)
+      .select('id', 'email', 'role', 'last_login_at', 'created_at')
+      .orderBy('created_at', 'asc');
+    res.json({ users });
+  } catch (err) {
+    console.error('Directory error:', err);
+    res.status(500).json({ error: 'Failed to load directory.' });
+  }
+});
+
+// ─── GET /api/orgs/me/device-assignments ──────────────────────────────────────
+// Primary user labels on devices (assigned_user or logged-in user), with counts
+router.get('/me/device-assignments', requireAuth, async (req, res) => {
+  try {
+    const rows = await db('devices')
+      .where('org_id', req.user.orgId)
+      .select('assigned_user', 'logged_in_user');
+
+    const counts = new Map();
+    for (const d of rows) {
+      const assigned = d.assigned_user && String(d.assigned_user).trim();
+      const logged = d.logged_in_user && String(d.logged_in_user).trim();
+      const label = assigned || logged || null;
+      if (!label) continue;
+      const key = label.toLowerCase();
+      const prev = counts.get(key);
+      if (prev) prev.count += 1;
+      else counts.set(key, { label, count: 1, source: assigned ? 'assigned' : 'sign-in' });
+    }
+
+    const assignments = Array.from(counts.values()).sort((a, b) => b.count - a.count);
+    res.json({ assignments });
+  } catch (err) {
+    console.error('Device assignments error:', err);
+    res.status(500).json({ error: 'Failed to load device assignments.' });
+  }
+});
+
 // GET /api/orgs/me/enrollment — registered in server.js (uses sendMeEnrollmentResponse from routes/enrollment.js)
 
 // ─── PATCH /api/orgs/me ───────────────────────────────────────────────────────

@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { api } from '../lib/api';
+import { useAuth } from '../context/AuthContext';
 import { Card, Button, Input } from '../components/ui';
 import { ToggleCard } from '../components/fds';
 import { useTheme } from '../context/ThemeContext';
@@ -26,6 +27,7 @@ function saveBool(key, val) {
 }
 
 export default function Settings() {
+  const { user } = useAuth();
   const { theme, setTheme } = useTheme();
   const [orgName, setOrgName] = useState('');
   const [msg, setMsg] = useState('');
@@ -326,6 +328,47 @@ export default function Settings() {
             />
           </>,
         )}
+      </Card>
+
+      <Card>
+        <h2 className="text-sm font-semibold text-slate-900 dark:text-slate-50">Fleet tools</h2>
+        <p className="mt-1 text-sm text-slate-600 dark:text-slate-400">
+          Scripts, reboot schedules, reports, and billing live here so the main sidebar stays focused on patching and devices.
+        </p>
+        <ul className="mt-4 space-y-2 text-sm">
+          <li>
+            <Link to="/settings/scripts" className="font-semibold text-brand hover:underline">
+              Custom scripts
+            </Link>
+            <span className="text-slate-500 dark:text-slate-400"> — create and run shell scripts on endpoints</span>
+          </li>
+          <li>
+            <Link to="/settings/reboot-policies" className="font-semibold text-brand hover:underline">
+              Reboot policies
+            </Link>
+            <span className="text-slate-500 dark:text-slate-400"> — after patches, when machines restart</span>
+          </li>
+          <li>
+            <Link to="/settings/reports" className="font-semibold text-brand hover:underline">
+              Reports
+            </Link>
+            <span className="text-slate-500 dark:text-slate-400"> — executive and patch summaries</span>
+          </li>
+          <li>
+            <Link to="/settings/billing" className="font-semibold text-brand hover:underline">
+              Billing
+            </Link>
+            <span className="text-slate-500 dark:text-slate-400"> — plan and subscription</span>
+          </li>
+          {user?.role === 'msp' ? (
+            <li>
+              <Link to="/msp/clients" className="font-semibold text-brand hover:underline">
+                MSP console
+              </Link>
+              <span className="text-slate-500 dark:text-slate-400"> — manage client orgs</span>
+            </li>
+          ) : null}
+        </ul>
       </Card>
 
       <Card>

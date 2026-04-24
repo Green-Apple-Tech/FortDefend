@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { api } from '../lib/api';
 import { useAuth } from '../context/AuthContext';
@@ -21,6 +21,7 @@ function formatRelative(iso) {
 export default function Dashboard() {
   const { user, org, isLoading } = useAuth();
   const [summary, setSummary] = useState(null);
+  const [allDevices, setAllDevices] = useState([]);
   const [devices, setDevices] = useState([]);
   const [openAlerts, setOpenAlerts] = useState(0);
   const [activity, setActivity] = useState([]);
@@ -43,6 +44,7 @@ export default function Dashboard() {
         if (!cancelled) {
           setSummary(s && typeof s === 'object' ? s : null);
           const list = Array.isArray(d?.devices) ? d.devices : [];
+          setAllDevices(list.filter(Boolean));
           setDevices(list.filter(Boolean).slice(0, 12));
           const alerts = Array.isArray(a?.alerts) ? a.alerts : [];
           setOpenAlerts(alerts.length);
@@ -51,6 +53,7 @@ export default function Dashboard() {
       } catch {
         if (!cancelled) {
           setSummary(null);
+          setAllDevices([]);
           setDevices([]);
           setOpenAlerts(0);
           setActivity([]);
@@ -64,29 +67,48 @@ export default function Dashboard() {
     };
   }, []);
 
-  const online = devices.filter((x) => {
+  const online = allDevices.filter((x) => {
     const last = x?.lastSeen || x?.last_seen;
     if (!last) return false;
     const ts = new Date(last).getTime();
     return Number.isFinite(ts) && Date.now() - ts < 5 * 60 * 1000;
   }).length;
 
-  const offline = devices.filter((x) => {
+  const offline = allDevices.filter((x) => {
     const last = x?.lastSeen || x?.last_seen;
     if (!last) return true;
     const ts = new Date(last).getTime();
     return !Number.isFinite(ts) || Date.now() - ts >= 60 * 60 * 1000;
   }).length;
 
-  const warning = Math.max(0, devices.length - online - offline);
+  const warning = Math.max(0, allDevices.length - online - offline);
 
-  const numericScores = devices.map((d) => Number(d?.security_score)).filter((n) => Number.isFinite(n));
+  const numericScores = allDevices.map((d) => Number(d?.security_score)).filter((n) => Number.isFinite(n));
   const compliance = numericScores.length
     ? Math.round(numericScores.reduce((a, b) => a + b, 0) / numericScores.length)
     : null;
 
-  const hasDevices = devices.length > 0;
-  const devicesEnrolled = Number.isFinite(Number(org?.deviceCount)) ? Number(org.deviceCount) : devices.length;
+  const hasDevices = allDevices.length > 0;
+  const devicesEnrolled = Number.isFinite(Number(org?.deviceCount)) ? Number(org.deviceCount) : allDevices.length;
+
+  const patchStats = useMemo(() => {
+    const list = allDevices;
+    if (!list.length) return { pct: null, upToDate: 0, pending: 0, critical: 0 };
+    let up = 0;
+    let pend = 0;
+    let crit = 0;
+    for (const d of list) {
+      const pending =
+        d.pending_patches == null ? null : typeof d.pending_patches === 'number' ? d.pending_patches : Array.isArray(d.pending_patches) ? d.pending_patches.length : 0;
+      const hasCrit = (d.alerts || []).some((a) => String(a.severity).toLowerCase() === 'critical');
+      const bad = hasCrit || (pending != null && pending > 0 && d.security_score != null && Number(d.security_score) < 50);
+      if (bad) crit += 1;
+      else if (pending != null && pending > 0) pend += 1;
+      else up += 1;
+    }
+    const pct = Math.round((up / list.length) * 100);
+    return { pct, upToDate: up, pending: pend, critical: crit };
+  }, [allDevices]);
 
   let healthTone = 'good';
   let healthLabel = 'Fleet looks healthy';
@@ -128,6 +150,17 @@ export default function Dashboard() {
     <div className="space-y-3">
       <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
         <StatCard
+          label="Patch compliance"
+          value={patchStats.pct != null ? `${patchStats.pct}%` : '—'}
+          trend={
+            hasDevices
+              ? `${patchStats.upToDate} up to date · ${patchStats.pending} pending · ${patchStats.critical} critical`
+              : 'Enroll devices to track patch posture'
+          }
+          color={patchStats.pct != null && patchStats.pct >= 90 ? 'success' : patchStats.pct != null && patchStats.pct >= 70 ? 'warning' : 'slate'}
+          icon="🩹"
+        />
+        <StatCard
           label="Devices online"
           value={hasDevices ? online : '—'}
           trend={hasDevices ? `of ${devicesEnrolled} enrolled` : 'Connect integrations or agents'}
@@ -140,13 +173,6 @@ export default function Dashboard() {
           trend={openAlerts ? 'Review in Alerts' : 'No open alerts'}
           color={openAlerts ? 'warning' : 'success'}
           icon="🔔"
-        />
-        <StatCard
-          label="Apps outdated"
-          value="—"
-          trend="Software Manager matrix"
-          color="slate"
-          icon="📦"
         />
         <StatCard
           label="Compliance score"
@@ -201,9 +227,9 @@ export default function Dashboard() {
             <Link to="/install">
               <Button className="w-full justify-center">Enroll device</Button>
             </Link>
-            <Link to="/scripts">
+            <Link to="/library">
               <Button variant="secondary" className="w-full justify-center">
-                Run script
+                Library
               </Button>
             </Link>
             <Link to="/alerts">

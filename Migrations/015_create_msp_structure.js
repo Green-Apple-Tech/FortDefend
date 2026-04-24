@@ -27,7 +27,13 @@ exports.up = async function up(knex) {
 
   const enumType = await knex('pg_type').where('typname', 'users_role').first();
   if (enumType) {
-    await knex.raw("ALTER TYPE users_role ADD VALUE IF NOT EXISTS 'msp'");
+    await knex.raw(`
+DO $$ BEGIN
+  IF EXISTS (SELECT 1 FROM pg_type WHERE typname = 'users_role') THEN
+    ALTER TYPE users_role ADD VALUE IF NOT EXISTS 'msp';
+  END IF;
+END $$;
+    `);
   } else {
     const hasRole = await knex.schema.hasColumn('users', 'role');
     if (hasRole) {

@@ -1,5 +1,11 @@
 'use strict';
 
+try {
+  require('dotenv').config();
+} catch (_) {}
+
+const fetchImpl = typeof globalThis.fetch === 'function' ? globalThis.fetch.bind(globalThis) : require('node-fetch');
+
 const { execFileSync, exec } = require('child_process');
 const fs = require('fs');
 const path = require('path');
@@ -9,7 +15,9 @@ const execAsync = promisify(exec);
 const LOG_DIR = 'C:\\ProgramData\\FortDefend\\logs';
 const LOG_FILE = `${LOG_DIR}\\agent.log`;
 const REG_TOKEN_PATH = 'HKLM\\SOFTWARE\\FortDefend';
-const REG_TOKEN_KEY = 'Token';
+const REG_ORG_KEY = 'OrgToken';
+const REG_TOKEN_KEY_LEGACY = 'Token';
+const REG_GROUP_KEY = 'GroupId';
 const REG_APIURL_KEY = 'ApiUrl';
 
 function getRegistryStringValue(name) {
@@ -52,7 +60,18 @@ function runJson(command) {
 }
 
 function getRegistryToken() {
-  return getRegistryStringValue(REG_TOKEN_KEY);
+  return getRegistryStringValue(REG_ORG_KEY) || getRegistryStringValue(REG_TOKEN_KEY_LEGACY);
+}
+
+function getRegistryGroupId() {
+  return getRegistryStringValue(REG_GROUP_KEY) || '';
+}
+
+function buildHeartbeatHeaders(token) {
+  const h = { 'Content-Type': 'application/json', 'x-org-token': token };
+  const g = getRegistryGroupId();
+  if (g) h['x-fortdefend-group'] = g;
+  return h;
 }
 
 function collectTelemetry() {
@@ -149,9 +168,9 @@ async function heartbeat() {
     }
     const body = collectTelemetry();
     body.sysinternals = await collectSysinternalsData();
-    const res = await fetch(`${APP_URL}/api/agent/heartbeat`, {
+    const res = await fetchImpl(`${APP_URL}/api/agent/heartbeat`, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json', 'x-org-token': token },
+      headers: buildHeartbeatHeaders(token),
       body: JSON.stringify(body),
     });
     const json = await res.json().catch(() => ({}));
@@ -198,9 +217,9 @@ function showToast(message) {
 async function reportDefer(count) {
   try {
     const token = getRegistryToken();
-    await fetch(`${APP_URL}/api/agent/heartbeat`, {
+    await fetchImpl(`${APP_URL}/api/agent/heartbeat`, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json', 'x-org-token': token },
+      headers: buildHeartbeatHeaders(token),
       body: JSON.stringify({ event: 'reboot_defer', deferCount: count, hostname: process.env.COMPUTERNAME || 'windows-device' }),
     });
   } catch {}

@@ -17,9 +17,17 @@ orgsMeApiRouter.get('/orgs/me/enrollment', requireAuth, async (req, res) => {
     if (!org) return res.status(404).json({ error: 'Organization not found.' });
     const token = org.id;
     const base = (process.env.APP_URL || 'https://app.fortdefend.com').replace(/\/$/, '');
-    const installScriptUrl = `${base}/api/agent/install.ps1?org=${encodeURIComponent(token)}`;
+
+    let groupId = req.query.groupId;
+    if (groupId === '' || groupId === undefined || groupId === null) groupId = null;
+    if (groupId) {
+      const g = await db('groups').where({ id: groupId, org_id: req.user.orgId }).first();
+      if (!g) return res.status(400).json({ error: 'Group not found.' });
+    }
+    const gq = groupId ? `&group=${encodeURIComponent(groupId)}` : '';
+    const installScriptUrl = `${base}/api/agent/install.ps1?org=${encodeURIComponent(token)}${gq}`;
     const psCommand = `iex (irm '${installScriptUrl}')`;
-    res.json({ token, installUrl: installScriptUrl, psCommand });
+    res.json({ token, installUrl: installScriptUrl, psCommand, groupId: groupId || null });
   } catch (err) {
     console.error('GET /api/orgs/me/enrollment', err);
     res.status(500).json({ error: 'Failed to get enrollment info' });

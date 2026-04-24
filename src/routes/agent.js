@@ -66,66 +66,49 @@ async function addDeviceToGroupIfValid(deviceId, orgId, groupId) {
     .ignore();
 }
 
-function escapeForPsSingleQuoted(s) {
-  return String(s).replace(/'/g, "''");
+const agentResourceDir = path.join(__dirname, '..', '..', 'agent');
+const agentDistExe = path.join(agentResourceDir, 'dist', 'FortDefendAgent.exe');
+const agentInstallTemplate = path.join(agentResourceDir, 'install.ps1');
+const agentUninstallScript = path.join(agentResourceDir, 'uninstall.ps1');
+
+async function resolveOrgAndGroupForInstall(orgId, groupId) {
+  const org = await db('orgs').where({ id: orgId }).first();
+  if (!org) return { error: 404, message: 'organization not found' };
+  if (groupId) {
+    const g = await db('groups').where({ id: groupId, org_id: orgId }).first();
+    if (!g) return { error: 400, message: 'group not found' };
+  }
+  return { org, groupId: groupId || '' };
 }
 
-/** PowerShell body for GET /api/agent/install.ps1 */
-function buildInstallPs1Content(baseUrl, orgId) {
-  const b = escapeForPsSingleQuoted(baseUrl.replace(/\/$/, ''));
-  const o = escapeForPsSingleQuoted(orgId);
-  return [
-    '# FortDefend Windows agent — install (generated)',
-    '#Requires -RunAsAdministrator',
-    "$ErrorActionPreference = 'Stop'",
-    `$BaseUrl = '${b}'`,
-    `$OrgId = '${o}'`,
-    "$InstallDir = 'C:\\ProgramData\\FortDefend'",
-    "$AgentPath = Join-Path $InstallDir 'agent.js'",
-    '',
-    "if (-not (Get-Command node -ErrorAction SilentlyContinue)) {",
-    "  Write-Host 'Installing Node.js (winget)…' -ForegroundColor Cyan",
-    "  if (-not (Get-Command winget -ErrorAction SilentlyContinue)) {",
-    "    throw 'Node.js is required. Install LTS from https://nodejs.org then re-run this script.'",
-    '  }',
-    '  winget install -e --id OpenJS.NodeJS.LTS --accept-source-agreements --accept-package-agreements --silent',
-    "  $env:Path = [System.Environment]::GetEnvironmentVariable('Path','Machine') + ';' + [System.Environment]::GetEnvironmentVariable('Path','User')",
-    "  if (-not (Get-Command node -ErrorAction SilentlyContinue)) {",
-    "    throw 'Node was not found in PATH after install. Open a new Administrator PowerShell and run this install command again.'",
-    '  }',
-    '}',
-    'New-Item -ItemType Directory -Force -Path $InstallDir | Out-Null',
-    "$dl = $BaseUrl + '/api/agent/download?org=' + [uri]::EscapeDataString($OrgId)",
-    'Write-Host ("Downloading agent: $dl") -ForegroundColor Cyan',
-    'Invoke-WebRequest -Uri $dl -OutFile $AgentPath -UseBasicParsing',
-    "New-Item -Path 'HKLM:\\SOFTWARE\\FortDefend' -Force | Out-Null",
-    "Set-ItemProperty -Path 'HKLM:\\SOFTWARE\\FortDefend' -Name 'Token' -Value $OrgId",
-    "Set-ItemProperty -Path 'HKLM:\\SOFTWARE\\FortDefend' -Name 'ApiUrl' -Value $BaseUrl",
-    "$nodeExe = (Get-Command node).Source",
-    "$act = New-ScheduledTaskAction -Execute $nodeExe -Argument $AgentPath -WorkingDirectory $InstallDir",
-    '$tr = New-ScheduledTaskTrigger -Once -At (Get-Date) -RepetitionInterval (New-TimeSpan -Minutes 15) -RepetitionDuration (New-TimeSpan -Days 3650)',
-    '$st = New-ScheduledTaskSettingsSet -AllowStartIfOnBatteries -DontStopIfGoingOnBatteries -StartWhenAvailable',
-    "$principal = New-ScheduledTaskPrincipal -UserId 'S-1-5-18' -LogonType ServiceAccount -RunLevel Highest",
-    "Unregister-ScheduledTask -TaskName 'FortDefendAgent' -Confirm:$false -ErrorAction SilentlyContinue",
-    "Register-ScheduledTask -TaskName 'FortDefendAgent' -Action $act -Trigger $tr -Settings $st -Principal $principal -Force",
-    'Start-Process -FilePath $nodeExe -ArgumentList $AgentPath -WorkingDirectory $InstallDir -WindowStyle Hidden',
-    "Start-ScheduledTask -TaskName 'FortDefendAgent'",
-    "Write-Host 'FortDefend agent installed. Scheduled every 15 minutes; first run started.' -ForegroundColor Green",
-  ].join('\n');
+function buildInstallScript(baseUrl, orgId, groupId) {
+  const b = baseUrl.replace(/\/$/, '');
+  const gq = groupId ? `&group=${encodeURIComponent(groupId)}` : '';
+  const installScriptUrl = `${b}/api/agent/install.ps1?org=${encodeURIComponent(orgId)}${gq}`;
+  const downloadUrl = `${b}/api/agent/download?org=${encodeURIComponent(orgId)}${gq}`;
+  let src = fs.readFileSync(agentInstallTemplate, 'utf8');
+  src = src
+    .replace(/__INSTALL_SCRIPT_URL__/g, installScriptUrl)
+    .replace(/__APP_URL__/g, b)
+    .replace(/__ORG_ID__/g, orgId)
+    .replace(/__GROUP_ID__/g, groupId || '')
+    .replace(/__DOWNLOAD_URL__/g, downloadUrl);
+  return src;
 }
 
-// GET /api/agent/install.ps1?org=UUID — inline PowerShell installer (text/plain)
+// GET /api/agent/install.ps1?org=UUID&group= (optional) — install.ps1 with injected URLs (text/plain)
 router.get('/install.ps1', async (req, res) => {
   try {
     const org = String(req.query.org || '').trim();
     if (!org) {
       res.setHeader('Content-Type', 'text/plain; charset=utf-8');
-      return res.status(400).send('# Error: add query parameter org=<your-organization-id>');
+      return res.status(400).send('# Error: add ?org=<organization-id> (optional &group=)');
     }
-    const row = await db('orgs').where({ id: org }).first();
-    if (!row) {
+    const group = String(req.query.group || '').trim();
+    const check = await resolveOrgAndGroupForInstall(org, group || null);
+    if (check.error) {
       res.setHeader('Content-Type', 'text/plain; charset=utf-8');
-      return res.status(404).send('# Error: organization not found');
+      return res.status(check.error).send(`# Error: ${check.message}`);
     }
     let baseUrl = (process.env.APP_URL || '').trim().replace(/\/$/, '');
     if (!baseUrl) {
@@ -133,11 +116,26 @@ router.get('/install.ps1', async (req, res) => {
     }
     res.setHeader('Content-Type', 'text/plain; charset=utf-8');
     res.setHeader('Content-Disposition', 'inline; filename="fortdefend-install.ps1"');
-    return res.send(buildInstallPs1Content(baseUrl, org));
+    return res.send(buildInstallScript(baseUrl, org, group));
   } catch (err) {
     console.error('install.ps1 error:', err);
     res.setHeader('Content-Type', 'text/plain; charset=utf-8');
-    return res.status(500).send('# Error: failed to build install script');
+    return res.status(500).send('# Error: failed to load install script');
+  }
+});
+
+// GET /api/agent/uninstall.ps1
+router.get('/uninstall.ps1', (req, res) => {
+  try {
+    if (!fs.existsSync(agentUninstallScript)) {
+      return res.status(404).type('text/plain').send('# Error: uninstall.ps1 not found on server');
+    }
+    res.setHeader('Content-Type', 'text/plain; charset=utf-8');
+    res.setHeader('Content-Disposition', 'inline; filename="fortdefend-uninstall.ps1"');
+    return res.sendFile(agentUninstallScript);
+  } catch (err) {
+    console.error('uninstall.ps1 error:', err);
+    return res.status(500).type('text/plain').send('# Error: failed to load uninstall script');
   }
 });
 
@@ -185,6 +183,15 @@ router.post('/heartbeat', async (req, res) => {
       reboot_required_reason: rebootRequiredReason,
     };
 
+    const groupHint = req.headers['x-fortdefend-group'];
+    let enrollGroupId = auth.groupId;
+    if (!enrollGroupId && groupHint) {
+      const g = await db('groups')
+        .where({ id: String(groupHint), org_id: orgId })
+        .first();
+      if (g) enrollGroupId = g.id;
+    }
+
     if (!existing) {
       const [row] = await db('devices')
         .insert({
@@ -198,8 +205,8 @@ router.post('/heartbeat', async (req, res) => {
         })
         .returning(['id']);
       deviceId = row.id;
-      if (auth.kind === 'enrollment' && auth.groupId) {
-        await addDeviceToGroupIfValid(deviceId, orgId, auth.groupId);
+      if (auth.kind === 'enrollment' && enrollGroupId) {
+        await addDeviceToGroupIfValid(deviceId, orgId, enrollGroupId);
       }
     } else {
       await db('devices')
@@ -227,17 +234,24 @@ router.post('/heartbeat', async (req, res) => {
   }
 });
 
-// GET /api/agent/download — ?org=UUID serves Node agent.js; ?token= JWT serves Windows agent.exe (legacy)
+// GET /api/agent/download?org=UUID&group= — FortDefendAgent.exe (pkg); ?token= JWT = legacy agent.exe
 router.get('/download', async (req, res) => {
   try {
     const { token, org, group } = req.query;
     if (org && !token) {
       const o = await db('orgs').where({ id: String(org) }).first();
       if (!o) return res.status(404).json({ error: 'Organization not found.' });
-      const agentJs = path.join(__dirname, '..', '..', 'agent', 'agent.js');
-      if (!fs.existsSync(agentJs)) return res.status(404).json({ error: 'agent.js not found.' });
-      res.setHeader('Content-Type', 'application/javascript; charset=utf-8');
-      return res.sendFile(agentJs);
+      if (group) {
+        const g = await db('groups').where({ id: String(group), org_id: String(org) }).first();
+        if (!g) return res.status(400).json({ error: 'Group not found.' });
+      }
+      if (!fs.existsSync(agentDistExe)) {
+        return res.status(404).json({
+          error: 'Agent binary not found. Build it: cd agent && npm install && npm run build:installer (or npm run build).',
+        });
+      }
+      res.setHeader('Content-Disposition', 'attachment; filename="FortDefendAgent.exe"');
+      return res.sendFile(agentDistExe);
     }
     if (!token) return res.status(400).json({ error: 'Token or org query required.' });
     let payload;
@@ -255,24 +269,28 @@ router.get('/download', async (req, res) => {
     if (group && (payload.groupId || '') !== String(group)) {
       return res.status(400).json({ error: 'Invalid group in URL.' });
     }
-    const p = path.join(__dirname, '..', '..', 'agent', 'agent.exe');
-    if (!fs.existsSync(p)) return res.status(404).json({ error: 'agent.exe not found.' });
-    return res.download(p, 'agent.exe');
+    const legacy = path.join(agentResourceDir, 'agent.exe');
+    if (fs.existsSync(legacy)) {
+      return res.download(legacy, 'agent.exe');
+    }
+    if (fs.existsSync(agentDistExe)) {
+      res.setHeader('Content-Disposition', 'attachment; filename="FortDefendAgent.exe"');
+      return res.sendFile(agentDistExe);
+    }
+    return res.status(404).json({ error: 'No agent package found on the server.' });
   } catch (err) {
     console.error('Agent download error:', err);
     return res.status(500).json({ error: 'Failed to download agent.' });
   }
 });
 
-// GET /api/agent/install — local install.ps1 (token substituted)
+// GET /api/agent/install — use GET /api/agent/install.ps1?org=... instead
 router.get('/install', async (req, res) => {
-  const p = path.join(__dirname, '..', '..', 'agent', 'install.ps1');
-  if (!fs.existsSync(p)) return res.status(404).json({ error: 'install.ps1 not found.' });
-  const template = fs.readFileSync(p, 'utf8');
-  const token = String(req.query.token || '');
-  const rendered = template.replace(/__ORG_TOKEN__/g, token).replace(/__APP_URL__/g, process.env.APP_URL || '');
-  res.setHeader('Content-Type', 'text/plain; charset=utf-8');
-  return res.send(rendered);
+  if (String(req.query.org || '').trim()) {
+    return res.redirect(302, `/api/agent/install.ps1?${new URLSearchParams(req.query).toString()}`);
+  }
+  res.status(400).type('text/plain')
+    .send('Use: GET /api/agent/install.ps1?org=ORG_ID&group=GROUP_ID (group optional).');
 });
 
 module.exports = router;

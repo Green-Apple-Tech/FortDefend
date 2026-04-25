@@ -68,20 +68,40 @@ export default function Settings() {
   const [enrollNotify, setEnrollNotify] = useState(() => loadBool('enrollNotify', true));
 
   const [heartbeat30, setHeartbeat30] = useState(() => loadBool('heartbeat30', true));
-  const [autoUpdateAgent, setAutoUpdateAgent] = useState(() => loadBool('autoUpdateAgent', true));
+  const [autoUpdateAgent, setAutoUpdateAgent] = useState(false);
+  const [notifyBeforeAgentUpdate, setNotifyBeforeAgentUpdate] = useState(true);
   const [fullInventory, setFullInventory] = useState(() => loadBool('fullInventory', true));
-  const [smartRules, setSmartRules] = useState([{ field: 'os', condition: 'equals', value: 'Windows 11' }]);
+  const [currentAgentVersion, setCurrentAgentVersion] = useState('1.0.1');
 
   useEffect(() => {
     let cancelled = false;
     (async () => {
       try {
         const org = await api('/api/orgs/me');
-        if (!cancelled && org?.name) setOrgName(org.name);
+        if (!cancelled && org?.name) {
+          setOrgName(org.name);
+          setAutoUpdateAgent(org.autoUpdateAgent === true);
+          setNotifyBeforeAgentUpdate(org.notifyBeforeAgentUpdate !== false);
+        }
       } catch {
         /* ignore */
       } finally {
         if (!cancelled) setLoading(false);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      try {
+        const r = await api('/api/agent/version');
+        if (!cancelled && r?.version) setCurrentAgentVersion(String(r.version));
+      } catch {
+        if (!cancelled) setCurrentAgentVersion('1.0.1');
       }
     })();
     return () => {
@@ -135,12 +155,31 @@ export default function Settings() {
       }
       if (o.agent) {
         if (typeof o.agent.heartbeat30s === 'boolean') setHeartbeat30(o.agent.heartbeat30s);
-        if (typeof o.agent.autoUpdateAgent === 'boolean') setAutoUpdateAgent(o.agent.autoUpdateAgent);
         if (typeof o.agent.fullInventory === 'boolean') setFullInventory(o.agent.fullInventory);
       }
       setMsg('Applied JSON to toggles (saved locally).');
     } catch {
       setJsonError('Invalid JSON — fix syntax and try again.');
+    }
+  }
+
+  async function saveAgentManagement(patch) {
+    try {
+      await api('/api/orgs/me', { method: 'PATCH', body: patch });
+      if (patch.autoUpdateAgent !== undefined) setAutoUpdateAgent(patch.autoUpdateAgent);
+      if (patch.notifyBeforeAgentUpdate !== undefined) setNotifyBeforeAgentUpdate(patch.notifyBeforeAgentUpdate);
+      setMsg('Agent management settings saved.');
+    } catch (err) {
+      setMsg(err.message || 'Could not save agent settings.');
+    }
+  }
+
+  async function forceUpdateAllDevices() {
+    try {
+      const r = await api('/api/agent/force-update', { method: 'POST', body: {} });
+      setMsg(`Queued updates for ${r?.flagged ?? 0} devices.`);
+    } catch (err) {
+      setMsg(err.message || 'Failed to queue updates.');
     }
   }
 
@@ -153,14 +192,6 @@ export default function Settings() {
       <div className="space-y-3">{children}</div>
     </div>
   );
-
-  const addSmartRule = () => {
-    setSmartRules((prev) => [...prev, { field: 'os', condition: 'equals', value: '' }]);
-  };
-
-  const updateSmartRule = (idx, key, value) => {
-    setSmartRules((prev) => prev.map((r, i) => (i === idx ? { ...r, [key]: value } : r)));
-  };
 
   return (
     <div className={`mx-auto space-y-8 ${mspTabActive ? 'max-w-5xl' : 'max-w-3xl'}`}>
@@ -236,56 +267,6 @@ export default function Settings() {
         <>
           <Card className="p-0 overflow-hidden">
             <Groups embedded />
-          </Card>
-          <Card className="space-y-4">
-            <div>
-              <h2 className="text-sm font-semibold text-slate-900">Smart Groups</h2>
-              <p className="mt-1 text-sm text-slate-600">Auto-built dynamic groups based on live device state.</p>
-            </div>
-            <div className="grid gap-2 sm:grid-cols-2">
-              {[
-                'Online Devices (last_seen < 5 min)',
-                'Offline Devices (last_seen > 60 min)',
-                'Needs Updates (has update_available apps)',
-                'High Risk (security_score < 50)',
-              ].map((label) => (
-                <div key={label} className="rounded-lg border border-fds-border bg-slate-50 px-3 py-2 text-sm text-slate-800">
-                  {label}
-                </div>
-              ))}
-            </div>
-            <div className="space-y-3 border-t border-fds-border pt-4">
-              <h3 className="text-sm font-semibold text-slate-900">Custom Smart Group Builder</h3>
-              {smartRules.map((rule, idx) => (
-                <div key={idx} className="grid gap-2 sm:grid-cols-3">
-                  <select
-                    value={rule.field}
-                    onChange={(e) => updateSmartRule(idx, 'field', e.target.value)}
-                    className="rounded-lg border border-fds-border bg-white px-3 py-2 text-sm"
-                  >
-                    <option value="os">OS</option>
-                    <option value="disk_free_gb">Disk (GB)</option>
-                    <option value="security_score">Security Score</option>
-                    <option value="last_seen">Last Seen</option>
-                  </select>
-                  <select
-                    value={rule.condition}
-                    onChange={(e) => updateSmartRule(idx, 'condition', e.target.value)}
-                    className="rounded-lg border border-fds-border bg-white px-3 py-2 text-sm"
-                  >
-                    <option value="equals">=</option>
-                    <option value="contains">contains</option>
-                    <option value="lt">&lt;</option>
-                    <option value="gt">&gt;</option>
-                  </select>
-                  <Input value={rule.value} onChange={(e) => updateSmartRule(idx, 'value', e.target.value)} placeholder="Value" />
-                </div>
-              ))}
-              <div className="flex gap-2">
-                <Button type="button" variant="outline" onClick={addSmartRule}>Add Rule</Button>
-                <Button type="button">Save Smart Group</Button>
-              </div>
-            </div>
           </Card>
         </>
       ) : null}
@@ -438,16 +419,6 @@ export default function Settings() {
               }}
             />
             <ToggleCard
-              icon="⬆️"
-              title="Auto-update agent"
-              description="Silently upgrade the FortDefend agent when a new build ships."
-              on={autoUpdateAgent}
-              onChange={(v) => {
-                setAutoUpdateAgent(v);
-                saveBool('autoUpdateAgent', v);
-              }}
-            />
-            <ToggleCard
               icon="📋"
               title="Collect full inventory"
               description="Include detailed hardware and software lists in each scan."
@@ -459,6 +430,28 @@ export default function Settings() {
             />
           </>,
         )}
+      </Card>
+
+      <Card className="space-y-4">
+        <h2 className="text-sm font-semibold text-slate-900">Agent Management</h2>
+        <ToggleCard
+          icon="⬆️"
+          title="Auto-update agent on all devices"
+          description="When enabled, devices automatically update to the latest agent version on next check-in."
+          on={autoUpdateAgent}
+          onChange={(v) => saveAgentManagement({ autoUpdateAgent: v })}
+        />
+        <ToggleCard
+          icon="🔔"
+          title="Notify before updating"
+          description="Show a pre-update notice before agent updates begin."
+          on={notifyBeforeAgentUpdate}
+          onChange={(v) => saveAgentManagement({ notifyBeforeAgentUpdate: v })}
+        />
+        <div className="rounded-lg border border-fds-border bg-slate-50 px-3 py-2 text-sm text-slate-700">
+          Current agent version: <strong className="text-slate-900">{currentAgentVersion}</strong>
+        </div>
+        <Button type="button" onClick={forceUpdateAllDevices}>Force update all devices now</Button>
       </Card>
 
       <Card>

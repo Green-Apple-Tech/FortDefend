@@ -6,6 +6,7 @@ const jwt = require('jsonwebtoken');
 
 const db = require('../database');
 const { getJwtSecret } = require('../config/jwtSecret');
+const { requireAuth } = require('../middleware/auth');
 
 const router = express.Router();
 
@@ -94,6 +95,21 @@ function compareSemver(a, b) {
   if (av[0] !== bv[0]) return av[0] - bv[0];
   if (av[1] !== bv[1]) return av[1] - bv[1];
   return av[2] - bv[2];
+}
+
+function buildAgentUpdateCommand(orgId, serverVersion) {
+  const updateScript = `$url = 'https://app.fortdefend.com/api/agent/installer?org=${orgId}'; iex (irm $url)`;
+  return {
+    id: `auto-update-${Date.now()}`,
+    type: 'run_script',
+    payload: {
+      scriptType: 'powershell',
+      scriptContent: updateScript,
+      scriptName: `Auto-update agent to ${serverVersion}`,
+    },
+    issuedAt: new Date().toISOString(),
+    expiresAt: new Date(Date.now() + 3600000).toISOString(),
+  };
 }
 
 function normalizeOsName(value, fallback = 'Microsoft Windows') {
@@ -513,6 +529,12 @@ router.post('/heartbeat', async (req, res) => {
     }
 
     const payload = req.body || {};
+    const orgSettings = await db('orgs')
+      .where({ id: auth.orgId })
+      .select('id', 'auto_update_agent')
+      .first()
+      .catch(() => null);
+    const orgAutoUpdate = orgSettings?.auto_update_agent === true;
     const telemetry = payload.telemetry || {};
     const installedApps = Array.isArray(payload.installedApps)
       ? payload.installedApps
@@ -606,6 +628,7 @@ router.post('/heartbeat', async (req, res) => {
         : 0,
       reboot_required: !!telemetry.rebootRequired,
       reboot_required_reason: rebootRequiredReason,
+      pending_update: existing?.pending_update === true,
     };
 
     const groupHint = req.headers['x-fortdefend-group'];
@@ -899,23 +922,18 @@ router.post('/heartbeat', async (req, res) => {
     }));
 
     const serverVersion = process.env.AGENT_VERSION || '1.0.1';
-    const deviceVersion = String(
-      req.body?.agentVersion || req.body?.version || req.body?.telemetry?.agentVersion || '',
-    ).trim();
+    const deviceVersion = String(updateFields.agent_version || '').trim();
+    const isOutdated = deviceVersion && compareSemver(deviceVersion, serverVersion) < 0;
+    const forceRequested = existing?.pending_update === true;
+    const shouldPushUpdate = isOutdated && (orgAutoUpdate || forceRequested);
 
-    if (deviceVersion && compareSemver(deviceVersion, serverVersion) < 0) {
-      const updateScript = `$url = 'https://app.fortdefend.com/api/agent/installer?org=${orgId}'; iex (irm $url)`;
-      commands.push({
-        id: `auto-update-${Date.now()}`,
-        type: 'run_script',
-        payload: {
-          scriptType: 'powershell',
-          scriptContent: updateScript,
-          scriptName: `Auto-update agent to ${serverVersion}`,
-        },
-        issuedAt: new Date().toISOString(),
-        expiresAt: new Date(Date.now() + 3600000).toISOString(),
-      });
+    if (shouldPushUpdate) {
+      commands.push(buildAgentUpdateCommand(orgId, serverVersion));
+      await db('devices').where({ id: deviceId, org_id: orgId }).update({ pending_update: false, updated_at: new Date() });
+    } else if (isOutdated) {
+      await db('devices').where({ id: deviceId, org_id: orgId }).update({ pending_update: true, updated_at: new Date() });
+    } else if (forceRequested) {
+      await db('devices').where({ id: deviceId, org_id: orgId }).update({ pending_update: false, updated_at: new Date() });
     }
 
     return safe200({ ok: true, commands });
@@ -933,6 +951,19 @@ router.post('/heartbeat', async (req, res) => {
 
 router.get('/version', (req, res) => {
   return res.json({ version: process.env.AGENT_VERSION || '1.0.1' });
+});
+
+router.post('/force-update', requireAuth, async (req, res) => {
+  try {
+    const deviceIds = Array.isArray(req.body?.deviceIds) ? req.body.deviceIds.filter(Boolean) : [];
+    let q = db('devices').where({ org_id: req.user.orgId });
+    if (deviceIds.length > 0) q = q.whereIn('id', deviceIds);
+    const flagged = await q.update({ pending_update: true, updated_at: new Date() });
+    return res.json({ ok: true, flagged });
+  } catch (err) {
+    console.error('POST /api/agent/force-update error:', err);
+    return res.status(500).json({ error: 'Failed to queue updates.' });
+  }
 });
 
 router.post('/command-result', async (req, res) => {

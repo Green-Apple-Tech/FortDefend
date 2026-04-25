@@ -53,6 +53,8 @@ router.get('/me', requireAuth, async (req, res) => {
         name: org.white_label_name,
         logoUrl: org.white_label_logo_url,
       },
+      autoUpdateAgent: org.auto_update_agent === true,
+      notifyBeforeAgentUpdate: org.notify_before_agent_update !== false,
       deviceCount: parseInt(deviceCount.count),
       userCount: parseInt(userCount.count),
       clientCount,
@@ -72,6 +74,8 @@ router.patch('/me', requireAuth, requireAdmin, async (req, res) => {
   try {
     const schema = z.object({
       name: z.string().min(1).max(100).optional(),
+      autoUpdateAgent: z.boolean().optional(),
+      notifyBeforeAgentUpdate: z.boolean().optional(),
       whiteLabel: z.object({
         name: z.string().max(100).optional(),
         logoUrl: z.string().url().optional(),
@@ -85,6 +89,10 @@ router.patch('/me', requireAuth, requireAdmin, async (req, res) => {
 
     const updates = {};
     if (parsed.data.name) updates.name = parsed.data.name;
+    if (parsed.data.autoUpdateAgent !== undefined) updates.auto_update_agent = parsed.data.autoUpdateAgent;
+    if (parsed.data.notifyBeforeAgentUpdate !== undefined) {
+      updates.notify_before_agent_update = parsed.data.notifyBeforeAgentUpdate;
+    }
     if (parsed.data.whiteLabel?.name) updates.white_label_name = parsed.data.whiteLabel.name;
     if (parsed.data.whiteLabel?.logoUrl) updates.white_label_logo_url = parsed.data.whiteLabel.logoUrl;
     updates.updated_at = new Date();

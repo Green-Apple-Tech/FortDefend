@@ -4,6 +4,21 @@ const { v4: uuidv4 } = require('uuid');
 const { requireAuth } = require('../middleware/auth');
 const db = require('../database');
 
+const DYNAGROUP_FIELD_MAP = {
+  device_name: 'name',
+  os: 'os',
+  os_version: 'os_version',
+  last_seen: 'last_seen',
+  disk_free: 'disk_free_gb',
+  ram: 'ram_total_gb',
+  security_score: 'security_score',
+  agent_version: 'agent_version',
+  source: 'source',
+  location: 'location',
+  serial_number: 'serial',
+  user_email: 'user_email',
+};
+
 router.get('/', requireAuth, async (req, res) => {
   try {
     const groups = await db('groups')
@@ -28,6 +43,55 @@ router.get('/', requireAuth, async (req, res) => {
   } catch (err) {
     console.error('Get groups error:', err);
     res.status(500).json({ error: 'Failed to fetch groups' });
+  }
+});
+
+// DynaGroups
+router.get('/dynagroups', requireAuth, async (req, res) => {
+  try {
+    const dynagroups = await db('dynagroups')
+      .where({ org_id: req.user.orgId })
+      .orderBy('created_at', 'desc')
+      .select('id', 'org_id', 'name', 'rules', 'created_at');
+    res.json({ dynagroups });
+  } catch (err) {
+    console.error('Get dynagroups error:', err);
+    res.status(500).json({ error: 'Failed to fetch dynagroups' });
+  }
+});
+
+router.post('/dynagroups', requireAuth, async (req, res) => {
+  try {
+    const { name, rules } = req.body || {};
+    if (!name || !String(name).trim()) return res.status(400).json({ error: 'Name is required' });
+    const safeRules = normalizeDynagroupRules(rules);
+    const [dynagroup] = await db('dynagroups')
+      .insert({
+        id: uuidv4(),
+        org_id: req.user.orgId,
+        name: String(name).trim(),
+        rules: JSON.stringify(safeRules),
+      })
+      .returning(['id', 'org_id', 'name', 'rules', 'created_at']);
+    res.status(201).json({ dynagroup });
+  } catch (err) {
+    console.error('Create dynagroup error:', err);
+    res.status(500).json({ error: 'Failed to create dynagroup' });
+  }
+});
+
+router.get('/dynagroups/:id/devices', requireAuth, async (req, res) => {
+  try {
+    const dynagroup = await db('dynagroups')
+      .where({ id: req.params.id, org_id: req.user.orgId })
+      .first();
+    if (!dynagroup) return res.status(404).json({ error: 'DynaGroup not found' });
+    const devices = await db('devices').where({ org_id: req.user.orgId }).select('*');
+    const matched = filterDevicesByRules(devices, normalizeDynagroupRules(dynagroup.rules));
+    res.json({ devices: matched });
+  } catch (err) {
+    console.error('Get dynagroup devices error:', err);
+    res.status(500).json({ error: 'Failed to evaluate dynagroup' });
   }
 });
 
@@ -218,3 +282,81 @@ async function getDescendantIds(groupId, orgId) {
 }
 
 module.exports = router;
+
+function normalizeDynagroupRules(rules) {
+  const mode = String(rules?.mode || 'all').toLowerCase() === 'any' ? 'any' : 'all';
+  const rows = Array.isArray(rules?.rows) ? rules.rows : [];
+  const safeRows = rows
+    .map((r) => ({
+      field: String(r?.field || '').trim(),
+      operator: String(r?.operator || '').trim(),
+      value: r?.value ?? '',
+      valueTo: r?.valueTo ?? '',
+      days: Number.isFinite(Number(r?.days)) ? Number(r.days) : null,
+    }))
+    .filter((r) => r.field && r.operator);
+  return { mode, rows: safeRows };
+}
+
+function coerceNumber(v) {
+  const n = Number(v);
+  return Number.isFinite(n) ? n : null;
+}
+
+function matchesRule(device, rule) {
+  const key = DYNAGROUP_FIELD_MAP[rule.field] || rule.field;
+  const value = device?.[key];
+  const op = rule.operator;
+
+  if (op === 'is_true') return Boolean(value) === true;
+  if (op === 'is_false') return Boolean(value) === false;
+
+  if (op === 'within_last_days') {
+    if (!value) return false;
+    const d = new Date(value);
+    if (Number.isNaN(d.getTime())) return false;
+    const days = Number(rule.days || rule.value || 0);
+    if (!Number.isFinite(days) || days <= 0) return false;
+    return Date.now() - d.getTime() <= days * 86400000;
+  }
+
+  if (op === 'before' || op === 'after') {
+    if (!value) return false;
+    const lhs = new Date(value).getTime();
+    const rhs = new Date(rule.value).getTime();
+    if (!Number.isFinite(lhs) || !Number.isFinite(rhs)) return false;
+    return op === 'before' ? lhs < rhs : lhs > rhs;
+  }
+
+  if (['greater_than', 'less_than', 'equals', 'between'].includes(op)) {
+    const lhs = coerceNumber(value);
+    const rhs = coerceNumber(rule.value);
+    if (lhs == null) return false;
+    if (op === 'greater_than') return rhs != null ? lhs > rhs : false;
+    if (op === 'less_than') return rhs != null ? lhs < rhs : false;
+    if (op === 'equals') return rhs != null ? lhs === rhs : false;
+    if (op === 'between') {
+      const rhs2 = coerceNumber(rule.valueTo);
+      return rhs != null && rhs2 != null ? lhs >= Math.min(rhs, rhs2) && lhs <= Math.max(rhs, rhs2) : false;
+    }
+  }
+
+  const lhsText = String(value || '').toLowerCase();
+  const rhsText = String(rule.value || '').toLowerCase();
+  if (op === 'contains') return lhsText.includes(rhsText);
+  if (op === 'starts_with') return lhsText.startsWith(rhsText);
+  if (op === 'ends_with') return lhsText.endsWith(rhsText);
+  if (op === 'equals') return lhsText === rhsText;
+  if (op === 'not_equals') return lhsText !== rhsText;
+  return false;
+}
+
+function filterDevicesByRules(devices, rules) {
+  const mode = rules?.mode === 'any' ? 'any' : 'all';
+  const rows = Array.isArray(rules?.rows) ? rules.rows : [];
+  if (!rows.length) return [];
+  return devices.filter((device) => {
+    const checks = rows.map((r) => matchesRule(device, r));
+    return mode === 'any' ? checks.some(Boolean) : checks.every(Boolean);
+  });
+}

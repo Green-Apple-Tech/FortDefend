@@ -145,6 +145,21 @@ function isCurrentAgentVersion(deviceVersion, expectedVersion) {
   return device === expected;
 }
 
+function parseSemver(version) {
+  const m = String(version || '').trim().match(/^(\d+)\.(\d+)\.(\d+)$/);
+  if (!m) return null;
+  return [Number(m[1]), Number(m[2]), Number(m[3])];
+}
+
+function compareSemver(a, b) {
+  const av = parseSemver(a);
+  const bv = parseSemver(b);
+  if (!av || !bv) return 0;
+  if (av[0] !== bv[0]) return av[0] - bv[0];
+  if (av[1] !== bv[1]) return av[1] - bv[1];
+  return av[2] - bv[2];
+}
+
 function renderAgentBadge(deviceVersion, expectedVersion) {
   const v = String(deviceVersion || '').trim();
   if (!v) {
@@ -312,6 +327,7 @@ export default function Devices() {
   const panelHeaderMenuRef = useRef(null);
 
   const [groupsTree, setGroupsTree] = useState([]);
+  const [dynagroups, setDynagroups] = useState([]);
   const [groupScope, setGroupScope] = useState('all');
   const [dbList, setDbList] = useState([]);
   const [inAnyGroupIds, setInAnyGroupIds] = useState(() => new Set());
@@ -324,6 +340,8 @@ export default function Devices() {
   const [groupLocalReboot, setGroupLocalReboot] = useState(true);
   const [groupLocalPatch, setGroupLocalPatch] = useState(true);
   const [headerControlsTarget, setHeaderControlsTarget] = useState(null);
+  const [orgAutoUpdateAgent, setOrgAutoUpdateAgent] = useState(false);
+  const [agentUpdatesOpen, setAgentUpdatesOpen] = useState(false);
 
   const groupsFlat = useMemo(() => flattenGroupTree(groupsTree), [groupsTree]);
   const dbLookup = useMemo(() => buildDbDeviceLookup(dbList), [dbList]);
@@ -422,13 +440,15 @@ export default function Devices() {
     let cancelled = false;
     (async () => {
       try {
-        const [gRes, devRes] = await Promise.all([
+        const [gRes, devRes, dynaRes] = await Promise.all([
           api('/api/groups').catch(() => ({ groups: [] })),
           api('/api/devices').catch(() => ({ devices: [] })),
+          api('/api/groups/dynagroups').catch(() => ({ dynagroups: [] })),
         ]);
         if (cancelled) return;
         setGroupsTree(Array.isArray(gRes.groups) ? gRes.groups : []);
         setDbList(Array.isArray(devRes.devices) ? devRes.devices : []);
+        setDynagroups(Array.isArray(dynaRes.dynagroups) ? dynaRes.dynagroups : []);
         const flat = flattenGroupTree(Array.isArray(gRes.groups) ? gRes.groups : []);
         const inGroup = new Set();
         await Promise.all(
@@ -446,6 +466,7 @@ export default function Devices() {
         if (!cancelled) {
           setGroupsTree([]);
           setDbList([]);
+          setDynagroups([]);
           setInAnyGroupIds(new Set());
         }
       }
@@ -454,6 +475,21 @@ export default function Devices() {
       cancelled = true;
     };
   }, [membershipRev]);
+
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      try {
+        const org = await api('/api/orgs/me');
+        if (!cancelled) setOrgAutoUpdateAgent(org?.autoUpdateAgent === true);
+      } catch {
+        if (!cancelled) setOrgAutoUpdateAgent(false);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   useEffect(() => {
     let cancelled = false;
@@ -471,6 +507,22 @@ export default function Devices() {
   }, []);
 
   useEffect(() => {
+    if (groupScope.startsWith('dyna:')) {
+      const dynaId = groupScope.slice(5);
+      let cancelled = false;
+      (async () => {
+        try {
+          const r = await api(`/api/groups/dynagroups/${encodeURIComponent(dynaId)}/devices`);
+          if (cancelled) return;
+          setGroupMemberIds(new Set((r.devices || []).map((d) => d.id)));
+        } catch {
+          if (!cancelled) setGroupMemberIds(new Set());
+        }
+      })();
+      return () => {
+        cancelled = true;
+      };
+    }
     const isUuid = /^[0-9a-f-]{36}$/i.test(groupScope);
     if (!isUuid) {
       setGroupMemberIds(new Set());
@@ -589,6 +641,10 @@ export default function Devices() {
         if (!dbId) return true;
         return !inAnyGroupIds.has(dbId);
       }
+      if (groupScope.startsWith('dyna:')) {
+        if (!dbId) return false;
+        return groupMemberIds.has(dbId);
+      }
       if (/^[0-9a-f-]{36}$/i.test(groupScope)) {
         if (!dbId) return false;
         return groupMemberIds.has(dbId);
@@ -644,6 +700,14 @@ export default function Devices() {
     () => sorted.filter((d) => checkedIds.includes(d.id)),
     [sorted, checkedIds],
   );
+
+  const outdatedDevices = useMemo(() => {
+    return rows.filter((d) => {
+      const v = String(d.agent_version || '').trim();
+      if (!v) return false;
+      return compareSemver(v, expectedAgentVersion) < 0;
+    });
+  }, [rows, expectedAgentVersion]);
 
   const total = sorted.length;
   const pageCount = Math.max(1, Math.ceil(total / PAGE_SIZE));
@@ -920,6 +984,38 @@ export default function Devices() {
     }
   };
 
+  const toggleOrgAutoUpdate = async (next) => {
+    try {
+      await api('/api/orgs/me', { method: 'PATCH', body: { autoUpdateAgent: next } });
+      setOrgAutoUpdateAgent(next);
+      setToast(next ? 'Auto-update enabled.' : 'Auto-update disabled.');
+    } catch (e) {
+      setToast(e.message || 'Failed to update org setting.');
+    }
+  };
+
+  const forceUpdateNow = async () => {
+    try {
+      await api('/api/agent/force-update', { method: 'POST', body: {} });
+      setToast('Queued update for all devices.');
+    } catch (e) {
+      setToast(e.message || 'Failed to queue updates.');
+    }
+  };
+
+  const forceUpdateSelected = async () => {
+    if (checkedIds.length === 0) {
+      setToast('Select at least one device.');
+      return;
+    }
+    try {
+      await api('/api/agent/force-update', { method: 'POST', body: { deviceIds: checkedIds } });
+      setToast(`Queued update for ${checkedIds.length} selected device(s).`);
+    } catch (e) {
+      setToast(e.message || 'Failed to queue selected updates.');
+    }
+  };
+
   return (
     <div className="space-y-4">
       {headerControlsTarget &&
@@ -935,6 +1031,11 @@ export default function Devices() {
             {groupsFlat.map((g) => (
               <option key={g.id} value={g.id}>
                 {`${'— '.repeat(g.depth)}${g.name}`}
+              </option>
+            ))}
+            {dynagroups.map((g) => (
+              <option key={`dyna-${g.id}`} value={`dyna:${g.id}`}>
+                {`⚡ ${g.name}`}
               </option>
             ))}
           </select>,
@@ -964,6 +1065,35 @@ export default function Devices() {
           </button>
         ))}
       </div>
+
+      {mainTab === 'devices' && (
+        <div className="flex justify-end">
+          <details className="relative" open={agentUpdatesOpen} onToggle={(e) => setAgentUpdatesOpen(e.currentTarget.open)}>
+            <summary className="list-none cursor-pointer rounded-lg border border-fds-border bg-white px-3 py-2 text-sm font-medium text-slate-800 shadow-sm hover:bg-slate-50">
+              Agent Updates
+              {outdatedDevices.length > 0 ? (
+                <span className="ml-2 rounded-full bg-amber-100 px-2 py-0.5 text-xs font-semibold text-amber-900">
+                  {outdatedDevices.length} devices need update
+                </span>
+              ) : null}
+            </summary>
+            <div className="absolute right-0 z-20 mt-2 w-80 rounded-lg border border-fds-border bg-white p-3 shadow-lg">
+              <label className="flex items-center justify-between gap-3 rounded-md border border-fds-border px-3 py-2 text-sm">
+                <span className="font-medium text-slate-800">Auto-Update All</span>
+                <input
+                  type="checkbox"
+                  checked={orgAutoUpdateAgent}
+                  onChange={(e) => toggleOrgAutoUpdate(e.target.checked)}
+                />
+              </label>
+              <div className="mt-3 flex flex-col gap-2">
+                <Button type="button" onClick={forceUpdateNow}>Force Update Now</Button>
+                <Button type="button" variant="outline" onClick={forceUpdateSelected}>Force Update Selected</Button>
+              </div>
+            </div>
+          </details>
+        </div>
+      )}
 
       {mainTab === 'devices' && integrationErrors && Object.keys(integrationErrors).length > 0 && (
         <div className="rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">

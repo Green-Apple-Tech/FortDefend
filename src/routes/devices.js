@@ -198,8 +198,11 @@ router.patch('/:id', async (req, res, next) => {
 // DELETE /api/devices/:id — remove device
 router.delete('/:id', async (req, res, next) => {
   try {
+    const rawId = String(req.params.id || '').trim();
+    console.log('[devices/delete] called', { orgId: req.user.orgId, id: rawId });
     const device = await db('devices')
-      .where({ id: req.params.id, org_id: req.user.orgId })
+      .where({ org_id: req.user.orgId })
+      .andWhere((q) => q.where('id', rawId).orWhere('external_id', rawId))
       .first();
     if (!device) return res.status(404).json({ error: 'Device not found.' });
     await db.transaction(async (trx) => {
@@ -211,9 +214,10 @@ router.delete('/:id', async (req, res, next) => {
       await trx('device_groups')
         .where({ device_id: device.id })
         .delete();
-      await trx('devices')
+      const deleted = await trx('devices')
         .where({ id: device.id, org_id: req.user.orgId })
         .delete();
+      console.log('[devices/delete] devices rows deleted', { orgId: req.user.orgId, id: device.id, deleted });
     });
     res.json({ success: true });
   } catch (err) { next(err); }

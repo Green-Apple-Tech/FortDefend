@@ -1468,10 +1468,10 @@ export default function Devices() {
                             ⋮
                           </button>
                           {openMenu === k && (
-                            <div className="absolute right-0 z-30 mt-1 w-40 rounded-lg border border-gray-200 bg-white py-1 shadow-lg">
+                            <div className="absolute right-0 z-30 mt-1 min-w-[180px] rounded-lg border border-gray-200 bg-white py-1 shadow-lg">
                               <button
                                 type="button"
-                                className="block w-full px-3 py-2 text-left text-sm text-gray-700 hover:bg-gray-50"
+                                className="block w-full px-4 py-2 text-left text-sm text-gray-700 hover:bg-gray-50"
                                 onClick={() => {
                                   setOpenMenu(null);
                                   setCheckedIds([d.id]);
@@ -1482,21 +1482,21 @@ export default function Devices() {
                               </button>
                               <button
                                 type="button"
-                                className="block w-full px-3 py-2 text-left text-sm text-gray-700 hover:bg-gray-50"
+                                className="block w-full px-4 py-2 text-left text-sm text-gray-700 hover:bg-gray-50"
                                 onClick={() => runSync(d)}
                               >
                                 Sync
                               </button>
                               <button
                                 type="button"
-                                className="block w-full px-3 py-2 text-left text-sm text-gray-700 hover:bg-gray-50"
+                                className="block w-full px-4 py-2 text-left text-sm text-gray-700 hover:bg-gray-50"
                                 onClick={() => runReboot(d)}
                               >
                                 Reboot
                               </button>
                               <button
                                 type="button"
-                                className="block w-full px-3 py-2 text-left text-sm text-gray-700 hover:bg-gray-50"
+                                className="block w-full px-4 py-2 text-left text-sm text-gray-700 hover:bg-gray-50"
                                 onClick={() => {
                                   setOpenMenu(null);
                                   openDetails(d);
@@ -1506,7 +1506,7 @@ export default function Devices() {
                               </button>
                               <button
                                 type="button"
-                                className="block w-full px-3 py-2 text-left text-sm text-gray-700 hover:bg-gray-50"
+                                className="block w-full px-4 py-2 text-left text-sm text-gray-700 hover:bg-gray-50"
                                 onClick={async () => {
                                   const groupId = window.prompt('Enter group ID:');
                                   if (!groupId) return;
@@ -1519,9 +1519,10 @@ export default function Devices() {
                               >
                                 Assign to Group
                               </button>
+                              <div className="my-1 border-t border-gray-200" />
                               <button
                                 type="button"
-                                className="block w-full px-3 py-2 text-left text-sm text-red-600 hover:bg-gray-50"
+                                className="block w-full px-4 py-2 text-left text-sm text-red-600 hover:bg-gray-50"
                                 onClick={async () => {
                                   const deviceName = d.name || d.id || 'this device';
                                   if (!window.confirm(`Are you sure you want to remove ${deviceName}? This will stop monitoring this device.`)) return;

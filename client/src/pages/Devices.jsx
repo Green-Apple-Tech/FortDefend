@@ -120,7 +120,7 @@ function displaySource(source) {
 function formatDisk(d) {
   const gb = d.disk_free_gb ?? d.disk?.freeGb;
   if (gb == null || Number.isNaN(Number(gb))) return '—';
-  return `${Number(gb).toFixed(1)}GB free`;
+  return `${Math.round(Number(gb))}GB free`;
 }
 
 function formatRam(d) {
@@ -1222,15 +1222,15 @@ export default function Devices() {
         <span className="ml-auto text-xs text-slate-500">{fleetSummary.total} devices</span>
       </div>
 
-      <Card className="overflow-hidden p-0">
+      <Card className="overflow-hidden rounded-xl border border-gray-100 p-0 shadow-md">
         <div className="max-h-[min(70vh,900px)] overflow-auto">
           {loading ? (
             <p className="p-6 text-sm text-gray-500">Loading…</p>
           ) : (
             <table className="min-w-full border-collapse text-sm">
-              <thead className="sticky top-0 z-20 border-b border-fds-border bg-white shadow-sm">
+              <thead className="sticky top-0 z-20 border-b border-blue-100 bg-white shadow-sm">
                 <tr>
-                  <th className="whitespace-nowrap px-3 py-3 text-left">
+                  <th className="whitespace-nowrap px-4 py-3 text-left">
                     <input
                       type="checkbox"
                       checked={pageItems.length > 0 && pageItems.every((d) => checkedIds.includes(d.id))}
@@ -1247,7 +1247,7 @@ export default function Devices() {
                   {orderedColumns.map((colKey) => (
                     <th
                       key={colKey}
-                      className={`whitespace-nowrap px-3 py-3 text-[11px] font-bold uppercase tracking-wide text-blue-700 ${colKey === 'security_score' ? 'text-right' : 'text-left'}`}
+                      className={`whitespace-nowrap px-4 py-3 text-sm font-semibold text-[#1e40af] ${colKey === 'security_score' ? 'text-right' : 'text-left'}`}
                       draggable={colKey !== 'device'}
                       onDragStart={() => {
                         if (colKey === 'device') return;
@@ -1274,7 +1274,7 @@ export default function Devices() {
                       </button>
                     </th>
                   ))}
-                  <th className="sticky right-0 z-20 whitespace-nowrap border-l border-fds-border bg-white px-3 py-3 text-right text-[11px] font-bold uppercase tracking-wide text-blue-700">
+                  <th className="sticky right-0 z-20 whitespace-nowrap border-l border-fds-border bg-white px-4 py-3 text-right text-sm font-semibold text-[#1e40af]">
                     Actions
                   </th>
                 </tr>
@@ -1294,14 +1294,14 @@ export default function Devices() {
                   return (
                     <tr
                       key={k}
-                      className="h-12 cursor-pointer border-l-2 border-transparent odd:bg-[#F8FAFF] hover:border-l-blue-400 hover:bg-blue-50/60"
+                      className="min-h-[56px] cursor-pointer border-l-[3px] border-transparent odd:bg-[#F8FAFF] even:bg-white hover:border-l-blue-500 hover:bg-[#EFF6FF]"
                       onClick={() => openDetails(d)}
                       onContextMenu={(e) => {
                         e.preventDefault();
                         setOpenMenu((m) => (m === k ? null : k));
                       }}
                     >
-                      <td className="px-3 py-2.5" onClick={(e) => e.stopPropagation()}>
+                      <td className="px-4 py-4" onClick={(e) => e.stopPropagation()}>
                         <input
                           type="checkbox"
                           checked={checkedIds.includes(d.id)}
@@ -1314,7 +1314,7 @@ export default function Devices() {
                   {orderedColumns.map((colKey) => {
                         if (colKey === 'device') {
                           return (
-                            <td key={colKey} className="px-3 py-2.5">
+                            <td key={colKey} className="px-4 py-4">
                               <div className="flex min-w-0 items-center gap-2">
                                 <span className={`inline-block h-2 w-2 shrink-0 rounded-full ${statusDotClass(st)}`} title={st} />
                                 <div className="min-w-0">
@@ -1326,11 +1326,11 @@ export default function Devices() {
                           );
                         }
                         if (colKey === 'os') {
-                          return <td key={colKey} className="px-3 py-2.5 text-gray-600">{displayOs(d)} {osVersionOf(d) ? `· ${osVersionOf(d)}` : ''}</td>;
+                          return <td key={colKey} className="px-4 py-4 text-gray-600">{displayOs(d)} {osVersionOf(d) ? `· ${osVersionOf(d)}` : ''}</td>;
                         }
                         if (colKey === 'source') {
                           return (
-                            <td key={colKey} className="px-3 py-2.5">
+                            <td key={colKey} className="px-4 py-4">
                               <span className="inline-flex rounded-full bg-blue-500 px-3 py-1 text-xs font-semibold text-white">
                                 {displaySource(d.source)}
                               </span>
@@ -1339,7 +1339,7 @@ export default function Devices() {
                         }
                         if (colKey === 'status') {
                           return (
-                            <td key={colKey} className="px-3 py-2.5">
+                            <td key={colKey} className="px-4 py-4">
                               <span className={`inline-flex rounded-full px-3 py-1 text-xs font-semibold capitalize ${statusBadgeClass(st)}`}>
                                 {st}
                               </span>
@@ -1350,15 +1350,15 @@ export default function Devices() {
                           const pct = Number(d.cpu_usage_pct ?? d.cpuUsage);
                           const safePct = Number.isFinite(pct) ? Math.max(0, Math.min(100, pct)) : null;
                           return (
-                            <td key={colKey} className="px-3 py-2.5">
+                            <td key={colKey} className="px-4 py-4">
                               {safePct == null ? (
                                 <span className="text-gray-500">—</span>
                               ) : (
-                                <div className="min-w-[120px]">
+                                <div className="min-w-[128px]">
                                   <div className="mb-1 text-xs font-semibold text-slate-700">{Math.round(safePct)}%</div>
-                                  <div className="h-2 rounded-full bg-slate-200">
+                                  <div className="h-3 rounded-full bg-gray-200">
                                     <div
-                                      className={`h-2 rounded-full ${cpuToneClass(safePct)}`}
+                                      className={`h-3 rounded-full ${cpuToneClass(safePct)}`}
                                       style={{ width: `${safePct}%` }}
                                     />
                                   </div>
@@ -1368,10 +1368,10 @@ export default function Devices() {
                           );
                         }
                         if (colKey === 'agent') {
-                          return <td key={colKey} className="px-3 py-2.5">{renderAgentBadge(d.agent_version, expectedAgentVersion)}</td>;
+                          return <td key={colKey} className="px-4 py-4">{renderAgentBadge(d.agent_version, expectedAgentVersion)}</td>;
                         }
                         if (colKey === 'compliance') {
-                          return <td key={colKey} className="px-3 py-2.5 text-gray-600">{d.compliance || '—'}</td>;
+                          return <td key={colKey} className="px-4 py-4 text-gray-600">{d.compliance || '—'}</td>;
                         }
                         if (colKey === 'security_score') {
                           const score = Number(d.security_score);
@@ -1383,21 +1383,29 @@ export default function Devices() {
                                 ? 'bg-amber-500 text-white'
                                 : 'bg-red-500 text-white';
                           return (
-                            <td key={colKey} className="px-3 py-2.5 text-right">
-                              <span className={`inline-flex h-8 w-8 items-center justify-center rounded-full text-xs font-bold ${tone}`}>
+                            <td key={colKey} className="px-4 py-4 text-right">
+                              <span className={`inline-flex h-12 w-12 items-center justify-center rounded-full text-base font-bold ${tone}`}>
                                 {Number.isFinite(score) ? Math.round(score) : '—'}
                               </span>
                             </td>
                           );
                         }
                         if (colKey === 'last_seen') {
-                          return <td key={colKey} className="whitespace-nowrap px-3 py-2.5 text-gray-600">{formatRelativeTime(getLastSeen(d))}</td>;
+                          return <td key={colKey} className="whitespace-nowrap px-4 py-4 text-gray-600">{formatRelativeTime(getLastSeen(d))}</td>;
                         }
                         if (colKey === 'group') {
-                          return <td key={colKey} className="px-3 py-2.5 text-gray-700">{d.group_name || 'Ungrouped'}</td>;
+                          return <td key={colKey} className="px-4 py-4 text-gray-700">{d.group_name || 'Ungrouped'}</td>;
                         }
                         if (colKey === 'disk') {
-                          return <td key={colKey} className="px-3 py-2.5 text-gray-600">{formatDisk(d)}</td>;
+                          const free = Number(d.disk_free_gb ?? d.disk?.freeGb);
+                          const diskTone = !Number.isFinite(free)
+                            ? 'text-gray-600'
+                            : free < 5
+                              ? 'text-red-600'
+                              : free <= 20
+                                ? 'text-amber-600'
+                                : 'text-emerald-600';
+                          return <td key={colKey} className={`px-4 py-4 font-semibold ${diskTone}`}>{formatDisk(d)}</td>;
                         }
                         if (colKey === 'ram') {
                           const used = Number(d.mem_used_gb ?? d.memUsed);
@@ -1407,13 +1415,15 @@ export default function Devices() {
                               ? Math.max(0, Math.min(100, (used / total) * 100))
                               : null;
                           return (
-                            <td key={colKey} className="px-3 py-2.5 text-gray-600">
-                              <div className="min-w-[140px]">
-                                <div className="mb-1 text-xs font-semibold text-slate-700">{formatRam(d)}</div>
+                            <td key={colKey} className="px-4 py-4 text-gray-600">
+                              <div className="min-w-[128px]">
+                                <div className="mb-1 text-xs font-semibold text-slate-700">
+                                  {Number.isFinite(used) && Number.isFinite(total) ? `${used.toFixed(1)}/${total.toFixed(1)}GB` : '—'}
+                                </div>
                                 {usagePct != null ? (
-                                  <div className="h-2 rounded-full bg-slate-200">
+                                  <div className="h-3 rounded-full bg-gray-200">
                                     <div
-                                      className={`h-2 rounded-full ${cpuToneClass(usagePct)}`}
+                                      className={`h-3 rounded-full ${cpuToneClass(usagePct)}`}
                                       style={{ width: `${usagePct}%` }}
                                     />
                                   </div>
@@ -1424,7 +1434,7 @@ export default function Devices() {
                         }
                         if (colKey === 'patches') {
                           return (
-                            <td key={colKey} className="px-3 py-2.5">
+                            <td key={colKey} className="px-4 py-4">
                               {patchN == null ? (
                                 '—'
                               ) : patchN > 0 ? (
@@ -1439,7 +1449,7 @@ export default function Devices() {
                             </td>
                           );
                         }
-                        return <td key={colKey} className="px-3 py-2.5 text-gray-600">—</td>;
+                        return <td key={colKey} className="px-4 py-4 text-gray-600">—</td>;
                       })}
                       <td
                         className="sticky right-0 z-10 border-l border-gray-100 bg-white px-2 py-2 text-right"

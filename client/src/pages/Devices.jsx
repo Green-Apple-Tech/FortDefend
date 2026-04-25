@@ -79,6 +79,18 @@ function displayOs(d) {
   return raw;
 }
 
+function compactOsLabel(d) {
+  const base = displayOs(d);
+  const versionRaw = String(osVersionOf(d) || '').trim();
+  const baseClean = base.replace(/^Microsoft\s+/i, '').trim();
+  if (!versionRaw) return baseClean;
+  const versionClean = versionRaw
+    .replace(/\b(Home|Pro|Enterprise|Education)\b/gi, '')
+    .replace(/\s+/g, ' ')
+    .trim();
+  return `${baseClean} ${versionClean}`.trim();
+}
+
 function getLastSeen(d) {
   return d.lastSeen || d.last_seen || null;
 }
@@ -1398,7 +1410,7 @@ export default function Devices() {
                   {orderedColumns.map((colKey) => (
                     <th
                       key={colKey}
-                      className={`whitespace-nowrap px-4 ${densityUi.headerPy} font-semibold text-[#1e40af] ${colKey === 'security_score' ? 'text-right' : 'text-left'}`}
+                      className={`whitespace-nowrap px-4 ${densityUi.headerPy} font-semibold text-[#1e40af] ${colKey === 'security_score' ? 'text-right' : 'text-left'} ${colKey === 'os' ? 'min-w-[140px] text-xs' : ''}`}
                       draggable={colKey !== 'device'}
                       onDragStart={() => {
                         if (colKey === 'device') return;
@@ -1478,7 +1490,11 @@ export default function Devices() {
                           );
                         }
                         if (colKey === 'os') {
-                          return <td key={colKey} className={`align-middle px-4 ${densityUi.cellPy} text-gray-600`}>{displayOs(d)} {osVersionOf(d) ? `· ${osVersionOf(d)}` : ''}</td>;
+                          return (
+                            <td key={colKey} className={`align-middle min-w-[140px] whitespace-nowrap px-4 ${densityUi.cellPy} text-xs text-gray-600`}>
+                              {compactOsLabel(d)}
+                            </td>
+                          );
                         }
                         if (colKey === 'source') {
                           return (

@@ -1,43 +1,27 @@
 const admin = require('firebase-admin');
 
-let app;
-
-function getServiceAccount() {
-  const raw = process.env.FIREBASE_SERVICE_ACCOUNT;
-  if (!raw || typeof raw !== 'string' || !raw.trim()) {
-    throw new Error('FIREBASE_SERVICE_ACCOUNT is not set.');
+if (!admin.apps.length) {
+  try {
+    const serviceAccount = JSON.parse(process.env.FIREBASE_SERVICE_ACCOUNT || '{}');
+    admin.initializeApp({
+      credential: admin.credential.cert(serviceAccount),
+      projectId: process.env.FIREBASE_PROJECT_ID,
+    });
+    console.log('[Firebase] initialized successfully for project:', process.env.FIREBASE_PROJECT_ID);
+  } catch (err) {
+    console.error('[Firebase] initialization failed:', err.message);
   }
-  return JSON.parse(raw);
 }
 
 function getMessaging() {
-  if (!process.env.FIREBASE_SERVICE_ACCOUNT) {
+  if (!admin.apps.length) {
     return null;
-  }
-  if (!app) {
-    const cred = getServiceAccount();
-    const projectId = (process.env.FIREBASE_PROJECT_ID && String(process.env.FIREBASE_PROJECT_ID).trim())
-      || cred.project_id;
-    if (admin.apps.length > 0) {
-      app = admin.app();
-    } else {
-      app = admin.initializeApp({
-        credential: admin.credential.cert(cred),
-        projectId,
-      });
-    }
   }
   return admin.messaging();
 }
 
 function isReady() {
-  if (!process.env.FIREBASE_SERVICE_ACCOUNT) return false;
-  try {
-    getMessaging();
-    return true;
-  } catch {
-    return false;
-  }
+  return admin.apps.length > 0;
 }
 
 /**
@@ -103,4 +87,4 @@ async function sendAlert(fcmToken, title, message) {
   }
 }
 
-module.exports = { sendCommand, sendAlert, isReady };
+module.exports = { admin, sendCommand, sendAlert, isReady };

@@ -82,7 +82,10 @@ function displayOs(d) {
 function compactOsLabel(d) {
   const base = displayOs(d);
   const versionRaw = String(osVersionOf(d) || '').trim();
-  const baseClean = base.replace(/^Microsoft\s+/i, '').trim();
+  const baseClean = base
+    .replace(/^Microsoft\s+Windows/i, 'MS Windows')
+    .replace(/^Microsoft\s+/i, 'MS ')
+    .trim();
   if (!versionRaw) return baseClean;
   const versionClean = versionRaw
     .replace(/\b(Home|Pro|Enterprise|Education)\b/gi, '')
@@ -472,7 +475,7 @@ export default function Devices() {
   useEffect(() => {
     try {
       const raw = Number(localStorage.getItem(DEVICE_ROW_HEIGHT_LS_KEY));
-      if (Number.isFinite(raw) && raw >= 20 && raw <= 120) setRowHeight(raw);
+      if (Number.isFinite(raw) && raw >= 10 && raw <= 60) setRowHeight(raw);
     } catch {
       /* ignore */
     }
@@ -1757,8 +1760,8 @@ export default function Devices() {
               <span className="font-semibold">↕</span>
               <input
                 type="range"
-                min="20"
-                max="120"
+                min="10"
+                max="60"
                 step="4"
                 value={rowHeight}
                 onChange={(e) => setRowHeight(Number(e.target.value))}

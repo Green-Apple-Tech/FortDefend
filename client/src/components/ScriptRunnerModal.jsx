@@ -4,14 +4,7 @@ import { Button, Card, Input } from './ui';
 
 const SCRIPT_TYPES = ['powershell', 'cmd', 'python', 'bash', 'zsh', 'javascript'];
 
-export default function ScriptRunnerModal({
-  open,
-  onClose,
-  selectedDevices = [],
-  scripts = [],
-  title = 'Run Script',
-  initialScriptId = null,
-}) {
+export default function ScriptRunnerModal({ open, onClose, selectedDevices = [], scripts = [], title = 'Run Script' }) {
   const [scriptId, setScriptId] = useState('');
   const [quickName, setQuickName] = useState('Quick script');
   const [quickContent, setQuickContent] = useState('');
@@ -74,12 +67,8 @@ export default function ScriptRunnerModal({
       setRunning(false);
       setResults([]);
       setError('');
-      return;
     }
-    if (initialScriptId) {
-      setScriptId(String(initialScriptId));
-    }
-  }, [open, initialScriptId]);
+  }, [open]);
 
   if (!open) return null;
 

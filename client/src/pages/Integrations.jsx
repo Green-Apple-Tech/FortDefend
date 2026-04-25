@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { api } from '../lib/api';
 import { Card, Button, Input } from '../components/ui';
+import { SectionHeader } from '../components/fds';
 
 export default function Integrations() {
   const [status, setStatus] = useState(null);
@@ -65,7 +66,12 @@ export default function Integrations() {
   }
 
   return (
-    <div className="mx-auto max-w-3xl space-y-3">
+    <div className="mx-auto max-w-3xl space-y-8">
+      <SectionHeader
+        title="Integrations"
+        description="Connect Microsoft Intune and Google Admin so FortDefend can inventory and monitor your fleet."
+      />
+
       {msg && <div className="rounded-lg bg-brand-light px-3 py-2 text-sm text-brand">{msg}</div>}
 
       {status && (

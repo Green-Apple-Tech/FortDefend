@@ -46,7 +46,7 @@ function auditLog(action) {
     try {
       await db('audit_log').insert({
         org_id: req.user?.orgId || null,
-        user_id: req.user?.id || null,
+        user_id: req.user?.userId || null,
         action,
         resource: req.originalUrl,
         ip_address: req.ip,

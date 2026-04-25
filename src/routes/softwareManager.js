@@ -107,47 +107,25 @@ router.get('/matrix', async (req, res, next) => {
         winget_scan_status: wingetScanStatus(lastWingetScanAt),
       };
     });
-    // Fuzzy join: winget_id (trim/case-insensitive), explicit catalogue link, or bidirectional name LIKE.
-    // DISTINCT ON prefers exact winget / catalogue matches, then name containment, then recency.
-    const { rows: matchedRows } = await db.raw(
-      `
-      SELECT DISTINCT ON (sda.device_id, sa.winget_id)
-        sda.device_id,
-        sa.winget_id AS matched_winget_id,
-        sda.installed_version,
-        sda.latest_version,
-        sda.update_available,
-        sda.last_scanned_at
-      FROM sm_device_apps sda
-      INNER JOIN sm_apps sa ON sa.org_id = sda.org_id
-        AND (
-          (sda.catalogue_app_id IS NOT NULL AND sda.catalogue_app_id = sa.id)
-          OR (
-            NULLIF(TRIM(sda.winget_id), '') IS NOT NULL
-            AND NULLIF(TRIM(sa.winget_id), '') IS NOT NULL
-            AND LOWER(TRIM(sda.winget_id)) = LOWER(TRIM(sa.winget_id))
-          )
-          OR LOWER(TRIM(COALESCE(sda.app_name, ''))) LIKE '%' || LOWER(TRIM(sa.name)) || '%'
-          OR LOWER(TRIM(COALESCE(sa.name, ''))) LIKE '%' || LOWER(TRIM(sda.app_name)) || '%'
-        )
-      WHERE sda.org_id = ?
-      ORDER BY
-        sda.device_id,
-        sa.winget_id,
-        (CASE
-          WHEN sda.catalogue_app_id IS NOT NULL AND sda.catalogue_app_id = sa.id THEN 0
-          WHEN NULLIF(TRIM(sda.winget_id), '') IS NOT NULL
-            AND NULLIF(TRIM(sa.winget_id), '') IS NOT NULL
-            AND LOWER(TRIM(sda.winget_id)) = LOWER(TRIM(sa.winget_id)) THEN 1
-          WHEN LOWER(TRIM(COALESCE(sda.app_name, ''))) = LOWER(TRIM(COALESCE(sa.name, ''))) THEN 2
-          WHEN LOWER(TRIM(COALESCE(sda.app_name, ''))) LIKE '%' || LOWER(TRIM(sa.name)) || '%'
-            OR LOWER(TRIM(COALESCE(sa.name, ''))) LIKE '%' || LOWER(TRIM(sda.app_name)) || '%' THEN 3
-          ELSE 4
-        END),
-        sda.last_scanned_at DESC NULLS LAST
-      `,
-      [req.user.orgId],
-    );
+    const matchedRows = await db('sm_device_apps as sda')
+      .join('sm_apps as sa', function joinMatchedApps() {
+        this.on('sa.org_id', '=', 'sda.org_id')
+          .andOn(function onAnyMatch() {
+            this.on('sda.winget_id', '=', 'sa.winget_id')
+              .orOn(db.raw("LOWER(sda.app_name) LIKE '%' || LOWER(sa.name) || '%'"))
+              .orOn(db.raw("LOWER(sa.name) LIKE '%' || LOWER(sda.app_name) || '%'"));
+          });
+      })
+      .where('sda.org_id', req.user.orgId)
+      .select(
+        'sda.device_id',
+        'sa.winget_id as matched_winget_id',
+        'sda.installed_version',
+        'sda.latest_version',
+        'sda.update_available',
+        'sda.last_scanned_at',
+      )
+      .orderByRaw("CASE WHEN sda.winget_id = sa.winget_id THEN 0 ELSE 1 END ASC");
 
     const deduped = new Map();
     for (const row of matchedRows) {
@@ -202,7 +180,7 @@ router.get('/devices/:id/winget-status', async (req, res, next) => {
 // POST /api/software/commands
 router.post('/commands', async (req, res, next) => {
   try {
-    const { deviceIds, wingetId, wingetIds, commandType } = req.body || {};
+    const { deviceIds, wingetId, commandType } = req.body || {};
     const normalizedType = normalizeCommandType(commandType);
 
     if (!Array.isArray(deviceIds) || deviceIds.length === 0) {
@@ -211,15 +189,8 @@ router.post('/commands', async (req, res, next) => {
     if (!isValidCommandType(normalizedType)) {
       return res.status(400).json({ error: 'commandType must be one of install, update, uninstall, update_all.' });
     }
-
-    let uniqueWingetIds = [];
-    if (Array.isArray(wingetIds) && wingetIds.length > 0) {
-      uniqueWingetIds = [...new Set(wingetIds.map((w) => String(w).trim()).filter(Boolean))];
-    } else if (wingetId && typeof wingetId === 'string') {
-      uniqueWingetIds = [String(wingetId).trim()].filter(Boolean);
-    }
-    if (uniqueWingetIds.length === 0) {
-      return res.status(400).json({ error: 'wingetId or wingetIds (non-empty) is required.' });
+    if (!wingetId || typeof wingetId !== 'string') {
+      return res.status(400).json({ error: 'wingetId is required.' });
     }
 
     const uniqueDeviceIds = [...new Set(deviceIds.map((id) => String(id).trim()).filter(Boolean))];
@@ -236,21 +207,16 @@ router.post('/commands', async (req, res, next) => {
       return res.status(400).json({ error: 'No valid devices found in your organization.' });
     }
 
-    const rows = [];
-    for (const wid of uniqueWingetIds) {
-      for (const device of orgDevices) {
-        rows.push({
-          org_id: req.user.orgId,
-          device_id: device.id,
-          winget_id: wid,
-          command_type: normalizedType,
-          status: 'pending',
-          initiated_by: req.user.id,
-          created_at: new Date(),
-          updated_at: new Date(),
-        });
-      }
-    }
+    const rows = orgDevices.map((device) => ({
+      org_id: req.user.orgId,
+      device_id: device.id,
+      winget_id: String(wingetId).trim(),
+      command_type: normalizedType,
+      status: 'pending',
+      initiated_by: req.user.id,
+      created_at: new Date(),
+      updated_at: new Date(),
+    }));
 
     const inserted = await db('sm_commands')
       .insert(rows)

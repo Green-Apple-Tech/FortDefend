@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { api } from '../lib/api';
 import { Card } from '../components/ui';
+import { SectionHeader } from '../components/fds';
 
 const POLL_MS = 60_000;
 
@@ -262,11 +263,16 @@ export default function Install() {
     `https://api.qrserver.com/v1/create-qr-code/?size=200x200&color=185FA5&data=${encodeURIComponent(url || '')}`;
 
   return (
-    <div className="mx-auto max-w-4xl space-y-3">
-      <div className="flex justify-end">
-        <div className="rounded-lg border border-fds-border bg-fds-card px-4 py-2 text-center shadow-sm ring-1 ring-slate-950/5 sm:text-right">
-          <p className="text-[10px] font-bold uppercase tracking-wide text-slate-500">Devices enrolled</p>
-          <p className="text-2xl font-bold text-brand">{enrolled}</p>
+    <div className="mx-auto max-w-4xl space-y-6">
+      <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
+        <SectionHeader
+          className="mb-0 max-w-xl"
+          title="Enroll devices"
+          description="Pick a platform, follow the numbered steps, and download the package. Links embed your org enrollment token."
+        />
+        <div className="rounded-xl border border-fds-border bg-white px-5 py-4 text-center shadow-sm ring-1 ring-slate-950/5 sm:text-right">
+          <p className="text-[11px] font-bold uppercase tracking-wide text-slate-500">Devices enrolled</p>
+          <p className="text-3xl font-bold text-brand">{enrolled}</p>
         </div>
       </div>
 

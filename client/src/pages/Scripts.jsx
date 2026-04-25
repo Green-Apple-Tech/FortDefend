@@ -1,7 +1,8 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { api } from '../lib/api';
 import { Card, Button, Input } from '../components/ui';
 import ScriptRunnerModal from '../components/ScriptRunnerModal';
+import { SectionHeader, EmptyState } from '../components/fds';
 
 const PLATFORM_TYPES = {
   windows: ['powershell', 'cmd', 'python'],
@@ -19,8 +20,6 @@ const PLATFORM_LABEL = {
   linux: 'Linux',
 };
 
-const TOGGLE_LS_KEY = 'fds_script_toggles_v1';
-
 function platformIcon(p) {
   if (p === 'windows') return '🪟';
   if (p === 'mac') return '🍎';
@@ -34,44 +33,17 @@ function formatDate(iso) {
   return iso ? new Date(iso).toLocaleString() : '—';
 }
 
-function scriptCategoryLabel(row) {
-  const st = String(row.script_type || 'script').replace(/_/g, ' ');
-  const stNice = st ? st.charAt(0).toUpperCase() + st.slice(1) : 'Script';
-  const plats = Array.isArray(row.platforms)
-    ? row.platforms.map((p) => PLATFORM_LABEL[p] || p).join(' · ')
-    : '';
-  return plats ? `${stNice} · ${plats}` : stNice;
-}
-
-function readToggleMap() {
-  try {
-    const raw = localStorage.getItem(TOGGLE_LS_KEY);
-    if (!raw) return {};
-    const o = JSON.parse(raw);
-    return o && typeof o === 'object' ? o : {};
-  } catch {
-    return {};
-  }
-}
-
-function ScriptEnableToggle({ enabled, onChange }) {
-  return (
-    <button
-      type="button"
-      role="switch"
-      aria-checked={enabled}
-      onClick={() => onChange(!enabled)}
-      className={`relative inline-flex h-10 w-[3.25rem] shrink-0 cursor-pointer rounded-full transition-colors focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:ring-offset-2 ${
-        enabled ? 'bg-emerald-500 shadow-inner' : 'bg-slate-200'
-      }`}
-    >
-      <span
-        className={`pointer-events-none absolute top-1 left-1 inline-block h-8 w-8 rounded-full bg-white shadow-md transition-transform ${
-          enabled ? 'translate-x-[1.35rem]' : 'translate-x-0'
-        }`}
-      />
-    </button>
-  );
+function formatRelative(iso) {
+  if (!iso) return '—';
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return '—';
+  const sec = Math.floor((Date.now() - d.getTime()) / 1000);
+  if (sec < 60) return 'just now';
+  const min = Math.floor(sec / 60);
+  if (min < 60) return `${min}m ago`;
+  const hr = Math.floor(min / 60);
+  if (hr < 24) return `${hr}h ago`;
+  return `${Math.floor(hr / 24)}d ago`;
 }
 
 export default function Scripts() {
@@ -81,25 +53,47 @@ export default function Scripts() {
   const [msg, setMsg] = useState('');
   const [showEditor, setShowEditor] = useState(false);
   const [showRunner, setShowRunner] = useState(false);
-  const [runnerInitialId, setRunnerInitialId] = useState(null);
   const [historyFor, setHistoryFor] = useState(null);
   const [historyRows, setHistoryRows] = useState([]);
+  const [mergedHistory, setMergedHistory] = useState([]);
   const [editing, setEditing] = useState(null);
   const [form, setForm] = useState({ name: '', description: '', platforms: ['windows'], scriptType: 'powershell', content: '' });
-  const [toggleMap, setToggleMap] = useState(() => readToggleMap());
-
-  const persistToggles = useCallback((next) => {
-    try {
-      localStorage.setItem(TOGGLE_LS_KEY, JSON.stringify(next));
-    } catch {
-      /* ignore */
-    }
-  }, []);
 
   useEffect(() => {
     loadScripts();
     loadDevices();
   }, []);
+
+  useEffect(() => {
+    if (!rows.length) {
+      setMergedHistory([]);
+      return;
+    }
+    let cancelled = false;
+    (async () => {
+      const slice = rows.slice(0, 24);
+      const parts = await Promise.all(
+        slice.map(async (r) => {
+          try {
+            const data = await api(`/api/scripts/${encodeURIComponent(r.id)}/history`);
+            const list = Array.isArray(data?.history) ? data.history : [];
+            return list.map((h) => ({ ...h, scriptName: r.name, scriptId: r.id }));
+          } catch {
+            return [];
+          }
+        }),
+      );
+      if (cancelled) return;
+      const flat = parts
+        .flat()
+        .sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime())
+        .slice(0, 48);
+      setMergedHistory(flat);
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [rows]);
 
   async function loadScripts() {
     setLoading(true);
@@ -197,95 +191,111 @@ export default function Scripts() {
     }
   }
 
-  function setScriptEnabled(id, on) {
-    setToggleMap((prev) => {
-      const next = { ...prev, [id]: on };
-      persistToggles(next);
-      return next;
-    });
-  }
-
-  function isScriptEnabled(id) {
-    return toggleMap[id] !== false;
-  }
-
-  function openRunModal(scriptId) {
-    setRunnerInitialId(scriptId);
-    setShowRunner(true);
-  }
-
   return (
-    <div className="space-y-3">
+    <div className="space-y-6">
+      <SectionHeader
+        title="Script library"
+        description="Card-based library on the left, live run history as a timeline on the right."
+      />
+
       {msg && (
-        <div className="rounded-lg border border-blue-100 bg-blue-50/90 px-3 py-2 text-sm text-brand">{msg}</div>
+        <div className="rounded-lg border border-blue-200 bg-blue-50 px-3 py-2 text-sm text-brand">{msg}</div>
       )}
 
-      <Card className="border-fds-border p-0 shadow-sm ring-1 ring-slate-950/5">
-        {loading ? (
-          <p className="px-6 py-12 text-center text-sm text-slate-500">Loading scripts…</p>
-        ) : (
-          <div className="divide-y divide-fds-border">
-            <button
-              type="button"
-              onClick={openNew}
-              className="flex w-full items-center gap-4 px-5 py-4 text-left transition hover:bg-slate-50/80"
-            >
-              <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl border border-dashed border-slate-300 bg-white text-2xl font-light text-slate-400">
-                +
-              </span>
-              <div>
-                <p className="font-semibold text-slate-900">New script</p>
-                <p className="text-xs font-semibold uppercase tracking-wide text-brand">Create command</p>
-              </div>
-            </button>
+      <div className="grid gap-6 xl:grid-cols-[1fr_320px]">
+        <div className="min-w-0">
+          {loading ? (
+            <p className="py-12 text-center text-sm text-slate-500">Loading scripts…</p>
+          ) : (
+            <div className="grid gap-4 sm:grid-cols-2">
+              <button
+                type="button"
+                onClick={openNew}
+                className="flex min-h-[160px] flex-col items-center justify-center rounded-xl border-2 border-dashed border-slate-300 bg-slate-50/50 p-6 text-center transition hover:border-brand hover:bg-blue-50/40"
+              >
+                <span className="text-3xl font-light text-slate-400">+</span>
+                <span className="mt-2 text-sm font-semibold text-slate-700">New script</span>
+                <span className="mt-1 text-xs text-slate-500">Create a reusable automation</span>
+              </button>
 
-            {rows.map((r) => (
-              <div key={r.id} className="flex flex-wrap items-center gap-4 px-5 py-4 transition hover:bg-slate-50/50 sm:flex-nowrap">
-                <div className="flex min-w-0 flex-1 items-center gap-4">
-                  <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-slate-100 text-lg text-slate-600">
-                    📜
+              {rows.map((r) => (
+                <Card key={r.id} className="flex flex-col border-fds-border shadow-sm ring-1 ring-slate-950/5">
+                  <div className="flex items-start gap-3">
+                    <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-slate-100 text-xl text-slate-600">
+                      📜
+                    </div>
+                    <div className="min-w-0 flex-1">
+                      <h3 className="truncate font-semibold text-slate-900">{r.name}</h3>
+                      <p className="mt-0.5 line-clamp-2 text-xs text-slate-500">{r.description || 'No description'}</p>
+                    </div>
                   </div>
-                  <div className="min-w-0 flex-1">
-                    <p className="truncate font-semibold text-slate-900">{r.name}</p>
-                    <p className="mt-0.5 text-[11px] font-semibold uppercase tracking-wide text-brand">
-                      {scriptCategoryLabel(r)}
-                    </p>
+                  <div className="mt-3 flex flex-wrap gap-1.5">
+                    {(Array.isArray(r.platforms) ? r.platforms : []).map((p) => (
+                      <span
+                        key={p}
+                        className="inline-flex items-center gap-1 rounded-full bg-slate-100 px-2 py-0.5 text-[11px] font-semibold text-slate-700 ring-1 ring-slate-200"
+                      >
+                        <span aria-hidden>{platformIcon(p)}</span>
+                        {PLATFORM_LABEL[p] || p}
+                      </span>
+                    ))}
                   </div>
-                </div>
-
-                <div className="ml-auto flex flex-wrap items-center justify-end gap-4 sm:ml-0">
-                  <button
-                    type="button"
-                    className="text-sm font-medium text-brand hover:underline"
-                    onClick={() => openHistory(r)}
-                  >
-                    View results
-                  </button>
-                  <button type="button" className="text-sm font-medium text-slate-500 hover:text-slate-800 hover:underline" onClick={() => openRunModal(r.id)}>
-                    Run
-                  </button>
-                  <div className="flex items-center gap-2">
-                    <span className="hidden text-xs text-slate-500 sm:inline">Scheduled</span>
-                    <ScriptEnableToggle enabled={isScriptEnabled(r.id)} onChange={(on) => setScriptEnabled(r.id, on)} />
-                  </div>
-                  <div className="flex items-center gap-2 border-l border-fds-border pl-4">
-                    <button type="button" className="text-xs font-medium text-slate-500 hover:text-brand" onClick={() => openEdit(r)}>
+                  <p className="mt-3 text-[11px] font-medium uppercase tracking-wide text-slate-400">
+                    Last run · {formatRelative(r.last_run_at)}
+                  </p>
+                  <div className="mt-4 flex flex-wrap gap-2 border-t border-fds-border pt-3">
+                    <Button type="button" className="flex-1 text-xs sm:flex-none" onClick={() => setShowRunner(true)}>
+                      Run
+                    </Button>
+                    <Button type="button" variant="outline" className="text-xs" onClick={() => openEdit(r)}>
                       Edit
-                    </button>
-                    <button type="button" className="text-xs font-medium text-red-600 hover:underline" onClick={() => deleteScript(r)}>
+                    </Button>
+                    <Button type="button" variant="outline" className="text-xs" onClick={() => openHistory(r)}>
+                      History
+                    </Button>
+                    <Button type="button" variant="danger" className="text-xs" onClick={() => deleteScript(r)}>
                       Delete
-                    </button>
+                    </Button>
                   </div>
-                </div>
+                </Card>
+              ))}
+            </div>
+          )}
+
+          {!loading && rows.length === 0 && (
+            <div className="mt-6">
+              <EmptyState
+                icon="📜"
+                title="No scripts yet"
+                description="Create your first script to automate installs, fixes, and checks across the fleet."
+                action={<Button onClick={openNew}>Create script</Button>}
+              />
+            </div>
+          )}
+        </div>
+
+        <Card className="hidden h-fit max-h-[calc(100vh-8rem)] overflow-hidden xl:block xl:sticky xl:top-24">
+          <h2 className="text-xs font-bold uppercase tracking-wide text-slate-500">Run history</h2>
+          <p className="mt-1 text-xs text-slate-500">Latest executions across your library.</p>
+          <div className="relative mt-4 max-h-[70vh] space-y-0 overflow-y-auto pl-4">
+            <div className="absolute bottom-0 left-[7px] top-2 w-px bg-slate-200" aria-hidden />
+            {mergedHistory.length === 0 && !loading && (
+              <p className="text-sm text-slate-500">No runs recorded yet.</p>
+            )}
+            {mergedHistory.map((h, i) => (
+              <div key={`${h.id}-${i}`} className="relative pb-6 pl-4">
+                <span className="absolute left-0 top-1.5 flex h-3.5 w-3.5 items-center justify-center rounded-full border-2 border-white bg-brand shadow ring-1 ring-slate-200" />
+                <p className="text-xs font-semibold text-slate-900">{h.scriptName || 'Script'}</p>
+                <p className="text-[11px] text-slate-500">{h.device_name || h.device_id || 'Device'}</p>
+                <p className="mt-1 inline-flex rounded-full bg-slate-100 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide text-slate-600">
+                  {h.status}
+                </p>
+                <p className="mt-1 text-[11px] text-slate-400">{formatRelative(h.created_at)}</p>
               </div>
             ))}
-
-            {!loading && rows.length === 0 && (
-              <div className="px-6 py-12 text-center text-sm text-slate-500">No scripts yet. Use New script above to create one.</div>
-            )}
           </div>
-        )}
-      </Card>
+        </Card>
+      </div>
 
       {showEditor && (
         <div className="fixed inset-0 z-[70] flex items-center justify-center bg-black/40 p-4">
@@ -350,7 +360,7 @@ export default function Scripts() {
                 <Button type="button" variant="outline" onClick={() => setShowEditor(false)}>
                   Cancel
                 </Button>
-                <Button type="submit">Save</Button>
+                <Button type="submit">Save to library</Button>
               </div>
             </form>
           </Card>
@@ -359,17 +369,17 @@ export default function Scripts() {
 
       {historyFor && (
         <div className="fixed inset-0 z-[70] flex items-center justify-center bg-black/40 p-4">
-          <Card className="max-h-[92vh] w-full max-w-lg overflow-y-auto border-fds-border shadow-xl ring-1 ring-slate-950/5">
+          <Card className="max-h-[92vh] w-full max-w-lg overflow-y-auto border-fds-border shadow-xl">
             <div className="mb-4 flex items-center justify-between">
-              <h3 className="text-lg font-semibold text-slate-900">Results: {historyFor.name}</h3>
-              <button type="button" className="text-2xl text-slate-500 hover:text-slate-800" onClick={() => setHistoryFor(null)}>
+              <h3 className="text-lg font-semibold text-slate-900">History: {historyFor.name}</h3>
+              <button type="button" className="text-2xl text-slate-500" onClick={() => setHistoryFor(null)}>
                 ×
               </button>
             </div>
-            <div className="space-y-3 divide-y divide-fds-border">
-              {historyRows.length === 0 && <p className="text-sm text-slate-500">No runs yet.</p>}
+            <div className="space-y-3">
+              {historyRows.length === 0 && <p className="text-sm text-slate-500">No execution history yet.</p>}
               {historyRows.map((h) => (
-                <div key={h.id} className="pt-3 first:pt-0 text-xs">
+                <div key={h.id} className="rounded-lg border border-fds-border p-3 text-xs shadow-sm">
                   <p className="font-semibold text-slate-900">
                     {h.device_name || h.device_id} — {h.status}
                   </p>
@@ -385,17 +395,7 @@ export default function Scripts() {
         </div>
       )}
 
-      <ScriptRunnerModal
-        open={showRunner}
-        onClose={() => {
-          setShowRunner(false);
-          setRunnerInitialId(null);
-        }}
-        initialScriptId={runnerInitialId}
-        scripts={rows}
-        selectedDevices={devices}
-        title="Run script"
-      />
+      <ScriptRunnerModal open={showRunner} onClose={() => setShowRunner(false)} scripts={rows} selectedDevices={devices} title="Run script" />
     </div>
   );
 }

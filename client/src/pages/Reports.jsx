@@ -3,6 +3,7 @@ import {
   BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, PieChart, Pie, Cell, LineChart, Line,
 } from 'recharts';
 import { Card, Button, HelpTip } from '../components/ui';
+import { SectionHeader } from '../components/fds';
 
 const tabs = ['Executive Summary', 'Patch Report', 'Threat Report', 'Device Health', 'Business ROI', 'Reboot Report'];
 const patchData = Array.from({ length: 30 }, (_, i) => ({ day: `${i + 1}`, patches: Math.round(Math.random() * 9) + 1 }));
@@ -41,8 +42,13 @@ export default function Reports() {
   }
 
   return (
-    <div className="space-y-3">
-      <div className="flex flex-wrap items-center justify-end gap-2">
+    <div className="space-y-6">
+      <div className="flex flex-wrap items-end justify-between gap-3">
+        <SectionHeader
+          className="mb-0"
+          title="Reports"
+          description="Clear, business-friendly updates you can share without technical translation."
+        />
         <Button onClick={exportPdf}>Share with your boss</Button>
       </div>
       <div className="flex flex-wrap gap-2">

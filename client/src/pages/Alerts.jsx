@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { api } from '../lib/api';
 import { Card, Button } from '../components/ui';
-import { ToggleCard } from '../components/fds';
+import { SectionHeader, ToggleCard } from '../components/fds';
 
 const FILTERS = [
   { id: 'all', label: 'All' },
@@ -122,7 +122,12 @@ export default function Alerts() {
   );
 
   return (
-    <div className="space-y-3">
+    <div className="space-y-6">
+      <SectionHeader
+        title="Alerts"
+        description="Color-coded by severity. Resolve individually or in bulk when you have cleared an incident."
+      />
+
       <Card>
         <h2 className="text-xs font-bold uppercase tracking-wide text-slate-500">Delivery preferences</h2>
         <div className="mt-4 space-y-3">

@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { api } from '../lib/api';
 import { useAuth } from '../context/AuthContext';
 import { Card, Spinner } from '../components/ui';
+import { SectionHeader } from '../components/fds';
 
 export default function MspOverview() {
   const { user, isLoading } = useAuth();
@@ -48,10 +49,15 @@ export default function MspOverview() {
   if (user.role !== 'msp') return <Card><p className="text-sm text-gray-600">MSP overview is only available for MSP users.</p></Card>;
 
   return (
-    <div className="space-y-3">
+    <div className="space-y-6">
+      <SectionHeader
+        title="MSP overview"
+        description="Aggregate security posture across all managed clients."
+      />
+
       {error && <div className="rounded-lg bg-red-50 px-3 py-2 text-sm text-red-700">{error}</div>}
 
-      <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+      <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
         <Card><p className="text-sm text-gray-500">Total clients</p><p className="mt-2 text-3xl font-bold text-brand">{overview.clients || 0}</p></Card>
         <Card><p className="text-sm text-gray-500">Total devices managed</p><p className="mt-2 text-3xl font-bold">{overview.totalDevices || 0}</p></Card>
         <Card><p className="text-sm text-gray-500">Total active alerts</p><p className="mt-2 text-3xl font-bold text-amber-600">{overview.totalAlerts || 0}</p></Card>

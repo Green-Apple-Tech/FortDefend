@@ -79,19 +79,12 @@ function displayOs(d) {
   return raw;
 }
 
-function compactOsLabel(d) {
-  const base = displayOs(d);
-  const versionRaw = String(osVersionOf(d) || '').trim();
-  const baseClean = base
-    .replace(/^Microsoft\s+Windows/i, 'MS Windows')
-    .replace(/^Microsoft\s+/i, 'MS ')
+const formatOS = (os) => {
+  if (!os) return '—';
+  return String(os)
+    .replace('Microsoft ', '')
+    .replace(/\s+\d+\.\d+\.\d+.*$/, '')
     .trim();
-  if (!versionRaw) return baseClean;
-  const versionClean = versionRaw
-    .replace(/\b(Home|Pro|Enterprise|Education)\b/gi, '')
-    .replace(/\s+/g, ' ')
-    .trim();
-  return `${baseClean} ${versionClean}`.trim();
 }
 
 function getLastSeen(d) {
@@ -1413,7 +1406,7 @@ export default function Devices() {
                   {orderedColumns.map((colKey) => (
                     <th
                       key={colKey}
-                      className={`whitespace-nowrap px-4 ${densityUi.headerPy} font-semibold text-[#1e40af] ${colKey === 'security_score' ? 'text-right' : 'text-left'} ${colKey === 'os' ? 'min-w-[140px] text-xs' : ''}`}
+                      className={`whitespace-nowrap px-4 ${densityUi.headerPy} font-semibold text-[#1e40af] ${colKey === 'security_score' ? 'text-right' : 'text-left'} ${colKey === 'os' ? 'w-auto text-xs' : ''}`}
                       draggable={colKey !== 'device'}
                       onDragStart={() => {
                         if (colKey === 'device') return;
@@ -1494,8 +1487,8 @@ export default function Devices() {
                         }
                         if (colKey === 'os') {
                           return (
-                            <td key={colKey} className={`align-middle min-w-[140px] whitespace-nowrap px-4 ${densityUi.cellPy} text-xs text-gray-600`}>
-                              {compactOsLabel(d)}
+                            <td key={colKey} className={`align-middle w-auto whitespace-nowrap px-4 ${densityUi.cellPy} text-xs text-gray-600`}>
+                              {formatOS(d.os)}
                             </td>
                           );
                         }

@@ -80,20 +80,53 @@ function PackageIcon({ className = 'h-8 w-8' }) {
   );
 }
 
-function AppFavicon({ domain }) {
-  const [failed, setFailed] = useState(false);
-  if (!domain || failed) {
+/** Host-only string for favicon CDNs (e.g. "google.com"). */
+function hostnameFromDomain(domain) {
+  if (!domain) return null;
+  const s = String(domain).trim().replace(/^https?:\/\//i, '');
+  const host = s.split('/')[0]?.trim();
+  return host || null;
+}
+
+/**
+ * App column icon: DB icon_url first, then DuckDuckGo (rarely blocked), then Google s2, then local SVG.
+ * Google-only was often invisible due to ad blockers / network filters.
+ */
+function AppFavicon({ iconUrl, domain }) {
+  const hostname = useMemo(() => hostnameFromDomain(domain), [domain]);
+
+  const sources = useMemo(() => {
+    const list = [];
+    const raw = iconUrl && String(iconUrl).trim();
+    if (raw && /^https?:\/\//i.test(raw)) list.push(raw);
+    if (hostname) {
+      list.push(`https://icons.duckduckgo.com/ip3/${hostname}.ico`);
+      list.push(`https://www.google.com/s2/favicons?domain=${encodeURIComponent(hostname)}&sz=32`);
+    }
+    return list;
+  }, [iconUrl, hostname]);
+
+  const [idx, setIdx] = useState(0);
+
+  useEffect(() => {
+    setIdx(0);
+  }, [iconUrl, hostname]);
+
+  if (!sources.length || idx >= sources.length) {
     return <PackageIcon className="h-8 w-8 shrink-0" />;
   }
+
   return (
     <img
-      src={`https://www.google.com/s2/favicons?domain=${encodeURIComponent(domain)}&sz=32`}
+      key={idx}
+      src={sources[idx]}
       alt=""
       width={32}
       height={32}
       className="h-8 w-8 shrink-0 rounded"
       loading="lazy"
-      onError={() => setFailed(true)}
+      referrerPolicy="no-referrer"
+      onError={() => setIdx((i) => i + 1)}
     />
   );
 }
@@ -641,7 +674,7 @@ export default function SoftwareManager({ deviceIdsAllowlist = null } = {}) {
                             }`}
                             onClick={() => selectColumn(app.winget_id, app.id)}
                           >
-                            <AppFavicon domain={domain} />
+                            <AppFavicon iconUrl={app.icon_url} domain={domain} />
                             <div className="line-clamp-2 w-full leading-tight">{app.name}</div>
                           </button>
                         </th>

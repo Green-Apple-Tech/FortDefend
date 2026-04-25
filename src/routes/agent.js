@@ -591,11 +591,13 @@ router.post('/heartbeat', async (req, res) => {
       os_version: normalizedOsVersion,
       logged_in_user: telemetry.loggedInUser || existing?.logged_in_user || null,
       cpu_model: telemetry.cpuModel || existing?.cpu_model || null,
-      cpu_usage_pct: cpuUsagePct,
+      cpu_usage_pct: toNum(telemetry.cpuUsagePct ?? payload.cpuUsage ?? payload.cpu_usage_pct, cpuUsagePct),
+      mem_used_gb: toNum(payload.memUsed ?? telemetry.memUsedGb, existing?.mem_used_gb ?? null),
+      mem_total_gb: toNum(payload.memTotal ?? telemetry.memTotalGb, existing?.mem_total_gb ?? null),
       ram_total_gb: toNum(telemetry.ramTotalGb ?? payload?.ram?.totalGb, existing?.ram_total_gb ?? null),
       ram_usage_pct: ramUsagePct,
       disk_total_gb: toNum(telemetry.diskTotalGb ?? payload?.disk?.totalGb, existing?.disk_total_gb ?? null),
-      disk_free_gb: toNum(telemetry.diskFreeGb ?? payload?.disk?.freeGb, existing?.disk_free_gb ?? null),
+      disk_free_gb: toNum(telemetry.diskFreeGb ?? payload?.disk?.freeGb ?? payload.diskFree, existing?.disk_free_gb ?? null),
       disk_usage_pct: toNum(telemetry.diskUsagePct, existing?.disk_usage_pct ?? null),
       disk_free_pct: diskFreePct,
       ip_address: telemetry.ipAddress || existing?.ip_address || null,
@@ -1002,6 +1004,32 @@ router.post('/command-result', async (req, res) => {
     if (!updated.length) {
       return res.status(404).json({ error: 'Command not found.' });
     }
+    const commandRow = await db('sm_commands')
+      .where({ id: commandId, org_id: auth.orgId })
+      .first();
+    if (await db.schema.hasTable('command_results')) {
+      const resultRow = {
+        org_id: auth.orgId,
+        device_id: commandRow?.device_id || null,
+        command_id: commandId,
+        command_type: commandRow?.command_type || 'run_script',
+        command_input: commandRow?.command_payload ? JSON.stringify(commandRow.command_payload) : null,
+        output: updates.output ?? null,
+        status,
+        completed_at: updates.completed_at || null,
+      };
+      if (resultRow.device_id) {
+        await db('command_results')
+          .insert(resultRow)
+          .onConflict('command_id')
+          .merge({
+            output: resultRow.output,
+            status: resultRow.status,
+            completed_at: resultRow.completed_at,
+          });
+      }
+    }
+
     return res.json({ ok: true, command: updated[0] });
   } catch (err) {
     console.error('Agent command-result error:', err);

@@ -13,6 +13,7 @@ import ResetPassword from './pages/ResetPassword';
 import Setup2FA from './pages/Setup2FA';
 import Dashboard from './pages/Dashboard';
 import Devices from './pages/Devices';
+import DeviceDetail from './pages/DeviceDetail';
 import Reports from './pages/Reports';
 import Billing from './pages/Billing';
 import Settings from './pages/Settings';
@@ -40,6 +41,7 @@ export default function App() {
             <Route element={<AppLayout />}>
               <Route path="/dashboard" element={<Dashboard />} />
               <Route path="/devices" element={<Devices />} />
+              <Route path="/devices/:deviceId" element={<DeviceDetail />} />
               <Route path="/software" element={<Navigate to="/devices?tab=software" replace />} />
               <Route path="/groups" element={<Navigate to="/settings?tab=groups" replace />} />
               <Route path="/reports" element={<Reports />} />

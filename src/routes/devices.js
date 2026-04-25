@@ -114,6 +114,28 @@ router.get('/:id/script-history', async (req, res, next) => {
   }
 });
 
+// GET /api/devices/:id/command-results — near-live command outputs
+router.get('/:id/command-results', async (req, res, next) => {
+  try {
+    const device = await db('devices')
+      .where({ id: req.params.id, org_id: req.user.orgId })
+      .first();
+    if (!device) return res.status(404).json({ error: 'Device not found.' });
+
+    const limit = Math.max(1, Math.min(200, Number(req.query.limit || 50)));
+    let q = db('command_results')
+      .where({ org_id: req.user.orgId, device_id: device.id })
+      .orderBy('created_at', 'desc')
+      .limit(limit);
+    if (req.query.commandType) q = q.andWhere('command_type', String(req.query.commandType));
+    if (req.query.commandId) q = q.andWhere('command_id', String(req.query.commandId));
+    const results = await q.select('*');
+    res.json({ results });
+  } catch (err) {
+    next(err);
+  }
+});
+
 // GET /api/devices/:id — single device detail
 router.get('/:id', async (req, res, next) => {
   try {

@@ -559,6 +559,25 @@ function collectTelemetry() {
   };
 }
 
+function collectMinimalMetrics() {
+  const cpuUsageRaw = run("Get-Counter '\\Processor(_Total)\\% Processor Time' | Select-Object -ExpandProperty CounterSamples | Select-Object -First 1 CookedValue");
+  const cpuUsagePct = Number.parseFloat(String(cpuUsageRaw || '').trim());
+  const osInfo = runJson("(Get-CimInstance Win32_OperatingSystem | Select-Object TotalVisibleMemorySize,FreePhysicalMemory | ConvertTo-Json -Compress)");
+  const totalRamKb = Number(osInfo?.TotalVisibleMemorySize || 0);
+  const freeRamKb = Number(osInfo?.FreePhysicalMemory || 0);
+  const memTotalGb = totalRamKb > 0 ? totalRamKb / (1024 * 1024) : null;
+  const memUsedGb = totalRamKb > 0 ? (totalRamKb - freeRamKb) / (1024 * 1024) : null;
+  const diskInfo = runJson("(Get-WmiObject Win32_LogicalDisk -Filter \"DeviceID='C:'\" | Select-Object FreeSpace,Size | ConvertTo-Json -Compress)");
+  const diskFree = Number(diskInfo?.FreeSpace || 0);
+  const diskFreeGb = diskFree > 0 ? diskFree / (1024 * 1024 * 1024) : null;
+  return {
+    cpuUsage: Number.isFinite(cpuUsagePct) ? Math.max(0, Math.min(100, Number(cpuUsagePct.toFixed(2)))) : null,
+    memUsed: Number.isFinite(memUsedGb) ? Number(memUsedGb.toFixed(2)) : null,
+    memTotal: Number.isFinite(memTotalGb) ? Number(memTotalGb.toFixed(2)) : null,
+    diskFree: Number.isFinite(diskFreeGb) ? Number(diskFreeGb.toFixed(2)) : null,
+  };
+}
+
 // Sysinternals data collection — add to existing heartbeat collection
 async function collectSysinternalsData() {
   const results = {};
@@ -630,6 +649,7 @@ async function heartbeat() {
       lastFullInventoryAt = now;
       safeLog(`heartbeat mode=full apps=${Array.isArray(full.installedApps) ? full.installedApps.length : 0}`);
     } else {
+      Object.assign(body, collectMinimalMetrics());
       safeLog('heartbeat mode=minimal');
     }
     if (creds.groupId) {

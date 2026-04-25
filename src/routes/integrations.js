@@ -294,6 +294,34 @@ router.post('/devices/:id/sync', requireAuth, requireAdmin, async (req, res) => 
   }
 });
 
+router.get('/devices/:id', requireAuth, async (req, res) => {
+  try {
+    const device = await db('devices')
+      .where('org_id', req.user.orgId)
+      .where(function inner() {
+        this.where('id', req.params.id).orWhere('external_id', req.params.id);
+      })
+      .first();
+    if (!device) return res.status(404).json({ error: 'Device not found.' });
+
+    return res.json({
+      device,
+      live: {
+        cpu_usage_pct: device.cpu_usage_pct,
+        mem_used_gb: device.mem_used_gb,
+        mem_total_gb: device.mem_total_gb || device.ram_total_gb,
+        disk_free_gb: device.disk_free_gb,
+        disk_total_gb: device.disk_total_gb,
+        disk_free_pct: device.disk_free_pct,
+        last_seen: device.last_seen,
+      },
+    });
+  } catch (err) {
+    console.error('Integrations single device error:', err);
+    res.status(500).json({ error: 'Failed to load device metrics.' });
+  }
+});
+
 router.post('/devices/:id/reboot', requireAuth, requireAdmin, async (req, res) => {
   try {
     const { id } = req.params;

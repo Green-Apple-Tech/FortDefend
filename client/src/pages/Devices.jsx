@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
+import { useNavigate } from 'react-router-dom';
 import { useSearchParams } from 'react-router-dom';
 import { api } from '../lib/api';
 import { Button, Card, Input } from '../components/ui';
@@ -12,12 +13,13 @@ import RebootPolicies from './RebootPolicies';
 const MAIN_DEVICE_TAB_IDS = new Set(['devices', 'software', 'alerts', 'scripts', 'reboot', 'settings']);
 
 const PAGE_SIZE = 25;
-const POLL_MS = 60_000;
+const POLL_MS = 30_000;
 const DEVICE_COLUMNS_LS_KEY = 'fortdefend_devices_column_order_v1';
 const DEFAULT_COLUMN_ORDER = [
   'os',
   'source',
   'status',
+  'cpu',
   'agent',
   'compliance',
   'security_score',
@@ -116,9 +118,11 @@ function formatDisk(d) {
 }
 
 function formatRam(d) {
-  const gb = d.ram_total_gb ?? d.ram?.totalGb;
-  if (gb == null || Number.isNaN(Number(gb))) return '—';
-  return `${Number(gb).toFixed(1)}GB`;
+  const used = d.mem_used_gb;
+  const total = d.mem_total_gb ?? d.ram_total_gb ?? d.ram?.totalGb;
+  if (total == null || Number.isNaN(Number(total))) return '—';
+  if (used == null || Number.isNaN(Number(used))) return `${Number(total).toFixed(1)} GB`;
+  return `${Number(used).toFixed(1)}/${Number(total).toFixed(1)} GB`;
 }
 
 function formatPct(v) {
@@ -136,6 +140,20 @@ function getPendingPatchCount(d) {
 
 function getUserEmail(d) {
   return d.email || d.user || d.userEmail || d.user_email || '';
+}
+
+function cpuToneClass(pct) {
+  const n = Number(pct);
+  if (!Number.isFinite(n)) return 'bg-slate-300';
+  if (n > 80) return 'bg-red-500';
+  if (n >= 50) return 'bg-amber-500';
+  return 'bg-emerald-500';
+}
+
+function usageBar(value, max = 100) {
+  const n = Number(value);
+  if (!Number.isFinite(n) || max <= 0) return 0;
+  return Math.max(0, Math.min(100, (n / max) * 100));
 }
 
 function isCurrentAgentVersion(deviceVersion, expectedVersion) {
@@ -263,6 +281,7 @@ const SORT_KEYS = {
     const n = getPendingPatchCount(d);
     return n == null ? -1 : n;
   },
+  cpu: (d) => (d.cpu_usage_pct != null ? Number(d.cpu_usage_pct) : -1),
   agent: (d) => String(d.agent_version || ''),
   status: (d) => deriveStatus(d),
 };
@@ -275,6 +294,7 @@ function escapeCsv(s) {
 }
 
 export default function Devices() {
+  const navigate = useNavigate();
   const [searchParams, setSearchParams] = useSearchParams();
   const mainTab = useMemo(() => {
     const t = searchParams.get('tab') || 'devices';
@@ -796,6 +816,7 @@ export default function Devices() {
       os: 'OS',
       source: 'Source',
       status: 'Status',
+      cpu: 'CPU',
       agent: 'Agent',
       compliance: 'Compliance',
       security_score: 'Security score',
@@ -830,6 +851,7 @@ export default function Devices() {
       'OS version',
       'Source',
       'Status',
+      'CPU %',
       'Agent version',
       'Compliance',
       'Security score',
@@ -850,6 +872,7 @@ export default function Devices() {
           osVersionOf(d),
           displaySource(d.source),
           deriveStatus(d),
+          d.cpu_usage_pct ?? '',
           d.agent_version || '',
           d.compliance,
           d.security_score,
@@ -947,14 +970,7 @@ export default function Devices() {
   };
 
   const openDetails = (d) => {
-    setSelected(d);
-    setPanelTab('overview');
-    setPanelDetailDevice(null);
-    setPanelAlerts([]);
-    setPanelApps([]);
-    setPanelScripts([]);
-    setAppSearch('');
-    setPanelHeaderMenuOpen(false);
+    navigate(`/devices/${encodeURIComponent(d.id)}`);
   };
 
   const saveGroupSettingsName = async () => {
@@ -1024,7 +1040,7 @@ export default function Devices() {
             aria-label="Group scope"
             value={groupScope}
             onChange={(e) => setGroupScope(e.target.value)}
-            className="max-w-[220px] rounded-md border border-fds-border bg-white px-2.5 py-1.5 pr-7 text-xs font-medium text-slate-700 shadow-sm focus:border-brand focus:outline-none focus:ring-2 focus:ring-brand/20"
+            className="ml-4 max-w-[220px] rounded-md border border-fds-border bg-white px-2.5 py-1.5 pr-7 text-xs font-medium text-slate-700 shadow-sm focus:border-brand focus:outline-none focus:ring-2 focus:ring-brand/20"
           >
             <option value="all">All Devices</option>
             <option value="ungrouped">Ungrouped</option>
@@ -1315,6 +1331,30 @@ export default function Devices() {
                         }
                         if (colKey === 'status') {
                           return <td key={colKey} className="px-3 py-2.5 capitalize text-gray-700">{st}</td>;
+                        }
+                        if (colKey === 'cpu') {
+                          const pct = Number(d.cpu_usage_pct);
+                          const safePct = Number.isFinite(pct) ? Math.max(0, Math.min(100, pct)) : null;
+                          return (
+                            <td key={colKey} className="px-3 py-2.5">
+                              {safePct == null ? (
+                                <span className="text-gray-500">—</span>
+                              ) : (
+                                <div className="min-w-[120px]">
+                                  <div className="mb-1 flex items-center justify-between text-xs">
+                                    <span className="font-medium text-slate-700">CPU</span>
+                                    <span className="text-slate-600">{safePct.toFixed(1)}%</span>
+                                  </div>
+                                  <div className="h-1.5 rounded-full bg-slate-200">
+                                    <div
+                                      className={`h-1.5 rounded-full ${cpuToneClass(safePct)}`}
+                                      style={{ width: `${safePct}%` }}
+                                    />
+                                  </div>
+                                </div>
+                              )}
+                            </td>
+                          );
                         }
                         if (colKey === 'agent') {
                           return <td key={colKey} className="px-3 py-2.5">{renderAgentBadge(d.agent_version, expectedAgentVersion)}</td>;
@@ -1705,7 +1745,7 @@ export default function Devices() {
                   { id: 'overview', label: 'Overview' },
                   { id: 'applications', label: `Applications (${panelApps.length})` },
                   { id: 'alerts', label: `Alerts (${panelAlerts.length})` },
-                  { id: 'scripts', label: `Scripts (${panelScripts.length})` },
+                  { id: 'activity', label: `Activity (${panelScripts.length})` },
                 ].map((tab) => (
                   <button
                     key={tab.id}
@@ -1723,6 +1763,49 @@ export default function Devices() {
               </div>
             </div>
             <div className="min-h-0 flex-1 overflow-y-auto bg-gray-50/40 p-5">
+              <div className="mb-4 grid grid-cols-1 gap-3 sm:grid-cols-3">
+                <div className="rounded-xl border border-gray-100 bg-white px-4 py-3 shadow-sm">
+                  <p className="text-[11px] font-semibold uppercase tracking-wide text-gray-400">CPU</p>
+                  <div className="mt-2 flex items-center gap-2">
+                    <div className="h-2 flex-1 rounded-full bg-slate-200">
+                      <div
+                        className={`h-2 rounded-full ${cpuToneClass(panelDevice.cpu_usage_pct)}`}
+                        style={{ width: `${usageBar(panelDevice.cpu_usage_pct)}%` }}
+                      />
+                    </div>
+                    <span className="text-sm font-semibold text-slate-800">{formatPct(panelDevice.cpu_usage_pct)}</span>
+                  </div>
+                </div>
+                <div className="rounded-xl border border-gray-100 bg-white px-4 py-3 shadow-sm">
+                  <p className="text-[11px] font-semibold uppercase tracking-wide text-gray-400">RAM</p>
+                  <div className="mt-2 flex items-center gap-2">
+                    <div className="h-2 flex-1 rounded-full bg-slate-200">
+                      <div
+                        className="h-2 rounded-full bg-brand"
+                        style={{
+                          width: `${usageBar(
+                            Number(panelDevice.mem_used_gb || 0),
+                            Number(panelDevice.mem_total_gb || panelDevice.ram_total_gb || 0) || 1,
+                          )}%`,
+                        }}
+                      />
+                    </div>
+                    <span className="text-sm font-semibold text-slate-800">{formatRam(panelDevice)}</span>
+                  </div>
+                </div>
+                <div className="rounded-xl border border-gray-100 bg-white px-4 py-3 shadow-sm">
+                  <p className="text-[11px] font-semibold uppercase tracking-wide text-gray-400">Disk</p>
+                  <div className="mt-2 flex items-center gap-2">
+                    <div className="h-2 flex-1 rounded-full bg-slate-200">
+                      <div
+                        className="h-2 rounded-full bg-emerald-500"
+                        style={{ width: `${usageBar(100 - Number(panelDevice.disk_free_pct || 0))}%` }}
+                      />
+                    </div>
+                    <span className="text-sm font-semibold text-slate-800">{formatPct(100 - Number(panelDevice.disk_free_pct || 0))}</span>
+                  </div>
+                </div>
+              </div>
               {panelTab === 'overview' && (
                 <dl className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
                   {[
@@ -1837,7 +1920,7 @@ export default function Devices() {
                   ))}
                 </ul>
               )}
-              {panelTab === 'scripts' && (
+              {panelTab === 'activity' && (
                 <div className="space-y-3">
                   {panelScriptsLoading ? (
                     <p className="text-sm text-gray-500">Loading script history…</p>

@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import QRCode from 'qrcode.react';
+import { QRCodeSVG as QRCode } from "qrcode.react";
 import { api } from '../lib/api';
 import { Card } from '../components/ui';
 import { SectionHeader } from '../components/fds';

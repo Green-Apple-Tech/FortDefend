@@ -206,12 +206,12 @@ export default function Dashboard() {
             <Link to="/install">
               <Button className="w-full justify-center">Enroll device</Button>
             </Link>
-            <Link to="/scripts">
+            <Link to="/devices?tab=scripts">
               <Button variant="secondary" className="w-full justify-center">
                 Run script
               </Button>
             </Link>
-            <Link to="/alerts">
+            <Link to="/devices?tab=alerts">
               <Button variant="outline" className="w-full justify-center">
                 View alerts
               </Button>
@@ -261,7 +261,7 @@ export default function Dashboard() {
         <Card>
           <div className="mb-4 flex items-center justify-between">
             <h2 className="font-semibold text-slate-900">Recent activity</h2>
-            <Link to="/alerts" className="text-sm font-semibold text-brand hover:underline">
+            <Link to="/devices?tab=alerts" className="text-sm font-semibold text-brand hover:underline">
               Open alerts
             </Link>
           </div>

@@ -14,17 +14,11 @@ import Setup2FA from './pages/Setup2FA';
 import Dashboard from './pages/Dashboard';
 import Devices from './pages/Devices';
 import Reports from './pages/Reports';
-import Alerts from './pages/Alerts';
 import Billing from './pages/Billing';
 import Settings from './pages/Settings';
 import Integrations from './pages/Integrations';
 import Install from './pages/Install';
-import Scripts from './pages/Scripts';
-import RebootPolicies from './pages/RebootPolicies';
-import MspDashboard from './pages/MspDashboard';
-import MspOverview from './pages/MspOverview';
 import ApiDocs from './pages/ApiDocs';
-import SoftwareManager from './pages/SoftwareManager';
 
 export default function App() {
   return (
@@ -46,20 +40,20 @@ export default function App() {
             <Route element={<AppLayout />}>
               <Route path="/dashboard" element={<Dashboard />} />
               <Route path="/devices" element={<Devices />} />
-              <Route path="/software" element={<SoftwareManager />} />
+              <Route path="/software" element={<Navigate to="/devices?tab=software" replace />} />
               <Route path="/groups" element={<Navigate to="/devices" replace />} />
               <Route path="/reports" element={<Reports />} />
-              <Route path="/alerts" element={<Alerts />} />
+              <Route path="/alerts" element={<Navigate to="/devices?tab=alerts" replace />} />
               <Route path="/billing" element={<Billing />} />
               <Route path="/settings" element={<Settings />} />
               <Route path="/integrations" element={<Integrations />} />
               <Route path="/install" element={<Install />} />
-              <Route path="/scripts" element={<Scripts />} />
-              <Route path="/reboot-policies" element={<RebootPolicies />} />
+              <Route path="/scripts" element={<Navigate to="/devices?tab=scripts" replace />} />
+              <Route path="/reboot-policies" element={<Navigate to="/devices?tab=reboot" replace />} />
               <Route path="/api-docs" element={<ApiDocs />} />
-              <Route path="/msp" element={<Navigate to="/msp/clients" replace />} />
-              <Route path="/msp/clients" element={<MspDashboard />} />
-              <Route path="/msp/overview" element={<MspOverview />} />
+              <Route path="/msp" element={<Navigate to="/settings?tab=msp" replace />} />
+              <Route path="/msp/clients" element={<Navigate to="/settings?tab=msp" replace />} />
+              <Route path="/msp/overview" element={<Navigate to="/settings?tab=msp" replace />} />
               <Route path="/setup-2fa" element={<Setup2FA />} />
             </Route>
           </Route>

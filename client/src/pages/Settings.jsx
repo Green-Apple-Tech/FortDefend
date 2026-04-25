@@ -1,8 +1,10 @@
 import { useEffect, useState } from 'react';
-import { Link } from 'react-router-dom';
+import { Link, useSearchParams } from 'react-router-dom';
 import { api } from '../lib/api';
+import { useAuth } from '../context/AuthContext';
 import { Card, Button, Input } from '../components/ui';
 import { SectionHeader, ToggleCard } from '../components/fds';
+import MspDashboard from './MspDashboard';
 
 const LS_PREFIX = 'fds_settings_v1_';
 
@@ -25,6 +27,24 @@ function saveBool(key, val) {
 }
 
 export default function Settings() {
+  const { user } = useAuth();
+  const [searchParams, setSearchParams] = useSearchParams();
+  const isMspUser = user?.role === 'msp';
+  const mspTabActive = isMspUser && searchParams.get('tab') === 'msp';
+
+  useEffect(() => {
+    if (searchParams.get('tab') === 'msp' && !isMspUser) {
+      setSearchParams(
+        (prev) => {
+          const p = new URLSearchParams(prev);
+          p.delete('tab');
+          return p;
+        },
+        { replace: true },
+      );
+    }
+  }, [searchParams, isMspUser, setSearchParams]);
+
   const [orgName, setOrgName] = useState('');
   const [msg, setMsg] = useState('');
   const [loading, setLoading] = useState(true);
@@ -131,16 +151,61 @@ export default function Settings() {
   );
 
   return (
-    <div className="mx-auto max-w-3xl space-y-8">
+    <div className={`mx-auto space-y-8 ${mspTabActive ? 'max-w-5xl' : 'max-w-3xl'}`}>
       <SectionHeader
         title="Settings"
         description="Set policies once with large toggles. Values below are stored in this browser until your org API persists them."
       />
 
+      <div className="flex gap-0 border-b border-fds-border">
+        <button
+          type="button"
+          onClick={() =>
+            setSearchParams(
+              (prev) => {
+                const p = new URLSearchParams(prev);
+                p.delete('tab');
+                return p;
+              },
+              { replace: true },
+            )
+          }
+          className={`border-b-2 px-4 py-2.5 text-sm font-semibold transition ${
+            !mspTabActive ? 'border-brand text-brand' : 'border-transparent text-slate-600 hover:text-slate-900'
+          }`}
+        >
+          General
+        </button>
+        {isMspUser && (
+          <button
+            type="button"
+            onClick={() =>
+              setSearchParams(
+                (prev) => {
+                  const p = new URLSearchParams(prev);
+                  p.set('tab', 'msp');
+                  return p;
+                },
+                { replace: true },
+              )
+            }
+            className={`border-b-2 px-4 py-2.5 text-sm font-semibold transition ${
+              mspTabActive ? 'border-brand text-brand' : 'border-transparent text-slate-600 hover:text-slate-900'
+            }`}
+          >
+            MSP
+          </button>
+        )}
+      </div>
+
       {msg && (
         <div className="rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-2 text-sm text-emerald-900">{msg}</div>
       )}
 
+      {mspTabActive ? (
+        <MspDashboard />
+      ) : (
+        <>
       <Card>
         <h2 className="text-sm font-semibold text-slate-900">Organization</h2>
         <p className="mt-1 text-sm text-slate-600">Display name used across FortDefend and reports.</p>
@@ -355,6 +420,8 @@ export default function Settings() {
           </div>
         )}
       </Card>
+        </>
+      )}
     </div>
   );
 }

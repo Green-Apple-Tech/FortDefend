@@ -4,13 +4,7 @@ import { useAuth } from '../context/AuthContext';
 const PATH_TITLES = {
   '/dashboard': 'Dashboard',
   '/devices': 'Devices',
-  '/software': 'Software Manager',
-  '/alerts': 'Alerts',
-  '/scripts': 'Scripts',
-  '/reboot-policies': 'Reboot Policies',
   '/integrations': 'Integrations',
-  '/msp/clients': 'MSP Clients',
-  '/msp/overview': 'MSP Overview',
   '/install': 'Enroll Devices',
   '/settings': 'Settings',
   '/api-docs': 'API Docs',
@@ -42,64 +36,12 @@ const navItems = [
     ),
   },
   {
-    to: '/software',
-    label: 'Software Manager',
-    icon: (
-      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75">
-        <rect x="3" y="3" width="7" height="7" rx="1.5" />
-        <rect x="14" y="3" width="7" height="7" rx="1.5" />
-        <rect x="3" y="14" width="7" height="7" rx="1.5" />
-        <rect x="14" y="14" width="7" height="7" rx="1.5" />
-      </svg>
-    ),
-  },
-  {
-    to: '/alerts',
-    label: 'Alerts',
-    icon: (
-      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75">
-        <path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9M13.73 21a2 2 0 0 1-3.46 0" strokeLinecap="round" />
-      </svg>
-    ),
-  },
-  {
-    to: '/scripts',
-    label: 'Scripts',
-    icon: (
-      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75">
-        <path d="M14.5 4h-5L7 7H4a2 2 0 0 0-2 2v9a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2V9a2 2 0 0 0-2-2h-3l-2.5-3zM12 11v6M9 14h6" strokeLinecap="round" />
-      </svg>
-    ),
-  },
-  {
-    to: '/reboot-policies',
-    label: 'Reboot Policies',
-    icon: (
-      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75">
-        <path d="M23 4v6h-6M1 20v-6h6" strokeLinecap="round" />
-        <path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15" strokeLinecap="round" />
-      </svg>
-    ),
-  },
-  {
     to: '/integrations',
     label: 'Integrations',
     icon: (
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75">
         <circle cx="12" cy="12" r="3" />
         <path d="M12 2v2M12 20v2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M2 12h2M20 12h2" strokeLinecap="round" />
-      </svg>
-    ),
-  },
-  {
-    to: '/msp/clients',
-    label: 'MSP',
-    icon: (
-      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75">
-        <rect x="3" y="3" width="7" height="7" rx="1" />
-        <rect x="14" y="3" width="7" height="7" rx="1" />
-        <rect x="14" y="14" width="7" height="7" rx="1" />
-        <rect x="3" y="14" width="7" height="7" rx="1" />
       </svg>
     ),
   },
@@ -133,16 +75,9 @@ function breadcrumbFromPath(pathname) {
 
 export function AppLayout() {
   const { user, org, logout } = useAuth();
-  const location = useLocation();
-  const pathname = location.pathname;
+  const { pathname } = useLocation();
   const pageTitle = PATH_TITLES[pathname] || 'FortDefend';
   const crumbs = breadcrumbFromPath(pathname);
-  const isMsp = user?.role === 'msp';
-
-  const flatNav = navItems.filter((item) => {
-    if (item.to.startsWith('/msp') && !isMsp) return false;
-    return true;
-  });
 
   return (
     <div className="min-h-screen bg-fds-page">
@@ -157,7 +92,7 @@ export function AppLayout() {
             </Link>
 
             <nav className="flex flex-1 flex-col gap-0.5 overflow-y-auto">
-              {flatNav.map(({ to, label, icon }) => (
+              {navItems.map(({ to, label, icon }) => (
                 <NavLink
                   key={to}
                   to={to}
@@ -237,7 +172,7 @@ export function AppLayout() {
           </header>
           <div className="border-b border-fds-border bg-white px-2 py-2 md:hidden">
             <div className="flex max-h-36 flex-wrap gap-1 overflow-y-auto">
-              {flatNav.map(({ to, label, icon }) => (
+              {navItems.map(({ to, label, icon }) => (
                 <NavLink
                   key={to}
                   to={to}

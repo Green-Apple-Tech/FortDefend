@@ -1,9 +1,14 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import { api } from '../lib/api';
 import { Button, Card, Input } from '../components/ui';
 import { StatusBadge } from '../components/fds';
 import ScriptRunnerModal from '../components/ScriptRunnerModal';
 import SoftwareManager from './SoftwareManager';
+import Scripts from './Scripts';
+import RebootPolicies from './RebootPolicies';
+
+const MAIN_DEVICE_TAB_IDS = new Set(['devices', 'software', 'alerts', 'scripts', 'reboot', 'settings']);
 
 const PAGE_SIZE = 25;
 const POLL_MS = 60_000;
@@ -224,6 +229,27 @@ function escapeCsv(s) {
 }
 
 export default function Devices() {
+  const [searchParams, setSearchParams] = useSearchParams();
+  const mainTab = useMemo(() => {
+    const t = searchParams.get('tab') || 'devices';
+    return MAIN_DEVICE_TAB_IDS.has(t) ? t : 'devices';
+  }, [searchParams]);
+
+  const selectMainTab = useCallback(
+    (id) => {
+      setSearchParams(
+        (prev) => {
+          const p = new URLSearchParams(prev);
+          if (id === 'devices') p.delete('tab');
+          else p.set('tab', id);
+          return p;
+        },
+        { replace: true },
+      );
+    },
+    [setSearchParams],
+  );
+
   const [rows, setRows] = useState([]);
   const [integrationErrors, setIntegrationErrors] = useState(null);
   const [loading, setLoading] = useState(true);
@@ -256,7 +282,6 @@ export default function Devices() {
 
   const [groupsTree, setGroupsTree] = useState([]);
   const [groupScope, setGroupScope] = useState('all');
-  const [mainTab, setMainTab] = useState('devices');
   const [dbList, setDbList] = useState([]);
   const [inAnyGroupIds, setInAnyGroupIds] = useState(() => new Set());
   const [groupMemberIds, setGroupMemberIds] = useState(() => new Set());
@@ -857,18 +882,20 @@ export default function Devices() {
         </label>
       </div>
 
-      <div className="flex gap-0 border-b border-fds-border">
+      <div className="flex gap-0 overflow-x-auto border-b border-fds-border">
         {[
           { id: 'devices', label: 'Devices' },
           { id: 'software', label: 'Software' },
           { id: 'alerts', label: 'Alerts' },
+          { id: 'scripts', label: 'Scripts' },
+          { id: 'reboot', label: 'Reboot' },
           { id: 'settings', label: 'Settings' },
         ].map((t) => (
           <button
             key={t.id}
             type="button"
-            onClick={() => setMainTab(t.id)}
-            className={`border-b-2 px-4 py-2.5 text-sm font-semibold transition ${
+            onClick={() => selectMainTab(t.id)}
+            className={`shrink-0 border-b-2 px-3 py-2.5 text-sm font-semibold transition sm:px-4 ${
               mainTab === t.id
                 ? 'border-brand text-brand'
                 : 'border-transparent text-slate-600 hover:text-slate-900 dark:text-slate-400 dark:hover:text-slate-100'
@@ -879,7 +906,7 @@ export default function Devices() {
         ))}
       </div>
 
-      {integrationErrors && Object.keys(integrationErrors).length > 0 && (
+      {mainTab === 'devices' && integrationErrors && Object.keys(integrationErrors).length > 0 && (
         <div className="rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">
           <p className="font-semibold">Some integrations reported errors</p>
           <ul className="mt-2 list-inside list-disc text-amber-800">
@@ -1263,6 +1290,10 @@ export default function Devices() {
       )}
 
       {mainTab === 'software' && <SoftwareManager deviceIdsAllowlist={softwareAllowlist} />}
+
+      {mainTab === 'scripts' && <Scripts />}
+
+      {mainTab === 'reboot' && <RebootPolicies />}
 
       {mainTab === 'alerts' && (
         <Card className="border-fds-border p-4">

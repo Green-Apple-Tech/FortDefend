@@ -14,6 +14,8 @@ const MAIN_DEVICE_TAB_IDS = new Set(['devices', 'software', 'alerts', 'scripts',
 const PAGE_SIZE = 25;
 const POLL_MS = 30_000;
 const DEVICE_COLUMNS_LS_KEY = 'fortdefend_devices_column_order_v1';
+const DEVICE_DENSITY_LS_KEY = 'fortdefend_devices_density_v1';
+const DEVICE_ROW_HEIGHT_LS_KEY = 'fortdefend_row_height';
 const DEFAULT_COLUMN_ORDER = [
   'os',
   'source',
@@ -29,6 +31,7 @@ const DEFAULT_COLUMN_ORDER = [
   'patches',
 ];
 const DEFAULT_EXPECTED_AGENT_VERSION = '1.0.1';
+const DENSITY_OPTIONS = ['compact', 'normal', 'comfortable'];
 
 function formatRelativeTime(iso) {
   if (!iso) return '—';
@@ -120,7 +123,7 @@ function displaySource(source) {
 function formatDisk(d) {
   const gb = d.disk_free_gb ?? d.disk?.freeGb;
   if (gb == null || Number.isNaN(Number(gb))) return '—';
-  return `${Math.round(Number(gb))}GB free`;
+  return `${Math.round(Number(gb))} GB free`;
 }
 
 function formatRam(d) {
@@ -348,6 +351,8 @@ export default function Devices() {
   const [showScriptRunner, setShowScriptRunner] = useState(false);
   const [scripts, setScripts] = useState([]);
   const [columnOrder, setColumnOrder] = useState(DEFAULT_COLUMN_ORDER);
+  const [density, setDensity] = useState('normal');
+  const [rowHeight, setRowHeight] = useState(56);
   const [draggedColumn, setDraggedColumn] = useState(null);
   const menuRef = useRef(null);
   const panelHeaderMenuRef = useRef(null);
@@ -433,6 +438,40 @@ export default function Devices() {
   useEffect(() => {
     localStorage.setItem(DEVICE_COLUMNS_LS_KEY, JSON.stringify(columnOrder));
   }, [columnOrder]);
+
+  useEffect(() => {
+    try {
+      const raw = localStorage.getItem(DEVICE_DENSITY_LS_KEY);
+      if (raw && DENSITY_OPTIONS.includes(raw)) setDensity(raw);
+    } catch {
+      /* ignore */
+    }
+  }, []);
+
+  useEffect(() => {
+    try {
+      localStorage.setItem(DEVICE_DENSITY_LS_KEY, density);
+    } catch {
+      /* ignore */
+    }
+  }, [density]);
+
+  useEffect(() => {
+    try {
+      const raw = Number(localStorage.getItem(DEVICE_ROW_HEIGHT_LS_KEY));
+      if (Number.isFinite(raw) && raw >= 40 && raw <= 120) setRowHeight(raw);
+    } catch {
+      /* ignore */
+    }
+  }, []);
+
+  useEffect(() => {
+    try {
+      localStorage.setItem(DEVICE_ROW_HEIGHT_LS_KEY, String(rowHeight));
+    } catch {
+      /* ignore */
+    }
+  }, [rowHeight]);
 
   useEffect(() => {
     if (!toast) return undefined;
@@ -847,7 +886,56 @@ export default function Devices() {
       return next;
     });
   };
-  const orderedColumns = useMemo(() => ['device', ...columnOrder.filter((k) => k !== 'device')], [columnOrder]);
+  const orderedColumns = useMemo(() => {
+    const cols = ['device', ...columnOrder.filter((k) => k !== 'device')];
+    const diskIdx = cols.indexOf('disk');
+    const ramIdx = cols.indexOf('ram');
+    if (diskIdx >= 0 && ramIdx >= 0 && ramIdx !== diskIdx + 1) {
+      cols.splice(ramIdx, 1);
+      cols.splice(diskIdx + 1, 0, 'ram');
+    }
+    return cols;
+  }, [columnOrder]);
+
+  const densityUi = useMemo(() => {
+    if (density === 'compact') {
+      return {
+        tableText: 'text-xs',
+        headerPy: 'py-2',
+        cellPy: 'py-1',
+        subtleText: 'text-[11px]',
+        statusBadge: 'px-2 py-0.5 text-[11px]',
+        sourceBadge: 'px-2 py-0.5 text-[11px]',
+        scoreCircle: 'h-8 w-8 text-xs',
+        cpuMinW: 'min-w-[96px]',
+        barH: 'h-2',
+      };
+    }
+    if (density === 'comfortable') {
+      return {
+        tableText: 'text-base',
+        headerPy: 'py-4',
+        cellPy: 'py-5',
+        subtleText: 'text-sm',
+        statusBadge: 'px-4 py-1.5 text-sm',
+        sourceBadge: 'px-4 py-1.5 text-sm',
+        scoreCircle: 'h-14 w-14 text-lg',
+        cpuMinW: 'min-w-[160px]',
+        barH: 'h-4',
+      };
+    }
+    return {
+      tableText: 'text-sm',
+      headerPy: 'py-3',
+      cellPy: 'py-3',
+      subtleText: 'text-xs',
+      statusBadge: 'px-3 py-1 text-xs',
+      sourceBadge: 'px-3 py-1 text-xs',
+      scoreCircle: 'h-12 w-12 text-base',
+      cpuMinW: 'min-w-[128px]',
+      barH: 'h-3',
+    };
+  }, [density]);
 
   const exportCsv = () => {
     const headers = [
@@ -1223,14 +1311,52 @@ export default function Devices() {
       </div>
 
       <Card className="overflow-hidden rounded-xl border border-gray-100 p-0 shadow-md">
+        <div className="flex flex-wrap items-center justify-end gap-3 border-b border-gray-100 bg-white px-4 py-2">
+          <div className="inline-flex items-center rounded-lg border border-gray-200 bg-gray-50 p-1">
+            {[
+              { id: 'compact', icon: '☰', label: 'Compact' },
+              { id: 'normal', icon: '≡', label: 'Normal' },
+              { id: 'comfortable', icon: '□', label: 'Comfortable' },
+            ].map((opt) => (
+              <button
+                key={opt.id}
+                type="button"
+                title={opt.label}
+                aria-label={opt.label}
+                onClick={() => setDensity(opt.id)}
+                className={`rounded-md px-2 py-1 text-sm font-semibold transition ${
+                  density === opt.id
+                    ? 'bg-white text-brand shadow-sm'
+                    : 'text-slate-600 hover:bg-white hover:text-slate-800'
+                }`}
+              >
+                {opt.icon}
+              </button>
+            ))}
+          </div>
+          <div className="inline-flex items-center gap-2 text-xs text-slate-600">
+            <span className="font-semibold">↕ Row height</span>
+            <input
+              type="range"
+              min="40"
+              max="120"
+              step="4"
+              value={rowHeight}
+              onChange={(e) => setRowHeight(Number(e.target.value))}
+              className="w-20 accent-brand"
+              aria-label="Row height"
+            />
+            <span className="w-10 text-right font-semibold text-slate-700">{rowHeight}px</span>
+          </div>
+        </div>
         <div className="max-h-[min(70vh,900px)] overflow-auto">
           {loading ? (
             <p className="p-6 text-sm text-gray-500">Loading…</p>
           ) : (
-            <table className="min-w-full border-collapse text-sm">
+            <table className={`min-w-full border-collapse ${densityUi.tableText}`}>
               <thead className="sticky top-0 z-20 border-b border-blue-100 bg-white shadow-sm">
                 <tr>
-                  <th className="whitespace-nowrap px-4 py-3 text-left">
+                  <th className={`whitespace-nowrap px-4 ${densityUi.headerPy} text-left`}>
                     <input
                       type="checkbox"
                       checked={pageItems.length > 0 && pageItems.every((d) => checkedIds.includes(d.id))}
@@ -1247,7 +1373,7 @@ export default function Devices() {
                   {orderedColumns.map((colKey) => (
                     <th
                       key={colKey}
-                      className={`whitespace-nowrap px-4 py-3 text-sm font-semibold text-[#1e40af] ${colKey === 'security_score' ? 'text-right' : 'text-left'}`}
+                      className={`whitespace-nowrap px-4 ${densityUi.headerPy} font-semibold text-[#1e40af] ${colKey === 'security_score' ? 'text-right' : 'text-left'}`}
                       draggable={colKey !== 'device'}
                       onDragStart={() => {
                         if (colKey === 'device') return;
@@ -1274,7 +1400,7 @@ export default function Devices() {
                       </button>
                     </th>
                   ))}
-                  <th className="sticky right-0 z-20 whitespace-nowrap border-l border-fds-border bg-white px-4 py-3 text-right text-sm font-semibold text-[#1e40af]">
+                  <th className={`sticky right-0 z-20 whitespace-nowrap border-l border-fds-border bg-white px-4 ${densityUi.headerPy} text-right font-semibold text-[#1e40af]`}>
                     Actions
                   </th>
                 </tr>
@@ -1294,14 +1420,15 @@ export default function Devices() {
                   return (
                     <tr
                       key={k}
-                      className="min-h-[56px] cursor-pointer border-l-[3px] border-transparent odd:bg-[#F8FAFF] even:bg-white hover:border-l-blue-500 hover:bg-[#EFF6FF]"
+                      className="cursor-pointer border-l-[3px] border-transparent odd:bg-[#F8FAFF] even:bg-white hover:border-l-blue-500 hover:bg-[#EFF6FF]"
+                      style={{ height: `${rowHeight}px` }}
                       onClick={() => openDetails(d)}
                       onContextMenu={(e) => {
                         e.preventDefault();
                         setOpenMenu((m) => (m === k ? null : k));
                       }}
                     >
-                      <td className="px-4 py-4" onClick={(e) => e.stopPropagation()}>
+                      <td className={`align-middle px-4 ${densityUi.cellPy}`} onClick={(e) => e.stopPropagation()}>
                         <input
                           type="checkbox"
                           checked={checkedIds.includes(d.id)}
@@ -1314,24 +1441,24 @@ export default function Devices() {
                   {orderedColumns.map((colKey) => {
                         if (colKey === 'device') {
                           return (
-                            <td key={colKey} className="px-4 py-4">
+                            <td key={colKey} className={`align-middle px-4 ${densityUi.cellPy}`}>
                               <div className="flex min-w-0 items-center gap-2">
                                 <span className={`inline-block h-2 w-2 shrink-0 rounded-full ${statusDotClass(st)}`} title={st} />
                                 <div className="min-w-0">
                                   <div className="truncate font-medium text-gray-900">{d.name || d.id}</div>
-                                  <div className="truncate text-xs text-gray-500">{d.serial || '—'}</div>
+                                  <div className={`truncate text-gray-500 ${densityUi.subtleText}`}>{d.serial || '—'}</div>
                                 </div>
                               </div>
                             </td>
                           );
                         }
                         if (colKey === 'os') {
-                          return <td key={colKey} className="px-4 py-4 text-gray-600">{displayOs(d)} {osVersionOf(d) ? `· ${osVersionOf(d)}` : ''}</td>;
+                          return <td key={colKey} className={`align-middle px-4 ${densityUi.cellPy} text-gray-600`}>{displayOs(d)} {osVersionOf(d) ? `· ${osVersionOf(d)}` : ''}</td>;
                         }
                         if (colKey === 'source') {
                           return (
-                            <td key={colKey} className="px-4 py-4">
-                              <span className="inline-flex rounded-full bg-blue-500 px-3 py-1 text-xs font-semibold text-white">
+                            <td key={colKey} className={`align-middle px-4 ${densityUi.cellPy}`}>
+                              <span className={`inline-flex rounded-full bg-blue-500 font-semibold text-white ${densityUi.sourceBadge}`}>
                                 {displaySource(d.source)}
                               </span>
                             </td>
@@ -1339,8 +1466,8 @@ export default function Devices() {
                         }
                         if (colKey === 'status') {
                           return (
-                            <td key={colKey} className="px-4 py-4">
-                              <span className={`inline-flex rounded-full px-3 py-1 text-xs font-semibold capitalize ${statusBadgeClass(st)}`}>
+                            <td key={colKey} className={`align-middle px-4 ${densityUi.cellPy}`}>
+                              <span className={`inline-flex rounded-full font-semibold capitalize ${statusBadgeClass(st)} ${densityUi.statusBadge}`}>
                                 {st}
                               </span>
                             </td>
@@ -1350,15 +1477,15 @@ export default function Devices() {
                           const pct = Number(d.cpu_usage_pct ?? d.cpuUsage);
                           const safePct = Number.isFinite(pct) ? Math.max(0, Math.min(100, pct)) : null;
                           return (
-                            <td key={colKey} className="px-4 py-4">
+                            <td key={colKey} className={`align-middle px-4 ${densityUi.cellPy}`}>
                               {safePct == null ? (
                                 <span className="text-gray-500">—</span>
                               ) : (
-                                <div className="min-w-[128px]">
-                                  <div className="mb-1 text-xs font-semibold text-slate-700">{Math.round(safePct)}%</div>
-                                  <div className="h-3 rounded-full bg-gray-200">
+                                <div className={densityUi.cpuMinW}>
+                                  <div className={`mb-1 font-semibold text-slate-700 ${densityUi.subtleText}`}>{Math.round(safePct)}%</div>
+                                  <div className={`${densityUi.barH} rounded-full bg-gray-200`}>
                                     <div
-                                      className={`h-3 rounded-full ${cpuToneClass(safePct)}`}
+                                      className={`${densityUi.barH} rounded-full ${cpuToneClass(safePct)}`}
                                       style={{ width: `${safePct}%` }}
                                     />
                                   </div>
@@ -1368,33 +1495,33 @@ export default function Devices() {
                           );
                         }
                         if (colKey === 'agent') {
-                          return <td key={colKey} className="px-4 py-4">{renderAgentBadge(d.agent_version, expectedAgentVersion)}</td>;
+                          return <td key={colKey} className={`align-middle px-4 ${densityUi.cellPy}`}>{renderAgentBadge(d.agent_version, expectedAgentVersion)}</td>;
                         }
                         if (colKey === 'compliance') {
-                          return <td key={colKey} className="px-4 py-4 text-gray-600">{d.compliance || '—'}</td>;
+                          return <td key={colKey} className={`align-middle px-4 ${densityUi.cellPy} text-gray-600`}>{d.compliance || '—'}</td>;
                         }
                         if (colKey === 'security_score') {
                           const score = Number(d.security_score);
                           const tone = !Number.isFinite(score)
                             ? 'bg-slate-300 text-slate-700'
                             : score > 80
-                              ? 'bg-emerald-500 text-white'
+                              ? 'bg-[#10B981] text-white'
                               : score >= 50
-                                ? 'bg-amber-500 text-white'
-                                : 'bg-red-500 text-white';
+                                ? 'bg-[#F59E0B] text-white'
+                                : 'bg-[#EF4444] text-white';
                           return (
-                            <td key={colKey} className="px-4 py-4 text-right">
-                              <span className={`inline-flex h-12 w-12 items-center justify-center rounded-full text-base font-bold ${tone}`}>
+                            <td key={colKey} className={`align-middle px-4 ${densityUi.cellPy} text-right`}>
+                              <span className={`inline-flex items-center justify-center rounded-full font-bold ${densityUi.scoreCircle} ${tone}`}>
                                 {Number.isFinite(score) ? Math.round(score) : '—'}
                               </span>
                             </td>
                           );
                         }
                         if (colKey === 'last_seen') {
-                          return <td key={colKey} className="whitespace-nowrap px-4 py-4 text-gray-600">{formatRelativeTime(getLastSeen(d))}</td>;
+                          return <td key={colKey} className={`align-middle whitespace-nowrap px-4 ${densityUi.cellPy} text-gray-600`}>{formatRelativeTime(getLastSeen(d))}</td>;
                         }
                         if (colKey === 'group') {
-                          return <td key={colKey} className="px-4 py-4 text-gray-700">{d.group_name || 'Ungrouped'}</td>;
+                          return <td key={colKey} className={`align-middle px-4 ${densityUi.cellPy} text-gray-700`}>{d.group_name || 'Ungrouped'}</td>;
                         }
                         if (colKey === 'disk') {
                           const free = Number(d.disk_free_gb ?? d.disk?.freeGb);
@@ -1405,7 +1532,7 @@ export default function Devices() {
                               : free <= 20
                                 ? 'text-amber-600'
                                 : 'text-emerald-600';
-                          return <td key={colKey} className={`px-4 py-4 font-semibold ${diskTone}`}>{formatDisk(d)}</td>;
+                          return <td key={colKey} className={`align-middle px-4 ${densityUi.cellPy} font-semibold ${diskTone}`}>{formatDisk(d)}</td>;
                         }
                         if (colKey === 'ram') {
                           const used = Number(d.mem_used_gb ?? d.memUsed);
@@ -1415,15 +1542,15 @@ export default function Devices() {
                               ? Math.max(0, Math.min(100, (used / total) * 100))
                               : null;
                           return (
-                            <td key={colKey} className="px-4 py-4 text-gray-600">
-                              <div className="min-w-[128px]">
-                                <div className="mb-1 text-xs font-semibold text-slate-700">
+                            <td key={colKey} className={`align-middle px-4 ${densityUi.cellPy} text-gray-600`}>
+                              <div className={densityUi.cpuMinW}>
+                                <div className={`mb-1 font-semibold text-slate-700 ${densityUi.subtleText}`}>
                                   {Number.isFinite(used) && Number.isFinite(total) ? `${used.toFixed(1)}/${total.toFixed(1)}GB` : '—'}
                                 </div>
                                 {usagePct != null ? (
-                                  <div className="h-3 rounded-full bg-gray-200">
+                                  <div className={`${densityUi.barH} rounded-full bg-gray-200`}>
                                     <div
-                                      className={`h-3 rounded-full ${cpuToneClass(usagePct)}`}
+                                      className={`${densityUi.barH} rounded-full ${cpuToneClass(usagePct)}`}
                                       style={{ width: `${usagePct}%` }}
                                     />
                                   </div>
@@ -1434,7 +1561,7 @@ export default function Devices() {
                         }
                         if (colKey === 'patches') {
                           return (
-                            <td key={colKey} className="px-4 py-4">
+                            <td key={colKey} className={`align-middle px-4 ${densityUi.cellPy}`}>
                               {patchN == null ? (
                                 '—'
                               ) : patchN > 0 ? (
@@ -1449,10 +1576,10 @@ export default function Devices() {
                             </td>
                           );
                         }
-                        return <td key={colKey} className="px-4 py-4 text-gray-600">—</td>;
+                        return <td key={colKey} className={`align-middle px-4 ${densityUi.cellPy} text-gray-600`}>—</td>;
                       })}
                       <td
-                        className="sticky right-0 z-20 overflow-visible border-l border-gray-100 bg-white px-2 py-2 text-right"
+                        className="sticky right-0 z-20 overflow-visible border-l border-gray-100 bg-white px-2 py-2 text-right align-middle"
                         onClick={(e) => e.stopPropagation()}
                       >
                         <div className="relative inline-block overflow-visible text-left" ref={openMenu === k ? menuRef : null}>

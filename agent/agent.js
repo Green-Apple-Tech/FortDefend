@@ -551,7 +551,7 @@ function collectTelemetry() {
       osVersion: os.release() || osVersionText || null,
       osOutdated,
       securityAgentRunning,
-      agentVersion: resolveCredentials().version || '1.0.0',
+      agentVersion: AGENT_VERSION,
       activeNetworkConnections: Number(netConn?.Count || 0),
       rebootRequired: rebootRequiredWU || rebootRequiredPending,
       rebootRequiredReason: rebootRequiredWU ? 'windows_update' : rebootRequiredPending ? 'pending_file_ops' : null,

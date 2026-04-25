@@ -296,6 +296,28 @@ function runPowerShellSpawnSync(command) {
   }
 }
 
+function collectCpuAndMemoryMetrics() {
+  const cpuRaw = runPowerShellSpawnSync(
+    '(Get-WmiObject -Class Win32_Processor | Select-Object -ExpandProperty LoadPercentage | Measure-Object -Average).Average',
+  );
+  const memUsedRaw = runPowerShellSpawnSync(
+    '$os = Get-WmiObject Win32_OperatingSystem; [math]::Round(($os.TotalVisibleMemorySize - $os.FreePhysicalMemory)/1MB, 1)',
+  );
+  const memTotalRaw = runPowerShellSpawnSync(
+    '$os = Get-WmiObject Win32_OperatingSystem; [math]::Round($os.TotalVisibleMemorySize/1MB, 1)',
+  );
+
+  const cpuUsage = Number.parseFloat(String(cpuRaw || '').trim());
+  const memUsed = Number.parseFloat(String(memUsedRaw || '').trim());
+  const memTotal = Number.parseFloat(String(memTotalRaw || '').trim());
+
+  return {
+    cpuUsage: Number.isFinite(cpuUsage) ? Math.max(0, Math.min(100, Number(cpuUsage.toFixed(2)))) : null,
+    memUsed: Number.isFinite(memUsed) ? Number(memUsed.toFixed(2)) : null,
+    memTotal: Number.isFinite(memTotal) ? Number(memTotal.toFixed(2)) : null,
+  };
+}
+
 function runScriptByType(scriptType, scriptContent) {
   const type = String(scriptType || '').toLowerCase();
   const content = String(scriptContent || '');
@@ -474,6 +496,7 @@ function buildHeartbeatHeaders(token, groupId) {
 }
 
 function collectTelemetry() {
+  const quickMetrics = collectCpuAndMemoryMetrics();
   const battery = runJson("(Get-WmiObject Win32_Battery | Select EstimatedChargeRemaining,BatteryStatus | ConvertTo-Json -Compress)");
   const session = runJson("$u = query user 2>$null; $lines=@(); if($u){$lines = $u | Select-Object -Skip 1}; $active = $false; $idle = 999; foreach($l in $lines){ if($l -match 'Active'){ $active=$true }; if($l -match '\\s(\\d+|none|\\.)\\s+\\d{1,2}/'){ $v=$matches[1]; if($v -eq 'none' -or $v -eq '.'){ $idle=0 } elseif([int]$v -lt $idle){ $idle=[int]$v } } }; [pscustomobject]@{activeUserSession=$active;idleTimeMinutes=$idle} | ConvertTo-Json -Compress");
   const openApps = runJson("(Get-Process | Where-Object {$_.MainWindowTitle -ne ''} | Select-Object ProcessName,MainWindowTitle | ConvertTo-Json -Depth 4 -Compress)");
@@ -490,8 +513,7 @@ function collectTelemetry() {
   const diskInfo = runJson("(Get-WmiObject Win32_LogicalDisk -Filter \"DeviceID='C:'\" | Select-Object DeviceID,FreeSpace,Size | ConvertTo-Json -Compress)");
   const ipInfo = runJson("(Get-NetIPAddress -AddressFamily IPv4 -ErrorAction SilentlyContinue | Where-Object {$_.IPAddress -notlike '169.254.*' -and $_.PrefixOrigin -ne 'WellKnown'} | Select-Object -First 1 IPAddress | ConvertTo-Json -Compress)");
   const defenderInfo = runJson("(Get-MpComputerStatus | Select-Object AMServiceEnabled,RealTimeProtectionEnabled | ConvertTo-Json -Compress)");
-  const cpuUsageRaw = run("Get-Counter '\\Processor(_Total)\\% Processor Time' | Select-Object -ExpandProperty CounterSamples | Select-Object -First 1 CookedValue");
-  const cpuUsagePct = Number.parseFloat(String(cpuUsageRaw || '').trim());
+  const cpuUsagePct = Number.isFinite(Number(quickMetrics.cpuUsage)) ? Number(quickMetrics.cpuUsage) : null;
   const rebootRequiredWU = run("if(Test-Path 'HKLM:\\SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\WindowsUpdate\\Auto Update\\RebootRequired'){ 'true' } else { 'false' }").trim() === 'true';
   const rebootRequiredPending = run("if(Test-Path 'HKLM:\\SYSTEM\\CurrentControlSet\\Control\\Session Manager\\PendingFileRenameOperations'){ 'true' } else { 'false' }").trim() === 'true';
   const batteryEntry = Array.isArray(battery) ? battery[0] : battery;
@@ -533,7 +555,9 @@ function collectTelemetry() {
     ram: {
       totalGb: Number.isFinite(totalRamGb) ? Number(totalRamGb.toFixed(2)) : null,
     },
-    cpuUsage: Number.isFinite(cpuUsagePct) ? Math.max(0, Math.min(100, Number(cpuUsagePct.toFixed(2)))) : null,
+    cpuUsage: quickMetrics.cpuUsage,
+    memUsed: quickMetrics.memUsed,
+    memTotal: quickMetrics.memTotal,
     pendingUpdates: run('winget upgrade --include-unknown | Out-String'),
     localUsers: run('Get-LocalUser | Select-Object Name,Enabled,PasswordLastSet | ConvertTo-Json -Depth 4'),
     disk: run('Get-WmiObject Win32_LogicalDisk | Select-Object DeviceID,FreeSpace,Size | ConvertTo-Json -Depth 4'),
@@ -581,29 +605,14 @@ function collectTelemetry() {
 }
 
 function collectMinimalMetrics() {
-  const cpuUsageRaw = runPowerShellSpawnSync(
-    '$cpu = (Get-WmiObject Win32_Processor | Measure-Object -Property LoadPercentage -Average).Average; Write-Output $cpu',
-  );
-  const cpuUsagePct = Number.parseFloat(String(cpuUsageRaw || '').trim().split(/\s+/)[0]);
-  const memRaw = runPowerShellSpawnSync(
-    '$mem = Get-WmiObject Win32_OperatingSystem; $used = [math]::Round(($mem.TotalVisibleMemorySize - $mem.FreePhysicalMemory) / 1MB, 2); $total = [math]::Round($mem.TotalVisibleMemorySize / 1MB, 2); Write-Output "$used $total"',
-  );
-  const memParts = String(memRaw || '').trim().split(/\s+/).filter(Boolean);
-  const memUsedGb = Number.parseFloat(memParts[0] || '');
-  const memTotalGb = Number.parseFloat(memParts[1] || '');
+  const quickMetrics = collectCpuAndMemoryMetrics();
   const diskInfo = runJson("(Get-WmiObject Win32_LogicalDisk -Filter \"DeviceID='C:'\" | Select-Object FreeSpace,Size | ConvertTo-Json -Compress)");
   const diskFree = Number(diskInfo?.FreeSpace || 0);
   const diskFreeGb = diskFree > 0 ? diskFree / (1024 * 1024 * 1024) : null;
-  const normalizedCpu = Number.isFinite(cpuUsagePct) ? Math.max(0, Math.min(100, Number(cpuUsagePct.toFixed(2)))) : null;
-  const normalizedMemUsed = Number.isFinite(memUsedGb) ? Number(memUsedGb.toFixed(2)) : null;
-  const normalizedMemTotal = Number.isFinite(memTotalGb) ? Number(memTotalGb.toFixed(2)) : null;
   return {
-    cpu_usage_pct: normalizedCpu,
-    mem_used_gb: normalizedMemUsed,
-    mem_total_gb: normalizedMemTotal,
-    cpuUsage: normalizedCpu,
-    memUsed: normalizedMemUsed,
-    memTotal: normalizedMemTotal,
+    cpuUsage: quickMetrics.cpuUsage,
+    memUsed: quickMetrics.memUsed,
+    memTotal: quickMetrics.memTotal,
     diskFree: Number.isFinite(diskFreeGb) ? Number(diskFreeGb.toFixed(2)) : null,
   };
 }

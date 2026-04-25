@@ -109,7 +109,7 @@ function statusColor(status) {
   return 'bg-slate-400';
 }
 
-export default function SoftwareManager() {
+export default function SoftwareManager({ deviceIdsAllowlist = null } = {}) {
   const [loading, setLoading] = useState(true);
   const [matrix, setMatrix] = useState({ devices: [], apps: [], installations: [] });
   const [commands, setCommands] = useState([]);
@@ -219,6 +219,24 @@ export default function SoftwareManager() {
     });
   }, [matrix.apps]);
 
+  const scopedDevices = useMemo(() => {
+    if (!deviceIdsAllowlist) return matrix.devices;
+    if (deviceIdsAllowlist.size === 0) return [];
+    return matrix.devices.filter((d) => deviceIdsAllowlist.has(d.id));
+  }, [matrix.devices, deviceIdsAllowlist]);
+
+  const installationsForScope = useMemo(() => {
+    if (!deviceIdsAllowlist) return matrix.installations;
+    if (deviceIdsAllowlist.size === 0) return [];
+    return matrix.installations.filter((inv) => deviceIdsAllowlist.has(inv.device_id));
+  }, [matrix.installations, deviceIdsAllowlist]);
+
+  const commandsForScope = useMemo(() => {
+    if (!deviceIdsAllowlist) return commands;
+    if (deviceIdsAllowlist.size === 0) return [];
+    return commands.filter((c) => deviceIdsAllowlist.has(c.device_id));
+  }, [commands, deviceIdsAllowlist]);
+
   const filteredApps = useMemo(() => {
     return matrix.apps.filter((app) => {
       const inCategory = category === 'All' || app.category === category;
@@ -236,7 +254,7 @@ export default function SoftwareManager() {
 
   const installDeviceCountByWinget = useMemo(() => {
     const sets = new Map();
-    matrix.installations.forEach((inv) => {
+    installationsForScope.forEach((inv) => {
       const wid = inv?.winget_id;
       if (!wid) return;
       if (!sets.has(wid)) sets.set(wid, new Set());
@@ -245,7 +263,7 @@ export default function SoftwareManager() {
     const out = new Map();
     sets.forEach((set, wid) => out.set(wid, set.size));
     return out;
-  }, [matrix.installations]);
+  }, [installationsForScope]);
 
   const orderedVisibleApps = useMemo(() => {
     const enriched = visibleApps.map((app) => ({
@@ -267,15 +285,15 @@ export default function SoftwareManager() {
 
   const installationsByKey = useMemo(() => {
     const map = new Map();
-    matrix.installations.forEach((item) => {
+    installationsForScope.forEach((item) => {
       map.set(keyFor(item.device_id, item.winget_id), item);
     });
     return map;
-  }, [matrix.installations]);
+  }, [installationsForScope]);
 
   const commandStateByKey = useMemo(() => {
     const map = new Map();
-    commands.forEach((cmd) => {
+    commandsForScope.forEach((cmd) => {
       if (!cmd?.device_id || !cmd?.winget_id) return;
       const k = keyFor(cmd.device_id, cmd.winget_id);
       const current = map.get(k);
@@ -288,7 +306,7 @@ export default function SoftwareManager() {
       }
     });
     return map;
-  }, [commands]);
+  }, [commandsForScope]);
 
   const activeApp = useMemo(() => {
     return filteredApps.find((a) => String(a.id) === String(activeAppId)) || null;
@@ -298,7 +316,7 @@ export default function SoftwareManager() {
 
   const toggleCell = (deviceId, wingetId, shiftPressed = false) => {
     const apps = orderedVisibleApps.map((e) => e.app);
-    const deviceIndex = matrix.devices.findIndex((d) => d.id === deviceId);
+    const deviceIndex = scopedDevices.findIndex((d) => d.id === deviceId);
     const appIndex = apps.findIndex((a) => a.winget_id === wingetId);
     if (deviceIndex === -1 || appIndex === -1) return;
 
@@ -316,7 +334,7 @@ export default function SoftwareManager() {
 
         for (let d = minDevice; d <= maxDevice; d += 1) {
           for (let a = minApp; a <= maxApp; a += 1) {
-            const device = matrix.devices[d];
+            const device = scopedDevices[d];
             const app = apps[a];
             if (device && app) next.add(keyFor(device.id, app.winget_id));
           }
@@ -336,7 +354,7 @@ export default function SoftwareManager() {
   const selectColumn = (wingetId, appId) => {
     setSelected((prev) => {
       const next = new Set(prev);
-      matrix.devices.forEach((device) => next.add(keyFor(device.id, wingetId)));
+      scopedDevices.forEach((device) => next.add(keyFor(device.id, wingetId)));
       return next;
     });
     setActiveAppId(appId);
@@ -632,7 +650,7 @@ export default function SoftwareManager() {
                   </tr>
                 </thead>
                 <tbody>
-                  {matrix.devices.map((device) => (
+                  {scopedDevices.map((device) => (
                     <tr key={device.id} className="bg-white">
                       <th className="sticky left-0 z-10 h-12 border-b border-r border-fds-border bg-white px-4 py-2 text-left align-middle">
                         <button
@@ -652,7 +670,7 @@ export default function SoftwareManager() {
             </div>
 
             <div className="space-y-4 p-4 lg:hidden">
-              {matrix.devices.map((device) => (
+              {scopedDevices.map((device) => (
                 <div key={device.id} className="rounded-lg border border-fds-border bg-white p-3 shadow-sm ring-1 ring-slate-950/5">
                   <button
                     type="button"

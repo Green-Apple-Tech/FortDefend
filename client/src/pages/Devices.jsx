@@ -1,8 +1,9 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { api } from '../lib/api';
 import { Button, Card, Input } from '../components/ui';
-import { SectionHeader, StatusBadge } from '../components/fds';
+import { StatusBadge } from '../components/fds';
 import ScriptRunnerModal from '../components/ScriptRunnerModal';
+import SoftwareManager from './SoftwareManager';
 
 const PAGE_SIZE = 25;
 const POLL_MS = 60_000;
@@ -129,6 +130,39 @@ function getUserEmail(d) {
   return d.email || d.user || d.userEmail || d.user_email || '';
 }
 
+function flattenGroupTree(nodes, depth = 0) {
+  const out = [];
+  for (const n of nodes || []) {
+    out.push({ id: n.id, name: n.name, depth, device_count: n.device_count ?? 0 });
+    if (n.children?.length) out.push(...flattenGroupTree(n.children, depth + 1));
+  }
+  return out;
+}
+
+function buildDbDeviceLookup(dbDevices) {
+  const byId = new Map();
+  const byExternal = new Map();
+  const bySerial = new Map();
+  for (const d of dbDevices || []) {
+    if (d.id) byId.set(d.id, d);
+    if (d.external_id) byExternal.set(String(d.external_id), d);
+    if (d.serial) bySerial.set(String(d.serial).trim().toLowerCase(), d);
+  }
+  return { byId, byExternal, bySerial };
+}
+
+function resolveFleetRowToDbId(row, lookup) {
+  if (!row || !lookup) return null;
+  if (lookup.byId.has(row.id)) return row.id;
+  const ext = row.external_id != null ? String(row.external_id) : null;
+  if (ext && lookup.byExternal.has(ext)) return lookup.byExternal.get(ext).id;
+  if (row.serial) {
+    const k = String(row.serial).trim().toLowerCase();
+    if (k && lookup.bySerial.has(k)) return lookup.bySerial.get(k).id;
+  }
+  return null;
+}
+
 function deviceHeroEmoji(d) {
   const n = normalizeOs(d);
   if (n === 'android') return '📱';
@@ -220,6 +254,22 @@ export default function Devices() {
   const menuRef = useRef(null);
   const panelHeaderMenuRef = useRef(null);
 
+  const [groupsTree, setGroupsTree] = useState([]);
+  const [groupScope, setGroupScope] = useState('all');
+  const [mainTab, setMainTab] = useState('devices');
+  const [dbList, setDbList] = useState([]);
+  const [inAnyGroupIds, setInAnyGroupIds] = useState(() => new Set());
+  const [groupMemberIds, setGroupMemberIds] = useState(() => new Set());
+  const [membershipRev, setMembershipRev] = useState(0);
+  const [tabAlerts, setTabAlerts] = useState([]);
+  const [tabAlertsLoading, setTabAlertsLoading] = useState(false);
+  const [groupSettingsName, setGroupSettingsName] = useState('');
+  const [groupLocalReboot, setGroupLocalReboot] = useState(true);
+  const [groupLocalPatch, setGroupLocalPatch] = useState(true);
+
+  const groupsFlat = useMemo(() => flattenGroupTree(groupsTree), [groupsTree]);
+  const dbLookup = useMemo(() => buildDbDeviceLookup(dbList), [dbList]);
+
   const loadDevices = useCallback(async (opts = { showLoading: false }) => {
     if (opts.showLoading) setLoading(true);
     try {
@@ -303,6 +353,104 @@ export default function Devices() {
   }, [panelHeaderMenuOpen]);
 
   useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      try {
+        const [gRes, devRes] = await Promise.all([
+          api('/api/groups').catch(() => ({ groups: [] })),
+          api('/api/devices').catch(() => ({ devices: [] })),
+        ]);
+        if (cancelled) return;
+        setGroupsTree(Array.isArray(gRes.groups) ? gRes.groups : []);
+        setDbList(Array.isArray(devRes.devices) ? devRes.devices : []);
+        const flat = flattenGroupTree(Array.isArray(gRes.groups) ? gRes.groups : []);
+        const inGroup = new Set();
+        await Promise.all(
+          flat.map(async (g) => {
+            try {
+              const r = await api(`/api/groups/${encodeURIComponent(g.id)}/devices`);
+              for (const d of r.devices || []) inGroup.add(d.id);
+            } catch {
+              /* ignore */
+            }
+          }),
+        );
+        if (!cancelled) setInAnyGroupIds(inGroup);
+      } catch {
+        if (!cancelled) {
+          setGroupsTree([]);
+          setDbList([]);
+          setInAnyGroupIds(new Set());
+        }
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [membershipRev]);
+
+  useEffect(() => {
+    const isUuid = /^[0-9a-f-]{36}$/i.test(groupScope);
+    if (!isUuid) {
+      setGroupMemberIds(new Set());
+      return undefined;
+    }
+    let cancelled = false;
+    (async () => {
+      try {
+        const r = await api(`/api/groups/${encodeURIComponent(groupScope)}/devices`);
+        if (cancelled) return;
+        setGroupMemberIds(new Set((r.devices || []).map((d) => d.id)));
+      } catch {
+        if (!cancelled) setGroupMemberIds(new Set());
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [groupScope, membershipRev]);
+
+  useEffect(() => {
+    if (mainTab !== 'alerts') return undefined;
+    let cancelled = false;
+    setTabAlertsLoading(true);
+    (async () => {
+      try {
+        const data = await api('/api/alerts?resolved=false&limit=400');
+        if (cancelled) return;
+        setTabAlerts(Array.isArray(data?.alerts) ? data.alerts : []);
+      } catch {
+        if (!cancelled) setTabAlerts([]);
+      } finally {
+        if (!cancelled) setTabAlertsLoading(false);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [mainTab, groupScope, membershipRev]);
+
+  useEffect(() => {
+    const isUuid = /^[0-9a-f-]{36}$/i.test(groupScope);
+    if (!isUuid) {
+      setGroupSettingsName('');
+      return;
+    }
+    const g = groupsFlat.find((x) => x.id === groupScope);
+    setGroupSettingsName(g?.name || '');
+    try {
+      const raw = localStorage.getItem(`fds_group_prefs_${groupScope}`);
+      if (raw) {
+        const o = JSON.parse(raw);
+        if (typeof o.rebootPolicy === 'boolean') setGroupLocalReboot(o.rebootPolicy);
+        if (typeof o.patchAggressive === 'boolean') setGroupLocalPatch(o.patchAggressive);
+      }
+    } catch {
+      /* keep defaults */
+    }
+  }, [groupScope, groupsFlat]);
+
+  useEffect(() => {
     if (!selected) {
       setPanelDetailDevice(null);
       setPanelAlerts([]);
@@ -352,8 +500,24 @@ export default function Devices() {
     };
   }, [selected?.id]);
 
-  const filtered = useMemo(() => {
+  const scopeRows = useMemo(() => {
     return rows.filter((d) => {
+      const dbId = resolveFleetRowToDbId(d, dbLookup);
+      if (groupScope === 'all') return true;
+      if (groupScope === 'ungrouped') {
+        if (!dbId) return true;
+        return !inAnyGroupIds.has(dbId);
+      }
+      if (/^[0-9a-f-]{36}$/i.test(groupScope)) {
+        if (!dbId) return false;
+        return groupMemberIds.has(dbId);
+      }
+      return true;
+    });
+  }, [rows, groupScope, dbLookup, inAnyGroupIds, groupMemberIds]);
+
+  const filtered = useMemo(() => {
+    return scopeRows.filter((d) => {
       const email = getUserEmail(d);
       const hay = `${d.name || ''} ${d.serial || ''} ${d.id || ''} ${email}`.toLowerCase();
       if (q && !hay.includes(q.toLowerCase())) return false;
@@ -380,7 +544,7 @@ export default function Devices() {
       }
       return true;
     });
-  }, [rows, q, sourceFilter, statusFilter, osFilter]);
+  }, [scopeRows, q, sourceFilter, statusFilter, osFilter]);
 
   const sorted = useMemo(() => {
     const list = [...filtered];
@@ -395,6 +559,11 @@ export default function Devices() {
     return list;
   }, [filtered, sortKey, sortDir]);
 
+  const checkedDevices = useMemo(
+    () => sorted.filter((d) => checkedIds.includes(d.id)),
+    [sorted, checkedIds],
+  );
+
   const total = sorted.length;
   const pageCount = Math.max(1, Math.ceil(total / PAGE_SIZE));
   const currentPage = Math.min(page, pageCount);
@@ -403,25 +572,41 @@ export default function Devices() {
     () => sorted.slice(pageStart, pageStart + PAGE_SIZE),
     [sorted, pageStart]
   );
-  const checkedDevices = useMemo(
-    () => rows.filter((d) => checkedIds.includes(d.id)),
-    [rows, checkedIds]
-  );
-
   const fleetSummary = useMemo(() => {
     let online = 0;
     let offline = 0;
     let warning = 0;
     let alert = 0;
-    for (const d of rows) {
+    for (const d of scopeRows) {
       const st = deriveStatus(d);
       if (st === 'online') online += 1;
       else if (st === 'warning') warning += 1;
       else if (st === 'alert') alert += 1;
       else offline += 1;
     }
-    return { online, offline, warning, alert, total: rows.length };
-  }, [rows]);
+    return { online, offline, warning, alert, total: scopeRows.length };
+  }, [scopeRows]);
+
+  const scopeDeviceDbIds = useMemo(() => {
+    const s = new Set();
+    for (const d of scopeRows) {
+      const id = resolveFleetRowToDbId(d, dbLookup);
+      if (id) s.add(id);
+    }
+    return s;
+  }, [scopeRows, dbLookup]);
+
+  const tabAlertsFiltered = useMemo(() => {
+    return tabAlerts.filter((a) => {
+      if (!a.device_id) return groupScope === 'all';
+      return scopeDeviceDbIds.has(a.device_id);
+    });
+  }, [tabAlerts, scopeDeviceDbIds, groupScope]);
+
+  const softwareAllowlist = useMemo(() => {
+    if (groupScope === 'all') return null;
+    return scopeDeviceDbIds;
+  }, [groupScope, scopeDeviceDbIds]);
 
   const filteredPanelApps = useMemo(() => {
     const needle = appSearch.trim().toLowerCase();
@@ -444,7 +629,7 @@ export default function Devices() {
 
   useEffect(() => {
     setPage(1);
-  }, [q, sourceFilter, statusFilter, osFilter, sortKey, sortDir]);
+  }, [q, sourceFilter, statusFilter, osFilter, sortKey, sortDir, groupScope]);
 
   const toggleSort = (key) => {
     if (sortKey === key) {
@@ -624,17 +809,75 @@ export default function Devices() {
     setPanelHeaderMenuOpen(false);
   };
 
-  const capabilityRows = [
-    { platform: 'Windows agent', cpu: 'Yes', ram: 'Yes', disk: 'Yes', battery: 'Yes', user: 'Yes', script: 'Yes' },
-    { platform: 'Android app', cpu: 'If app reports', ram: 'If app reports', disk: 'If app reports', battery: 'If app reports', user: 'Limited', script: 'Safe actions only' },
-    { platform: 'Chromebook extension', cpu: 'Limited', ram: 'Partial', disk: 'Partial', battery: 'No', user: 'Partial', script: 'JavaScript only' },
-    { platform: 'Intune (Windows/macOS/iOS)', cpu: 'Limited', ram: 'Limited', disk: 'Partial', battery: 'Limited', user: 'Partial', script: 'Vendor-dependent' },
-    { platform: 'Google Mobile (iOS)', cpu: 'No', ram: 'No', disk: 'No', battery: 'No', user: 'Partial', script: 'No arbitrary code' },
-  ];
+  const saveGroupSettingsName = async () => {
+    if (!/^[0-9a-f-]{36}$/i.test(groupScope)) return;
+    try {
+      await api(`/api/groups/${encodeURIComponent(groupScope)}`, {
+        method: 'PATCH',
+        body: { name: groupSettingsName.trim() },
+      });
+      setToast('Group updated.');
+      setMembershipRev((x) => x + 1);
+    } catch (e) {
+      setToast(e.message || 'Save failed.');
+    }
+  };
+
+  const saveGroupLocalPrefs = () => {
+    if (!/^[0-9a-f-]{36}$/i.test(groupScope)) return;
+    try {
+      localStorage.setItem(
+        `fds_group_prefs_${groupScope}`,
+        JSON.stringify({ rebootPolicy: groupLocalReboot, patchAggressive: groupLocalPatch }),
+      );
+      setToast('Preferences saved in this browser.');
+    } catch {
+      setToast('Could not save preferences.');
+    }
+  };
 
   return (
-    <div className="space-y-6">
-      <SectionHeader title="Devices" description="Fleet inventory from connected integrations and agents." />
+    <div className="space-y-4">
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
+        <label className="block min-w-0 flex-1 text-sm font-medium text-slate-700 dark:text-slate-300">
+          <span className="mb-1 block">Group scope</span>
+          <select
+            value={groupScope}
+            onChange={(e) => setGroupScope(e.target.value)}
+            className="w-full max-w-md rounded-lg border border-fds-border bg-fds-card px-3 py-2.5 text-sm text-slate-900 shadow-sm focus:border-brand focus:outline-none focus:ring-2 focus:ring-brand/20 dark:text-slate-100"
+          >
+            <option value="all">All Devices</option>
+            <option value="ungrouped">Ungrouped</option>
+            {groupsFlat.map((g) => (
+              <option key={g.id} value={g.id}>
+                {`${'— '.repeat(g.depth)}${g.name}`}
+              </option>
+            ))}
+          </select>
+        </label>
+      </div>
+
+      <div className="flex gap-0 border-b border-fds-border">
+        {[
+          { id: 'devices', label: 'Devices' },
+          { id: 'software', label: 'Software' },
+          { id: 'alerts', label: 'Alerts' },
+          { id: 'settings', label: 'Settings' },
+        ].map((t) => (
+          <button
+            key={t.id}
+            type="button"
+            onClick={() => setMainTab(t.id)}
+            className={`border-b-2 px-4 py-2.5 text-sm font-semibold transition ${
+              mainTab === t.id
+                ? 'border-brand text-brand'
+                : 'border-transparent text-slate-600 hover:text-slate-900 dark:text-slate-400 dark:hover:text-slate-100'
+            }`}
+          >
+            {t.label}
+          </button>
+        ))}
+      </div>
 
       {integrationErrors && Object.keys(integrationErrors).length > 0 && (
         <div className="rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">
@@ -649,6 +892,8 @@ export default function Devices() {
         </div>
       )}
 
+      {mainTab === 'devices' && (
+      <>
       <Card>
         {checkedDevices.length > 0 && (
           <div className="mb-4 flex flex-wrap items-center gap-2 rounded-lg border border-brand/30 bg-brand-light/40 px-3 py-2">
@@ -738,37 +983,6 @@ export default function Devices() {
         </span>
         <span className="ml-auto text-xs text-slate-500">{fleetSummary.total} devices</span>
       </div>
-
-      <Card className="overflow-x-auto">
-        <h2 className="text-sm font-semibold text-gray-900">Platform Capability Matrix</h2>
-        <p className="mb-3 text-xs text-gray-600">Telemetry availability depends on platform APIs and enrollment method.</p>
-        <table className="min-w-full text-xs">
-          <thead>
-            <tr className="border-b border-gray-200 text-left text-gray-600">
-              <th className="px-2 py-2">Platform</th>
-              <th className="px-2 py-2">CPU</th>
-              <th className="px-2 py-2">RAM</th>
-              <th className="px-2 py-2">Disk</th>
-              <th className="px-2 py-2">Battery</th>
-              <th className="px-2 py-2">User</th>
-              <th className="px-2 py-2">Script Exec</th>
-            </tr>
-          </thead>
-          <tbody>
-            {capabilityRows.map((r) => (
-              <tr key={r.platform} className="border-b border-gray-100">
-                <td className="px-2 py-2 font-medium text-gray-900">{r.platform}</td>
-                <td className="px-2 py-2 text-gray-700">{r.cpu}</td>
-                <td className="px-2 py-2 text-gray-700">{r.ram}</td>
-                <td className="px-2 py-2 text-gray-700">{r.disk}</td>
-                <td className="px-2 py-2 text-gray-700">{r.battery}</td>
-                <td className="px-2 py-2 text-gray-700">{r.user}</td>
-                <td className="px-2 py-2 text-gray-700">{r.script}</td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      </Card>
 
       <Card className="overflow-hidden p-0">
         <div className="max-h-[min(70vh,900px)] overflow-auto">
@@ -1045,6 +1259,75 @@ export default function Devices() {
           </div>
         )}
       </Card>
+      </>
+      )}
+
+      {mainTab === 'software' && <SoftwareManager deviceIdsAllowlist={softwareAllowlist} />}
+
+      {mainTab === 'alerts' && (
+        <Card className="border-fds-border p-4">
+          {tabAlertsLoading ? (
+            <p className="text-sm text-slate-500">Loading…</p>
+          ) : tabAlertsFiltered.length === 0 ? (
+            <p className="text-sm text-slate-600">No open alerts for this scope.</p>
+          ) : (
+            <ul className="divide-y divide-fds-border">
+              {tabAlertsFiltered.map((a) => (
+                <li key={a.id} className="py-3">
+                  <div className="flex flex-wrap items-center gap-2 text-sm">
+                    <span className="font-semibold text-slate-900">{a.type || 'Alert'}</span>
+                    {a.severity ? <span className="text-xs text-slate-500">{String(a.severity)}</span> : null}
+                    <span className="text-xs text-slate-400">
+                      {a.created_at ? formatRelativeTime(a.created_at) : ''}
+                    </span>
+                  </div>
+                  <p className="mt-1 text-sm text-slate-700">{a.message || '—'}</p>
+                </li>
+              ))}
+            </ul>
+          )}
+        </Card>
+      )}
+
+      {mainTab === 'settings' && !/^[0-9a-f-]{36}$/i.test(groupScope) && (
+        <Card className="border-fds-border p-6 text-sm text-slate-600">
+          Select a group in <strong className="font-medium text-slate-800">Group scope</strong> to rename it and
+          adjust basic preferences.
+        </Card>
+      )}
+
+      {mainTab === 'settings' && /^[0-9a-f-]{36}$/i.test(groupScope) && (
+        <Card className="space-y-4 border-fds-border p-5">
+          <h2 className="text-sm font-semibold text-slate-900">Group settings</h2>
+          <Input label="Group name" value={groupSettingsName} onChange={(e) => setGroupSettingsName(e.target.value)} />
+          <Button type="button" onClick={saveGroupSettingsName}>
+            Save name
+          </Button>
+          <div className="space-y-3 border-t border-fds-border pt-4">
+            <label className="flex cursor-pointer items-center justify-between gap-3 rounded-lg border border-fds-border bg-slate-50/80 px-3 py-2">
+              <span className="text-sm font-medium text-slate-800">Auto reboot after patches (local)</span>
+              <input
+                type="checkbox"
+                className="h-4 w-4"
+                checked={groupLocalReboot}
+                onChange={(e) => setGroupLocalReboot(e.target.checked)}
+              />
+            </label>
+            <label className="flex cursor-pointer items-center justify-between gap-3 rounded-lg border border-fds-border bg-slate-50/80 px-3 py-2">
+              <span className="text-sm font-medium text-slate-800">Aggressive patching (local)</span>
+              <input
+                type="checkbox"
+                className="h-4 w-4"
+                checked={groupLocalPatch}
+                onChange={(e) => setGroupLocalPatch(e.target.checked)}
+              />
+            </label>
+            <Button type="button" variant="outline" onClick={saveGroupLocalPrefs}>
+              Save preferences
+            </Button>
+          </div>
+        </Card>
+      )}
 
       {panelDevice && (
         <div className="fixed inset-0 z-50 flex flex-col md:flex-row">

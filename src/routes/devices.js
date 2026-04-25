@@ -60,6 +60,21 @@ router.get('/summary', async (req, res, next) => {
   } catch (err) { next(err); }
 });
 
+// GET /api/devices/ungrouped — devices not assigned to any group
+router.get('/ungrouped', async (req, res, next) => {
+  try {
+    const devices = await db('devices as d')
+      .leftJoin('device_groups as dg', 'd.id', 'dg.device_id')
+      .where('d.org_id', req.user.orgId)
+      .whereNull('dg.group_id')
+      .select('d.*')
+      .orderBy('d.name', 'asc');
+    res.json({ devices });
+  } catch (err) {
+    next(err);
+  }
+});
+
 // GET /api/devices/:id/apps — installed apps inventory (sm_device_apps)
 router.get('/:id/apps', async (req, res, next) => {
   try {

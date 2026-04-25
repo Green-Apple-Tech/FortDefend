@@ -233,6 +233,15 @@ export default function Groups({ embedded = false } = {}) {
   }
 
   async function loadUngroupedDevices(opts = { forPanel: true }) {
+    try {
+      const data = await api('/api/devices/ungrouped');
+      const list = Array.isArray(data?.devices) ? data.devices : [];
+      setUngroupedDevices(list);
+      if (opts.forPanel) setDevices(list);
+      return;
+    } catch {
+      // Fallback to local calculation when endpoint is unavailable.
+    }
     const flat = flattenGroups(groups);
     const members = new Set();
     await Promise.all(

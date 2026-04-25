@@ -124,11 +124,11 @@ function formatDisk(d) {
 }
 
 function formatRam(d) {
-  const used = d.mem_used_gb;
-  const total = d.mem_total_gb ?? d.ram_total_gb ?? d.ram?.totalGb;
-  if (total == null || Number.isNaN(Number(total))) return '—';
-  if (used == null || Number.isNaN(Number(used))) return `— / ${Number(total).toFixed(1)} GB`;
-  return `${Number(used).toFixed(1)} / ${Number(total).toFixed(1)} GB`;
+  const used = d.mem_used_gb ?? d.memUsed;
+  const total = d.mem_total_gb ?? d.memTotal ?? d.ram_total_gb ?? d.ram?.totalGb;
+  if (used == null || Number.isNaN(Number(used))) return '—';
+  if (total == null || Number.isNaN(Number(total))) return `${Number(used).toFixed(1)}GB`;
+  return `${Number(used).toFixed(1)}/${Math.round(Number(total))}GB`;
 }
 
 function formatPct(v) {

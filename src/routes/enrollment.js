@@ -186,16 +186,20 @@ router.post('/register', async (req, res, next) => {
       });
     }
 
+    const declaredPlatform = String(platform || deviceType || '').trim().toLowerCase();
+    const normalizedPlatform = declaredPlatform || 'unknown';
+    const deviceSource = normalizedPlatform === 'android' ? 'android' : 'agent';
+
     const deviceId = uuidv4();
     const serial = serialNumber || deviceId;
     await db('devices').insert({
       id: deviceId,
       org_id: org.id,
-      name: deviceName || `${platform} Device`,
+      name: deviceName || `${normalizedPlatform || 'Unknown'} Device`,
       serial,
-      os: platform || deviceType,
+      os: normalizedPlatform,
       os_version: osVersion || 'Unknown',
-      source: 'agent',
+      source: deviceSource,
       external_id: deviceId,
       status: 'online',
       security_score: 100,
@@ -233,7 +237,7 @@ router.post('/register', async (req, res, next) => {
       deviceToken,
       orgName: org.name,
       apiUrl: process.env.APP_URL,
-      checkInterval: platform === 'android' ? 360 : 240,
+      checkInterval: normalizedPlatform === 'android' ? 360 : 240,
     });
   } catch (err) { next(err); }
 });

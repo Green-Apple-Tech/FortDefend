@@ -6,7 +6,7 @@ try {
 
 const fetchImpl = typeof globalThis.fetch === 'function' ? globalThis.fetch.bind(globalThis) : require('node-fetch');
 
-const { execFileSync, execSync, exec, spawn } = require('child_process');
+const { execFileSync, execSync, exec, spawn, spawnSync } = require('child_process');
 const fs = require('fs');
 const os = require('os');
 const path = require('path');
@@ -271,6 +271,27 @@ function run(command) {
     return execFileSync('powershell.exe', ['-NoProfile', '-ExecutionPolicy', 'Bypass', '-Command', command], { encoding: 'utf8', windowsHide: true, timeout: 120000 });
   } catch (err) {
     safeLog(`command failed: ${command} :: ${err.message}`);
+    return '';
+  }
+}
+
+function runPowerShellSpawnSync(command) {
+  try {
+    const result = spawnSync(
+      'powershell.exe',
+      ['-NoProfile', '-ExecutionPolicy', 'Bypass', '-Command', command],
+      { encoding: 'utf8', windowsHide: true, timeout: 120000, maxBuffer: 1024 * 1024 },
+    );
+    if (result.error) {
+      safeLog(`spawnSync powershell error: ${result.error.message}`);
+      return '';
+    }
+    if (result.status !== 0) {
+      safeLog(`spawnSync powershell exited ${result.status}: ${String(result.stderr || '').trim()}`);
+    }
+    return String(result.stdout || '').trim();
+  } catch (err) {
+    safeLog(`spawnSync powershell failed: ${err.message}`);
     return '';
   }
 }
@@ -560,20 +581,29 @@ function collectTelemetry() {
 }
 
 function collectMinimalMetrics() {
-  const cpuUsageRaw = run("Get-Counter '\\Processor(_Total)\\% Processor Time' | Select-Object -ExpandProperty CounterSamples | Select-Object -First 1 CookedValue");
-  const cpuUsagePct = Number.parseFloat(String(cpuUsageRaw || '').trim());
-  const osInfo = runJson("(Get-CimInstance Win32_OperatingSystem | Select-Object TotalVisibleMemorySize,FreePhysicalMemory | ConvertTo-Json -Compress)");
-  const totalRamKb = Number(osInfo?.TotalVisibleMemorySize || 0);
-  const freeRamKb = Number(osInfo?.FreePhysicalMemory || 0);
-  const memTotalGb = totalRamKb > 0 ? totalRamKb / (1024 * 1024) : null;
-  const memUsedGb = totalRamKb > 0 ? (totalRamKb - freeRamKb) / (1024 * 1024) : null;
+  const cpuUsageRaw = runPowerShellSpawnSync(
+    '$cpu = (Get-WmiObject Win32_Processor | Measure-Object -Property LoadPercentage -Average).Average; Write-Output $cpu',
+  );
+  const cpuUsagePct = Number.parseFloat(String(cpuUsageRaw || '').trim().split(/\s+/)[0]);
+  const memRaw = runPowerShellSpawnSync(
+    '$mem = Get-WmiObject Win32_OperatingSystem; $used = [math]::Round(($mem.TotalVisibleMemorySize - $mem.FreePhysicalMemory) / 1MB, 2); $total = [math]::Round($mem.TotalVisibleMemorySize / 1MB, 2); Write-Output "$used $total"',
+  );
+  const memParts = String(memRaw || '').trim().split(/\s+/).filter(Boolean);
+  const memUsedGb = Number.parseFloat(memParts[0] || '');
+  const memTotalGb = Number.parseFloat(memParts[1] || '');
   const diskInfo = runJson("(Get-WmiObject Win32_LogicalDisk -Filter \"DeviceID='C:'\" | Select-Object FreeSpace,Size | ConvertTo-Json -Compress)");
   const diskFree = Number(diskInfo?.FreeSpace || 0);
   const diskFreeGb = diskFree > 0 ? diskFree / (1024 * 1024 * 1024) : null;
+  const normalizedCpu = Number.isFinite(cpuUsagePct) ? Math.max(0, Math.min(100, Number(cpuUsagePct.toFixed(2)))) : null;
+  const normalizedMemUsed = Number.isFinite(memUsedGb) ? Number(memUsedGb.toFixed(2)) : null;
+  const normalizedMemTotal = Number.isFinite(memTotalGb) ? Number(memTotalGb.toFixed(2)) : null;
   return {
-    cpuUsage: Number.isFinite(cpuUsagePct) ? Math.max(0, Math.min(100, Number(cpuUsagePct.toFixed(2)))) : null,
-    memUsed: Number.isFinite(memUsedGb) ? Number(memUsedGb.toFixed(2)) : null,
-    memTotal: Number.isFinite(memTotalGb) ? Number(memTotalGb.toFixed(2)) : null,
+    cpu_usage_pct: normalizedCpu,
+    mem_used_gb: normalizedMemUsed,
+    mem_total_gb: normalizedMemTotal,
+    cpuUsage: normalizedCpu,
+    memUsed: normalizedMemUsed,
+    memTotal: normalizedMemTotal,
     diskFree: Number.isFinite(diskFreeGb) ? Number(diskFreeGb.toFixed(2)) : null,
   };
 }

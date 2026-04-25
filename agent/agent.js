@@ -631,6 +631,7 @@ async function heartbeat() {
       deviceId,
       timestamp: new Date().toISOString(),
       status: 'online',
+      agentVersion: AGENT_VERSION,
       hostname: os.hostname(),
       deviceName: os.hostname(),
     };
@@ -640,6 +641,7 @@ async function heartbeat() {
       full.deviceId = deviceId;
       full.timestamp = baseBody.timestamp;
       full.status = 'online';
+      full.agentVersion = AGENT_VERSION;
       full.hostname = baseBody.hostname;
       full.deviceName = baseBody.deviceName;
       full.osVersion = full.osVersion || os.release();

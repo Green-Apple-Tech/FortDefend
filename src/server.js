@@ -20,7 +20,8 @@ app.use(helmet({
       defaultSrc: ["'self'"],
       scriptSrc: ["'self'"],
       styleSrc: ["'self'", "'unsafe-inline'"],
-      imgSrc: ["'self'", 'data:', 'https://api.qrserver.com'],
+      // Software Manager favicons + org icon_url load from arbitrary HTTPS hosts
+      imgSrc: ["'self'", 'data:', 'https:'],
       connectSrc: ["'self'"],
       frameSrc: ["'none'"],
       objectSrc: ["'none'"],

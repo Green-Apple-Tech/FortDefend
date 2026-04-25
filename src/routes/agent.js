@@ -990,13 +990,13 @@ router.get('/download', async (req, res) => {
   }
 });
 
-// GET /api/agent/install — use GET /api/agent/install.ps1?org=... instead
+// GET /api/agent/install — legacy alias, prefer GET /api/agent/installer?org=...
 router.get('/install', async (req, res) => {
   if (String(req.query.org || '').trim()) {
-    return res.redirect(302, `/api/agent/install.ps1?${new URLSearchParams(req.query).toString()}`);
+    return res.redirect(302, `/api/agent/installer?${new URLSearchParams(req.query).toString()}`);
   }
   res.status(400).type('text/plain')
-    .send('Use: GET /api/agent/install.ps1?org=ORG_ID&group=GROUP_ID (group optional).');
+    .send('Use: GET /api/agent/installer?org=ORG_ID&group=GROUP_ID (group optional).');
 });
 
 module.exports = router;

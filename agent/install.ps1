@@ -12,7 +12,7 @@ if (-not (Test-IsAdministrator)) {
   Write-Host 'FortDefend: elevation required. Re-launching as administrator…' -ForegroundColor Yellow
   $u = $Script:FortDefendInstallSourceUrl
   if ($u -match '__INSTALL_SCRIPT') {
-    throw 'This script must be run with the real install URL. Use: iex (irm https://<app>/api/agent/install.ps1?org=... )'
+    throw "This script must be run with the real install URL. Use: iex (irm 'https://<app>/api/agent/installer?org=...')"
   }
   $arg = "-NoProfile -ExecutionPolicy Bypass -Command `"& { iex (irm -UseBasicParsing '$u') }`""
   Start-Process -FilePath powershell.exe -Verb RunAs -ArgumentList $arg

@@ -26,9 +26,9 @@ orgsMeApiRouter.get('/orgs/me/enrollment', requireAuth, async (req, res) => {
       if (!g) return res.status(400).json({ error: 'Group not found.' });
     }
     const gq = groupId ? `&group=${encodeURIComponent(groupId)}` : '';
-    const installScriptUrl = `${base}/api/agent/install.ps1?org=${encodeURIComponent(token)}${gq}`;
-    const psCommand = `iex (irm '${installScriptUrl}')`;
-    res.json({ token, installUrl: installScriptUrl, psCommand, groupId: groupId || null });
+    const installerUrl = `${base}/api/agent/installer?org=${encodeURIComponent(token)}${gq}`;
+    const psCommand = `iex (irm '${installerUrl}')`;
+    res.json({ token, installUrl: installerUrl, psCommand, groupId: groupId || null });
   } catch (err) {
     console.error('GET /api/orgs/me/enrollment', err);
     res.status(500).json({ error: 'Failed to get enrollment info' });

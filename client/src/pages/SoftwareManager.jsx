@@ -35,13 +35,24 @@ const APP_NAME_DOMAIN_RULES = [
   ['gimp', 'gimp.org'],
 ];
 
+/** Last-resort: Publisher.PackageId → try publisher.com (works for many winget IDs). */
+function domainGuessFromWingetId(wingetId) {
+  const raw = String(wingetId || '').trim();
+  if (!raw.includes('.')) return null;
+  const pub = raw.split('.')[0].toLowerCase().replace(/[^a-z0-9-]/g, '');
+  if (pub.length < 2 || pub.length > 40 || /^\d+$/.test(pub)) return null;
+  return `${pub}.com`;
+}
+
 function domainForCatalogueApp(app) {
   const name = String(app?.name || '').trim().toLowerCase();
-  if (!name) return null;
-  for (const [needle, domain] of APP_NAME_DOMAIN_RULES) {
-    if (name === needle.trim() || name.includes(needle)) return domain;
-  }
   const wid = String(app?.winget_id || '').toLowerCase();
+
+  if (name) {
+    for (const [needle, domain] of APP_NAME_DOMAIN_RULES) {
+      if (name === needle.trim() || name.includes(needle)) return domain;
+    }
+  }
   if (wid.includes('google.chrome') || wid === 'chrome' || name.includes('chrome')) return 'google.com';
   if (wid.includes('mozilla.firefox') || name.includes('firefox')) return 'mozilla.org';
   if (wid.includes('microsoft.edge') || name.includes('edge')) return 'microsoft.com';
@@ -62,7 +73,7 @@ function domainForCatalogueApp(app) {
   if (wid.includes('anydesk')) return 'anydesk.com';
   if (wid.includes('libreoffice')) return 'libreoffice.org';
   if (wid.includes('gimp')) return 'gimp.org';
-  return null;
+  return domainGuessFromWingetId(app?.winget_id);
 }
 
 function PackageIcon({ className = 'h-8 w-8' }) {
@@ -100,6 +111,8 @@ function AppFavicon({ iconUrl, domain }) {
     const raw = iconUrl && String(iconUrl).trim();
     if (raw && /^https?:\/\//i.test(raw)) list.push(raw);
     if (hostname) {
+      // Direct favicon often works when CDNs are blocked; then DDG, then Google s2.
+      list.push(`https://${hostname}/favicon.ico`);
       list.push(`https://icons.duckduckgo.com/ip3/${hostname}.ico`);
       list.push(`https://www.google.com/s2/favicons?domain=${encodeURIComponent(hostname)}&sz=32`);
     }

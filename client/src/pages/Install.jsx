@@ -210,6 +210,15 @@ export default function Install() {
     return `/api/agent/installer?${p.toString()}`;
   }, [data?.token, selectedGroupId]);
 
+  const windowsPsCommand = useMemo(() => {
+    if (data?.psCommand) return data.psCommand;
+    if (!windowsInstallerUrl) return '';
+    const absoluteUrl = windowsInstallerUrl.startsWith('http')
+      ? windowsInstallerUrl
+      : `${window.location.origin}${windowsInstallerUrl}`;
+    return `iex (irm '${absoluteUrl}')`;
+  }, [data?.psCommand, windowsInstallerUrl]);
+
   useEffect(() => {
     if (!windowsInstallerUrl) {
       setInstallerSize('');
@@ -350,6 +359,15 @@ export default function Install() {
               Download installer (.ps1){installerSize}
             </a>
           </div>
+          {windowsPsCommand && (
+            <div className="mt-5">
+              <h3 className="text-sm font-semibold text-slate-900">PowerShell one-liner</h3>
+              <p className="mt-1 text-xs text-slate-600">
+                Uses single quotes so query parameters do not get parsed as operators.
+              </p>
+              <CodeBlock value={windowsPsCommand} copyLabel="Copy PowerShell" />
+            </div>
+          )}
           {!windowsInstallerUrl && (
             <p className="mt-3 text-sm text-slate-500">Load enrollment data above to generate the installer link.</p>
           )}

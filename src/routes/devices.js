@@ -206,6 +206,31 @@ router.delete('/:id', async (req, res, next) => {
       .first();
     if (!device) return res.status(404).json({ error: 'Device not found.' });
     await db.transaction(async (trx) => {
+      if (await trx.schema.hasTable('command_results')) {
+        await trx('command_results')
+          .where({ org_id: req.user.orgId, device_id: device.id })
+          .delete();
+      }
+      if (await trx.schema.hasTable('sm_commands')) {
+        await trx('sm_commands')
+          .where({ org_id: req.user.orgId, device_id: device.id })
+          .delete();
+      }
+      if (await trx.schema.hasTable('scan_results')) {
+        await trx('scan_results')
+          .where({ org_id: req.user.orgId, device_id: device.id })
+          .delete();
+      }
+      if (await trx.schema.hasTable('alerts')) {
+        await trx('alerts')
+          .where({ org_id: req.user.orgId, device_id: device.id })
+          .delete();
+      }
+      if (await trx.schema.hasTable('agent_logs')) {
+        await trx('agent_logs')
+          .where({ org_id: req.user.orgId, device_id: device.id })
+          .delete();
+      }
       if (await trx.schema.hasTable('sm_device_apps')) {
         await trx('sm_device_apps')
           .where({ org_id: req.user.orgId, device_id: device.id })

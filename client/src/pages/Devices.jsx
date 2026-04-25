@@ -1452,10 +1452,10 @@ export default function Devices() {
                         return <td key={colKey} className="px-4 py-4 text-gray-600">—</td>;
                       })}
                       <td
-                        className="sticky right-0 z-10 border-l border-gray-100 bg-white px-2 py-2 text-right"
+                        className="sticky right-0 z-20 overflow-visible border-l border-gray-100 bg-white px-2 py-2 text-right"
                         onClick={(e) => e.stopPropagation()}
                       >
-                        <div className="relative inline-block text-left" ref={openMenu === k ? menuRef : null}>
+                        <div className="relative inline-block overflow-visible text-left" ref={openMenu === k ? menuRef : null}>
                           <button
                             type="button"
                             className="rounded p-1 text-gray-500 hover:bg-gray-100 hover:text-gray-800"
@@ -1468,10 +1468,10 @@ export default function Devices() {
                             ⋮
                           </button>
                           {openMenu === k && (
-                            <div className="absolute right-0 z-30 mt-1 min-w-[200px] rounded-lg border border-gray-200 bg-white py-1 shadow-lg">
+                            <div className="absolute right-0 z-[100] mt-1 min-w-[220px] w-max rounded-lg border border-gray-200 bg-white py-1 shadow-lg">
                               <button
                                 type="button"
-                                className="block w-full whitespace-nowrap px-4 py-2 text-left text-sm text-gray-700 hover:bg-gray-50"
+                                className="block w-full whitespace-nowrap px-4 py-2 pr-6 text-left text-sm text-gray-700 hover:bg-gray-50"
                                 onClick={() => {
                                   setOpenMenu(null);
                                   setCheckedIds([d.id]);
@@ -1482,21 +1482,21 @@ export default function Devices() {
                               </button>
                               <button
                                 type="button"
-                                className="block w-full whitespace-nowrap px-4 py-2 text-left text-sm text-gray-700 hover:bg-gray-50"
+                                className="block w-full whitespace-nowrap px-4 py-2 pr-6 text-left text-sm text-gray-700 hover:bg-gray-50"
                                 onClick={() => runSync(d)}
                               >
                                 Sync
                               </button>
                               <button
                                 type="button"
-                                className="block w-full whitespace-nowrap px-4 py-2 text-left text-sm text-gray-700 hover:bg-gray-50"
+                                className="block w-full whitespace-nowrap px-4 py-2 pr-6 text-left text-sm text-gray-700 hover:bg-gray-50"
                                 onClick={() => runReboot(d)}
                               >
                                 Reboot
                               </button>
                               <button
                                 type="button"
-                                className="block w-full whitespace-nowrap px-4 py-2 text-left text-sm text-gray-700 hover:bg-gray-50"
+                                className="block w-full whitespace-nowrap px-4 py-2 pr-6 text-left text-sm text-gray-700 hover:bg-gray-50"
                                 onClick={() => {
                                   setOpenMenu(null);
                                   openDetails(d);
@@ -1506,7 +1506,7 @@ export default function Devices() {
                               </button>
                               <button
                                 type="button"
-                                className="block w-full whitespace-nowrap px-4 py-2 text-left text-sm text-gray-700 hover:bg-gray-50"
+                                className="block w-full whitespace-nowrap px-4 py-2 pr-6 text-left text-sm text-gray-700 hover:bg-gray-50"
                                 onClick={async () => {
                                   const groupId = window.prompt('Enter group ID:');
                                   if (!groupId) return;
@@ -1522,7 +1522,7 @@ export default function Devices() {
                               <div className="my-1 border-t border-gray-200" />
                               <button
                                 type="button"
-                                className="block w-full whitespace-nowrap px-4 py-2 text-left text-sm text-red-600 hover:bg-gray-50"
+                                className="block w-full whitespace-nowrap px-4 py-2 pr-6 text-left text-sm text-red-600 hover:bg-gray-50"
                                 onClick={async () => {
                                   const deviceName = d.name || d.id || 'this device';
                                   if (!window.confirm(`Are you sure you want to remove ${deviceName}? This will stop monitoring this device.`)) return;

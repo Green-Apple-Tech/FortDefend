@@ -458,7 +458,16 @@ router.get('/uninstall.ps1', (req, res) => {
 // POST /api/agent/heartbeat
 router.post('/heartbeat', async (req, res) => {
   const heartbeatStartedAt = new Date().toISOString();
-  const safe200 = (body) => res.status(200).json(body);
+  const currentAgentVersion = process.env.AGENT_VERSION || '1.0.1';
+  const safe200 = (body = {}) => {
+    const status = body.ok === false ? 'error' : 'ok';
+    return res.status(200).json({
+      status,
+      commands: Array.isArray(body.commands) ? body.commands : [],
+      currentAgentVersion,
+      ...body,
+    });
+  };
   try {
     console.log('[heartbeat] installedApps keys check:', Object.keys(req.body || {}));
     console.log('[agent/heartbeat] start', {
@@ -552,7 +561,13 @@ router.post('/heartbeat', async (req, res) => {
       disk_usage_pct: toNum(telemetry.diskUsagePct, existing?.disk_usage_pct ?? null),
       disk_free_pct: diskFreePct,
       ip_address: telemetry.ipAddress || existing?.ip_address || null,
-      agent_version: telemetry.agentVersion || payload.agentVersion || existing?.agent_version || '1.0.0',
+      agent_version:
+        telemetry.agentVersion
+        || telemetry.agent_version
+        || payload.agentVersion
+        || payload.agent_version
+        || existing?.agent_version
+        || currentAgentVersion,
       os_outdated: telemetry.osOutdated === true,
       security_agent_running: telemetry.securityAgentRunning == null ? true : !!telemetry.securityAgentRunning,
       high_cpu_since: nextHighCpuSince,
@@ -880,7 +895,7 @@ router.post('/heartbeat', async (req, res) => {
 });
 
 router.get('/version', (req, res) => {
-  return res.json({ version: process.env.AGENT_VERSION || '1.0.0' });
+  return res.json({ version: process.env.AGENT_VERSION || '1.0.1' });
 });
 
 router.post('/command-result', async (req, res) => {

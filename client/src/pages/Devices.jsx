@@ -17,6 +17,7 @@ const DEFAULT_COLUMN_ORDER = [
   'os',
   'source',
   'status',
+  'agent',
   'compliance',
   'security_score',
   'last_seen',
@@ -25,6 +26,7 @@ const DEFAULT_COLUMN_ORDER = [
   'ram',
   'patches',
 ];
+const DEFAULT_EXPECTED_AGENT_VERSION = '1.0.1';
 
 function formatRelativeTime(iso) {
   if (!iso) return '—';
@@ -135,6 +137,33 @@ function getUserEmail(d) {
   return d.email || d.user || d.userEmail || d.user_email || '';
 }
 
+function isCurrentAgentVersion(deviceVersion, expectedVersion) {
+  const device = String(deviceVersion || '').trim();
+  const expected = String(expectedVersion || '').trim();
+  if (!device || !expected) return false;
+  return device === expected;
+}
+
+function renderAgentBadge(deviceVersion, expectedVersion) {
+  const v = String(deviceVersion || '').trim();
+  if (!v) {
+    return <span className="inline-flex rounded-full bg-slate-100 px-2 py-0.5 text-xs font-semibold text-slate-500">—</span>;
+  }
+  const current = isCurrentAgentVersion(v, expectedVersion);
+  if (current) {
+    return (
+      <span className="inline-flex items-center gap-1 rounded-full bg-emerald-100 px-2 py-0.5 text-xs font-semibold text-emerald-900">
+        {v} ✓
+      </span>
+    );
+  }
+  return (
+    <span className="inline-flex items-center gap-1 rounded-full bg-amber-100 px-2 py-0.5 text-xs font-semibold text-amber-900">
+      {v} ↑
+    </span>
+  );
+}
+
 function flattenGroupTree(nodes, depth = 0) {
   const out = [];
   for (const n of nodes || []) {
@@ -218,6 +247,7 @@ const SORT_KEYS = {
     const n = getPendingPatchCount(d);
     return n == null ? -1 : n;
   },
+  agent: (d) => String(d.agent_version || ''),
   status: (d) => deriveStatus(d),
 };
 
@@ -286,6 +316,7 @@ export default function Devices() {
   const [inAnyGroupIds, setInAnyGroupIds] = useState(() => new Set());
   const [groupMemberIds, setGroupMemberIds] = useState(() => new Set());
   const [membershipRev, setMembershipRev] = useState(0);
+  const [expectedAgentVersion, setExpectedAgentVersion] = useState(DEFAULT_EXPECTED_AGENT_VERSION);
   const [tabAlerts, setTabAlerts] = useState([]);
   const [tabAlertsLoading, setTabAlertsLoading] = useState(false);
   const [groupSettingsName, setGroupSettingsName] = useState('');
@@ -413,6 +444,21 @@ export default function Devices() {
       cancelled = true;
     };
   }, [membershipRev]);
+
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      try {
+        const r = await api('/api/agent/version');
+        if (!cancelled && r?.version) setExpectedAgentVersion(String(r.version));
+      } catch {
+        if (!cancelled) setExpectedAgentVersion(DEFAULT_EXPECTED_AGENT_VERSION);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   useEffect(() => {
     const isUuid = /^[0-9a-f-]{36}$/i.test(groupScope);
@@ -676,6 +722,7 @@ export default function Devices() {
       os: 'OS',
       source: 'Source',
       status: 'Status',
+      agent: 'Agent',
       compliance: 'Compliance',
       security_score: 'Security score',
       last_seen: 'Last seen',
@@ -709,6 +756,7 @@ export default function Devices() {
       'OS version',
       'Source',
       'Status',
+      'Agent version',
       'Compliance',
       'Security score',
       'Last seen',
@@ -728,6 +776,7 @@ export default function Devices() {
           osVersionOf(d),
           displaySource(d.source),
           deriveStatus(d),
+          d.agent_version || '',
           d.compliance,
           d.security_score,
           getLastSeen(d) || '',
@@ -1126,6 +1175,9 @@ export default function Devices() {
                         }
                         if (colKey === 'status') {
                           return <td key={colKey} className="px-3 py-2.5 capitalize text-gray-700">{st}</td>;
+                        }
+                        if (colKey === 'agent') {
+                          return <td key={colKey} className="px-3 py-2.5">{renderAgentBadge(d.agent_version, expectedAgentVersion)}</td>;
                         }
                         if (colKey === 'compliance') {
                           return <td key={colKey} className="px-3 py-2.5 text-gray-600">{d.compliance || '—'}</td>;
@@ -1536,7 +1588,7 @@ export default function Devices() {
                   {[
                     ['OS', `${displayOs(panelDevice)} ${osVersionOf(panelDevice) || ''}`.trim()],
                     ['Serial', panelDevice.serial || '—'],
-                    ['Last seen', getLastSeen(panelDevice) ? formatRelativeTime(getLastSeen(panelDevice)) : '—'],
+                    ['Last Check-in', getLastSeen(panelDevice) ? formatRelativeTime(getLastSeen(panelDevice)) : '—'],
                     ['Disk', formatDisk(panelDevice)],
                     ['RAM', formatRam(panelDevice)],
                     ['CPU', panelDevice.cpu_model || panelDevice.cpuModel || '—'],
@@ -1550,7 +1602,8 @@ export default function Devices() {
                     ['Battery status', panelDevice.battery_status || '—'],
                     ['Battery health', panelDevice.battery_health || '—'],
                     ['Logged in user', panelDevice.logged_in_user || '—'],
-                    ['Agent version', panelDevice.agent_version || '—'],
+                    ['Agent Version', renderAgentBadge(panelDevice.agent_version, expectedAgentVersion)],
+                    ['Heartbeat', 'Every 30 seconds'],
                     ['Compliance', panelDevice.compliance || '—'],
                     ['Source', displaySource(panelDevice.source)],
                     ['Group', panelDevice.group_name || 'Ungrouped'],

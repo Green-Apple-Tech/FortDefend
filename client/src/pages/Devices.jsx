@@ -121,8 +121,8 @@ function formatRam(d) {
   const used = d.mem_used_gb;
   const total = d.mem_total_gb ?? d.ram_total_gb ?? d.ram?.totalGb;
   if (total == null || Number.isNaN(Number(total))) return '—';
-  if (used == null || Number.isNaN(Number(used))) return `${Number(total).toFixed(1)} GB`;
-  return `${Number(used).toFixed(1)}/${Number(total).toFixed(1)} GB`;
+  if (used == null || Number.isNaN(Number(used))) return `— / ${Number(total).toFixed(1)} GB`;
+  return `${Number(used).toFixed(1)} / ${Number(total).toFixed(1)} GB`;
 }
 
 function formatPct(v) {
@@ -1333,7 +1333,7 @@ export default function Devices() {
                           return <td key={colKey} className="px-3 py-2.5 capitalize text-gray-700">{st}</td>;
                         }
                         if (colKey === 'cpu') {
-                          const pct = Number(d.cpu_usage_pct);
+                          const pct = Number(d.cpu_usage_pct ?? d.cpuUsage);
                           const safePct = Number.isFinite(pct) ? Math.max(0, Math.min(100, pct)) : null;
                           return (
                             <td key={colKey} className="px-3 py-2.5">
@@ -1341,13 +1341,10 @@ export default function Devices() {
                                 <span className="text-gray-500">—</span>
                               ) : (
                                 <div className="min-w-[120px]">
-                                  <div className="mb-1 flex items-center justify-between text-xs">
-                                    <span className="font-medium text-slate-700">CPU</span>
-                                    <span className="text-slate-600">{safePct.toFixed(1)}%</span>
-                                  </div>
-                                  <div className="h-1.5 rounded-full bg-slate-200">
+                                  <div className="mb-1 text-xs font-semibold text-slate-700">{Math.round(safePct)}%</div>
+                                  <div className="h-1 rounded-full bg-slate-200">
                                     <div
-                                      className={`h-1.5 rounded-full ${cpuToneClass(safePct)}`}
+                                      className={`h-1 rounded-full ${cpuToneClass(safePct)}`}
                                       style={{ width: `${safePct}%` }}
                                     />
                                   </div>
@@ -1375,7 +1372,27 @@ export default function Devices() {
                           return <td key={colKey} className="px-3 py-2.5 text-gray-600">{formatDisk(d)}</td>;
                         }
                         if (colKey === 'ram') {
-                          return <td key={colKey} className="px-3 py-2.5 text-gray-600">{formatRam(d)}</td>;
+                          const used = Number(d.mem_used_gb ?? d.memUsed);
+                          const total = Number(d.mem_total_gb ?? d.ram_total_gb ?? d.memTotal ?? d.ram?.totalGb);
+                          const usagePct =
+                            Number.isFinite(used) && Number.isFinite(total) && total > 0
+                              ? Math.max(0, Math.min(100, (used / total) * 100))
+                              : null;
+                          return (
+                            <td key={colKey} className="px-3 py-2.5 text-gray-600">
+                              <div className="min-w-[140px]">
+                                <div className="mb-1 text-xs font-semibold text-slate-700">{formatRam(d)}</div>
+                                {usagePct != null ? (
+                                  <div className="h-1 rounded-full bg-slate-200">
+                                    <div
+                                      className={`h-1 rounded-full ${cpuToneClass(usagePct)}`}
+                                      style={{ width: `${usagePct}%` }}
+                                    />
+                                  </div>
+                                ) : null}
+                              </div>
+                            </td>
+                          );
                         }
                         if (colKey === 'patches') {
                           return (

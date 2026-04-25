@@ -329,10 +329,13 @@ export default function DeviceDetail() {
     setAlerts((prev) => prev.filter((a) => a.id !== id));
   };
 
-  const cpu = Number(live?.cpu_usage_pct ?? device?.cpu_usage_pct);
-  const memUsed = Number(live?.mem_used_gb ?? device?.mem_used_gb);
-  const memTotal = Number(live?.mem_total_gb ?? device?.mem_total_gb ?? device?.ram_total_gb);
-  const diskUsedPct = Number.isFinite(Number(device?.disk_free_pct)) ? 100 - Number(device?.disk_free_pct) : null;
+  const cpu = Number(live?.cpu_usage_pct ?? device?.cpu_usage_pct ?? device?.cpuUsage);
+  const memUsed = Number(live?.mem_used_gb ?? device?.mem_used_gb ?? device?.memUsed);
+  const memTotal = Number(live?.mem_total_gb ?? device?.mem_total_gb ?? device?.ram_total_gb ?? device?.memTotal);
+  const ramPct = Number.isFinite(memUsed) && Number.isFinite(memTotal) && memTotal > 0 ? (memUsed / memTotal) * 100 : null;
+  const diskFree = Number(live?.disk_free_gb ?? device?.disk_free_gb);
+  const diskTotal = Number(live?.disk_total_gb ?? device?.disk_total_gb);
+  const diskPct = Number.isFinite(diskFree) && Number.isFinite(diskTotal) && diskTotal > 0 ? ((diskTotal - diskFree) / diskTotal) * 100 : null;
 
   if (!device) {
     return <Card>Loading device...</Card>;
@@ -353,6 +356,10 @@ export default function DeviceDetail() {
                     <span className={`h-1.5 w-1.5 rounded-full ${statusDotClass(device.status)}`} />
                     {device.status === 'online' ? 'Online' : 'Offline'}
                   </span>
+                  <span className="inline-flex items-center gap-1 rounded-full bg-emerald-100 px-2 py-0.5 text-xs font-semibold text-emerald-900">
+                    <span className="h-1.5 w-1.5 rounded-full bg-emerald-500" />
+                    Live
+                  </span>
                   <span className={`rounded-full px-2 py-0.5 text-xs font-semibold ${String(device.compliance || '').toLowerCase() === 'pass' ? 'bg-emerald-100 text-emerald-900' : 'bg-red-100 text-red-900'}`}>
                     {String(device.compliance || '').toLowerCase() === 'pass' ? 'Pass' : 'Fail'}
                   </span>
@@ -366,8 +373,8 @@ export default function DeviceDetail() {
           <div className="w-full max-w-sm space-y-2">
             {[
               ['CPU', cpu, barTone(cpu)],
-              ['Memory', memTotal > 0 ? (memUsed / memTotal) * 100 : null, 'bg-amber-500'],
-              ['Disk', diskUsedPct, 'bg-blue-500'],
+              ['RAM', ramPct, barTone(ramPct)],
+              ['Disk', diskPct, barTone(diskPct)],
             ].map(([label, pct, tone]) => (
               <div key={label}>
                 <div className="mb-1 flex items-center justify-between text-xs text-slate-600">
@@ -376,6 +383,13 @@ export default function DeviceDetail() {
                 </div>
                 <div className="h-2 rounded-full bg-slate-200">
                   <div className={`h-2 rounded-full ${tone}`} style={{ width: `${usageBar(pct)}%` }} />
+                </div>
+                <div className="mt-1 text-right text-[11px] font-medium text-slate-600">
+                  {label === 'CPU'
+                    ? formatPct(pct)
+                    : label === 'RAM'
+                      ? (Number.isFinite(memUsed) && Number.isFinite(memTotal) ? `${memUsed.toFixed(1)} / ${memTotal.toFixed(1)} GB` : '—')
+                      : (Number.isFinite(diskFree) && Number.isFinite(diskTotal) ? `${diskFree.toFixed(1)} / ${diskTotal.toFixed(1)} GB free` : '—')}
                 </div>
               </div>
             ))}

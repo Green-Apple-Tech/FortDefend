@@ -11,14 +11,6 @@ const db = require('./database');
 const { startTrialMonitor } = require('./agents/trialMonitor');
 const enrollmentModule = require('./routes/enrollment');
 
-// Initialize Firebase
-try {
-  require('./utils/fcm');
-  console.log('[FortDefend] Firebase FCM loaded');
-} catch (err) {
-  console.error('[FortDefend] Firebase FCM failed to load:', err.message);
-}
-
 const app = express();
 
 // ── Security headers ──────────────────────────────────────────────────────────

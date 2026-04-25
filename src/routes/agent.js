@@ -536,7 +536,9 @@ router.post('/heartbeat', async (req, res) => {
       return safe200({ ok: false, commands: [], error: 'Subscription inactive.' });
     }
 
-    const payload = req.body || {};
+    const body = req.body || {};
+    console.log('[heartbeat] metrics:', { cpu: body.cpuUsage, memUsed: body.memUsed, memTotal: body.memTotal });
+    const payload = body;
     const orgSettings = await db('orgs')
       .where({ id: auth.orgId })
       .select('id', 'auto_update_agent')
@@ -591,7 +593,10 @@ router.post('/heartbeat', async (req, res) => {
     const normalizedOs = normalizeOsName(telemetry.osName || payload.os || existing?.os || 'Microsoft Windows');
     const normalizedOsVersion = telemetry.osVersion || payload.osVersion || payload.os_version || existing?.os_version || null;
     const now = new Date();
-    const cpuUsagePct = toNum(telemetry.cpuUsagePct ?? payload.cpuUsage, existing?.cpu_usage_pct ?? null);
+    const cpuUsagePct = toNum(
+      telemetry.cpuUsagePct ?? payload.cpuUsage ?? payload.cpu_usage_pct,
+      existing?.cpu_usage_pct ?? null,
+    );
     const ramUsagePct = toNum(telemetry.ramUsagePct, existing?.ram_usage_pct ?? null);
     const diskFreePct = toNum(telemetry.diskFreePct, null);
     const priorCpuSince = toDateOrNull(existing?.high_cpu_since);
@@ -607,8 +612,8 @@ router.post('/heartbeat', async (req, res) => {
       logged_in_user: telemetry.loggedInUser || existing?.logged_in_user || null,
       cpu_model: telemetry.cpuModel || existing?.cpu_model || null,
       cpu_usage_pct: toNum(telemetry.cpuUsagePct ?? payload.cpuUsage ?? payload.cpu_usage_pct, cpuUsagePct),
-      mem_used_gb: toNum(payload.memUsed ?? telemetry.memUsedGb, existing?.mem_used_gb ?? null),
-      mem_total_gb: toNum(payload.memTotal ?? telemetry.memTotalGb, existing?.mem_total_gb ?? null),
+      mem_used_gb: toNum(payload.memUsed ?? payload.mem_used_gb ?? telemetry.memUsedGb, existing?.mem_used_gb ?? null),
+      mem_total_gb: toNum(payload.memTotal ?? payload.mem_total_gb ?? telemetry.memTotalGb, existing?.mem_total_gb ?? null),
       ram_total_gb: toNum(telemetry.ramTotalGb ?? payload?.ram?.totalGb, existing?.ram_total_gb ?? null),
       ram_usage_pct: ramUsagePct,
       disk_total_gb: toNum(telemetry.diskTotalGb ?? payload?.disk?.totalGb, existing?.disk_total_gb ?? null),

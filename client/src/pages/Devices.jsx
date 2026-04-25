@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { createPortal } from 'react-dom';
 import { useSearchParams } from 'react-router-dom';
 import { api } from '../lib/api';
 import { Button, Card, Input } from '../components/ui';
@@ -322,6 +323,7 @@ export default function Devices() {
   const [groupSettingsName, setGroupSettingsName] = useState('');
   const [groupLocalReboot, setGroupLocalReboot] = useState(true);
   const [groupLocalPatch, setGroupLocalPatch] = useState(true);
+  const [headerControlsTarget, setHeaderControlsTarget] = useState(null);
 
   const groupsFlat = useMemo(() => flattenGroupTree(groupsTree), [groupsTree]);
   const dbLookup = useMemo(() => buildDbDeviceLookup(dbList), [dbList]);
@@ -359,6 +361,14 @@ export default function Devices() {
     api('/api/scripts')
       .then((res) => setScripts(Array.isArray(res?.scripts) ? res.scripts : []))
       .catch(() => setScripts([]));
+  }, []);
+
+  useEffect(() => {
+    const node = document.getElementById('app-layout-title-controls');
+    setHeaderControlsTarget(node || null);
+    return () => {
+      setHeaderControlsTarget(null);
+    };
   }, []);
 
   useEffect(() => {
@@ -912,13 +922,13 @@ export default function Devices() {
 
   return (
     <div className="space-y-4">
-      <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
-        <label className="block min-w-0 flex-1 text-sm font-medium text-slate-700 dark:text-slate-300">
-          <span className="mb-1 block">Group scope</span>
+      {headerControlsTarget &&
+        createPortal(
           <select
+            aria-label="Group scope"
             value={groupScope}
             onChange={(e) => setGroupScope(e.target.value)}
-            className="w-full max-w-md rounded-lg border border-fds-border bg-fds-card px-3 py-2.5 text-sm text-slate-900 shadow-sm focus:border-brand focus:outline-none focus:ring-2 focus:ring-brand/20 dark:text-slate-100"
+            className="max-w-[220px] rounded-md border border-fds-border bg-white px-2.5 py-1.5 pr-7 text-xs font-medium text-slate-700 shadow-sm focus:border-brand focus:outline-none focus:ring-2 focus:ring-brand/20"
           >
             <option value="all">All Devices</option>
             <option value="ungrouped">Ungrouped</option>
@@ -927,9 +937,9 @@ export default function Devices() {
                 {`${'— '.repeat(g.depth)}${g.name}`}
               </option>
             ))}
-          </select>
-        </label>
-      </div>
+          </select>,
+          headerControlsTarget,
+        )}
 
       <div className="flex gap-0 overflow-x-auto border-b border-fds-border">
         {[

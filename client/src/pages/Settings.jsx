@@ -5,6 +5,7 @@ import { useAuth } from '../context/AuthContext';
 import { Card, Button, Input } from '../components/ui';
 import { SectionHeader, ToggleCard } from '../components/fds';
 import MspDashboard from './MspDashboard';
+import Groups from './groups';
 
 const LS_PREFIX = 'fds_settings_v1_';
 
@@ -30,7 +31,9 @@ export default function Settings() {
   const { user } = useAuth();
   const [searchParams, setSearchParams] = useSearchParams();
   const isMspUser = user?.role === 'msp';
-  const mspTabActive = isMspUser && searchParams.get('tab') === 'msp';
+  const activeTab = searchParams.get('tab') || 'general';
+  const mspTabActive = isMspUser && activeTab === 'msp';
+  const groupsTabActive = activeTab === 'groups';
 
   useEffect(() => {
     if (searchParams.get('tab') === 'msp' && !isMspUser) {
@@ -67,6 +70,7 @@ export default function Settings() {
   const [heartbeat30, setHeartbeat30] = useState(() => loadBool('heartbeat30', true));
   const [autoUpdateAgent, setAutoUpdateAgent] = useState(() => loadBool('autoUpdateAgent', true));
   const [fullInventory, setFullInventory] = useState(() => loadBool('fullInventory', true));
+  const [smartRules, setSmartRules] = useState([{ field: 'os', condition: 'equals', value: 'Windows 11' }]);
 
   useEffect(() => {
     let cancelled = false;
@@ -150,6 +154,14 @@ export default function Settings() {
     </div>
   );
 
+  const addSmartRule = () => {
+    setSmartRules((prev) => [...prev, { field: 'os', condition: 'equals', value: '' }]);
+  };
+
+  const updateSmartRule = (idx, key, value) => {
+    setSmartRules((prev) => prev.map((r, i) => (i === idx ? { ...r, [key]: value } : r)));
+  };
+
   return (
     <div className={`mx-auto space-y-8 ${mspTabActive ? 'max-w-5xl' : 'max-w-3xl'}`}>
       <SectionHeader
@@ -171,10 +183,28 @@ export default function Settings() {
             )
           }
           className={`border-b-2 px-4 py-2.5 text-sm font-semibold transition ${
-            !mspTabActive ? 'border-brand text-brand' : 'border-transparent text-slate-600 hover:text-slate-900'
+            !mspTabActive && !groupsTabActive ? 'border-brand text-brand' : 'border-transparent text-slate-600 hover:text-slate-900'
           }`}
         >
           General
+        </button>
+        <button
+          type="button"
+          onClick={() =>
+            setSearchParams(
+              (prev) => {
+                const p = new URLSearchParams(prev);
+                p.set('tab', 'groups');
+                return p;
+              },
+              { replace: true },
+            )
+          }
+          className={`border-b-2 px-4 py-2.5 text-sm font-semibold transition ${
+            groupsTabActive ? 'border-brand text-brand' : 'border-transparent text-slate-600 hover:text-slate-900'
+          }`}
+        >
+          Groups
         </button>
         {isMspUser && (
           <button
@@ -202,9 +232,67 @@ export default function Settings() {
         <div className="rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-2 text-sm text-emerald-900">{msg}</div>
       )}
 
+      {groupsTabActive ? (
+        <>
+          <Card className="p-0 overflow-hidden">
+            <Groups embedded />
+          </Card>
+          <Card className="space-y-4">
+            <div>
+              <h2 className="text-sm font-semibold text-slate-900">Smart Groups</h2>
+              <p className="mt-1 text-sm text-slate-600">Auto-built dynamic groups based on live device state.</p>
+            </div>
+            <div className="grid gap-2 sm:grid-cols-2">
+              {[
+                'Online Devices (last_seen < 5 min)',
+                'Offline Devices (last_seen > 60 min)',
+                'Needs Updates (has update_available apps)',
+                'High Risk (security_score < 50)',
+              ].map((label) => (
+                <div key={label} className="rounded-lg border border-fds-border bg-slate-50 px-3 py-2 text-sm text-slate-800">
+                  {label}
+                </div>
+              ))}
+            </div>
+            <div className="space-y-3 border-t border-fds-border pt-4">
+              <h3 className="text-sm font-semibold text-slate-900">Custom Smart Group Builder</h3>
+              {smartRules.map((rule, idx) => (
+                <div key={idx} className="grid gap-2 sm:grid-cols-3">
+                  <select
+                    value={rule.field}
+                    onChange={(e) => updateSmartRule(idx, 'field', e.target.value)}
+                    className="rounded-lg border border-fds-border bg-white px-3 py-2 text-sm"
+                  >
+                    <option value="os">OS</option>
+                    <option value="disk_free_gb">Disk (GB)</option>
+                    <option value="security_score">Security Score</option>
+                    <option value="last_seen">Last Seen</option>
+                  </select>
+                  <select
+                    value={rule.condition}
+                    onChange={(e) => updateSmartRule(idx, 'condition', e.target.value)}
+                    className="rounded-lg border border-fds-border bg-white px-3 py-2 text-sm"
+                  >
+                    <option value="equals">=</option>
+                    <option value="contains">contains</option>
+                    <option value="lt">&lt;</option>
+                    <option value="gt">&gt;</option>
+                  </select>
+                  <Input value={rule.value} onChange={(e) => updateSmartRule(idx, 'value', e.target.value)} placeholder="Value" />
+                </div>
+              ))}
+              <div className="flex gap-2">
+                <Button type="button" variant="outline" onClick={addSmartRule}>Add Rule</Button>
+                <Button type="button">Save Smart Group</Button>
+              </div>
+            </div>
+          </Card>
+        </>
+      ) : null}
+
       {mspTabActive ? (
         <MspDashboard />
-      ) : (
+      ) : !groupsTabActive ? (
         <>
       <Card>
         <h2 className="text-sm font-semibold text-slate-900">Organization</h2>
@@ -421,7 +509,7 @@ export default function Settings() {
         )}
       </Card>
         </>
-      )}
+      ) : null}
     </div>
   );
 }

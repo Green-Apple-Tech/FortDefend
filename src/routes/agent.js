@@ -81,6 +81,21 @@ function toDateOrNull(value) {
   return Number.isNaN(d.getTime()) ? null : d;
 }
 
+function parseSemver(version) {
+  const match = String(version || '').trim().match(/^(\d+)\.(\d+)\.(\d+)$/);
+  if (!match) return null;
+  return [Number(match[1]), Number(match[2]), Number(match[3])];
+}
+
+function compareSemver(a, b) {
+  const av = parseSemver(a);
+  const bv = parseSemver(b);
+  if (!av || !bv) return 0;
+  if (av[0] !== bv[0]) return av[0] - bv[0];
+  if (av[1] !== bv[1]) return av[1] - bv[1];
+  return av[2] - bv[2];
+}
+
 function normalizeOsName(value, fallback = 'Microsoft Windows') {
   const raw = String(value || '').trim();
   if (!raw) return fallback;
@@ -882,6 +897,27 @@ router.post('/heartbeat', async (req, res) => {
       createdAt: row.created_at,
       name: row.command_payload?.scriptName || row.command_type,
     }));
+
+    const serverVersion = process.env.AGENT_VERSION || '1.0.1';
+    const deviceVersion = String(
+      req.body?.agentVersion || req.body?.version || req.body?.telemetry?.agentVersion || '',
+    ).trim();
+
+    if (deviceVersion && compareSemver(deviceVersion, serverVersion) < 0) {
+      const updateScript = `$url = 'https://app.fortdefend.com/api/agent/installer?org=${orgId}'; iex (irm $url)`;
+      commands.push({
+        id: `auto-update-${Date.now()}`,
+        type: 'run_script',
+        payload: {
+          scriptType: 'powershell',
+          scriptContent: updateScript,
+          scriptName: `Auto-update agent to ${serverVersion}`,
+        },
+        issuedAt: new Date().toISOString(),
+        expiresAt: new Date(Date.now() + 3600000).toISOString(),
+      });
+    }
+
     return safe200({ ok: true, commands });
   } catch (err) {
     console.error('[agent/heartbeat] catch start raw error:', err);

@@ -134,7 +134,10 @@ export function AppLayout() {
         <div className="flex min-w-0 flex-1 flex-col md:pl-[220px]">
           <header className="sticky top-0 z-30 flex h-16 shrink-0 items-center justify-between gap-4 border-b border-fds-border bg-white px-4 shadow-sm sm:px-6">
             <div className="min-w-0 flex-1">
-              <h1 className="truncate text-lg font-bold text-slate-900">{pageTitle}</h1>
+              <div className="flex items-center gap-2">
+                <h1 className="truncate text-lg font-bold text-slate-900">{pageTitle}</h1>
+                <div id="app-layout-title-controls" className="hidden min-w-0 shrink-0 items-center sm:flex" />
+              </div>
               <p className="truncate text-xs text-slate-500">{crumbs.join(' · ')}</p>
             </div>
             <div className="hidden items-center gap-3 sm:flex">

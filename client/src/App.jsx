@@ -41,7 +41,7 @@ export default function App() {
               <Route path="/dashboard" element={<Dashboard />} />
               <Route path="/devices" element={<Devices />} />
               <Route path="/software" element={<Navigate to="/devices?tab=software" replace />} />
-              <Route path="/groups" element={<Navigate to="/devices" replace />} />
+              <Route path="/groups" element={<Navigate to="/settings?tab=groups" replace />} />
               <Route path="/reports" element={<Reports />} />
               <Route path="/alerts" element={<Navigate to="/devices?tab=alerts" replace />} />
               <Route path="/billing" element={<Billing />} />

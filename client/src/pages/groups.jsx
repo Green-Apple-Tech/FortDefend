@@ -124,7 +124,7 @@ function DeviceCard({ device, groupId, onRemove }) {
   );
 }
 
-export default function Groups() {
+export default function Groups({ embedded = false } = {}) {
   const [groups, setGroups] = useState([]);
   const [selectedGroup, setSelectedGroup] = useState(null);
   const [devices, setDevices] = useState([]);
@@ -271,7 +271,7 @@ export default function Groups() {
   }
 
   return (
-    <div className="flex h-full min-h-screen bg-gray-50">
+    <div className={`flex h-full bg-gray-50 ${embedded ? 'min-h-[28rem]' : 'min-h-screen'}`}>
       <div className="w-72 bg-white border-r border-gray-200 flex flex-col">
         <div className="flex items-center justify-between px-4 py-3 border-b border-gray-200">
           <h2 className="font-semibold text-gray-800 text-sm">Groups</h2>

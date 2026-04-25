@@ -461,11 +461,12 @@ router.post('/heartbeat', async (req, res) => {
   const currentAgentVersion = process.env.AGENT_VERSION || '1.0.1';
   const safe200 = (body = {}) => {
     const status = body.ok === false ? 'error' : 'ok';
+    const commands = Array.isArray(body.commands) ? body.commands : [];
     return res.status(200).json({
-      status,
-      commands: Array.isArray(body.commands) ? body.commands : [],
-      currentAgentVersion,
       ...body,
+      status,
+      commands,
+      currentAgentVersion,
     });
   };
   try {

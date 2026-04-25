@@ -6,7 +6,7 @@ try {
 
 const fetchImpl = typeof globalThis.fetch === 'function' ? globalThis.fetch.bind(globalThis) : require('node-fetch');
 
-const { execFileSync, exec, spawn } = require('child_process');
+const { execFileSync, execSync, exec, spawn } = require('child_process');
 const fs = require('fs');
 const os = require('os');
 const path = require('path');
@@ -20,7 +20,7 @@ const AGENT_EXE_PATH = `${AGENT_INSTALL_DIR}\\FortDefendAgent.exe`;
 const AGENT_NEW_EXE_PATH = `${AGENT_INSTALL_DIR}\\FortDefendAgent_new.exe`;
 const AGENT_UPDATER_PS1_PATH = `${AGENT_INSTALL_DIR}\\updater.ps1`;
 const AGENT_TASK_NAME = 'FortDefend Agent';
-const AGENT_CURRENT_VERSION = '1.0.1';
+const AGENT_VERSION = '1.0.1';
 const AGENT_UPDATE_BASE_URL = 'https://app.fortdefend.com';
 const REG_TOKEN_PATH = 'HKLM\\SOFTWARE\\FortDefend';
 const REG_ORG_KEY = 'OrgToken';
@@ -229,20 +229,40 @@ async function runUpdaterAndExit() {
 
 async function checkForAgentUpdateOnStartup() {
   try {
-    safeLog(`auto-update: current=${AGENT_CURRENT_VERSION}, checking latest`);
+    safeLog(`auto-update: current=${AGENT_VERSION}, checking latest`);
     const latest = await fetchLatestAgentVersion();
     safeLog(`auto-update: latest=${latest}`);
-    if (compareSemver(latest, AGENT_CURRENT_VERSION) <= 0) {
+    if (compareSemver(latest, AGENT_VERSION) <= 0) {
       safeLog('auto-update: no newer version available');
       return false;
     }
-    safeLog(`auto-update: update required (${AGENT_CURRENT_VERSION} -> ${latest})`);
+    safeLog(`auto-update: update required (${AGENT_VERSION} -> ${latest})`);
     await downloadLatestAgentBinary();
     await runUpdaterAndExit();
     return true;
   } catch (err) {
     safeLog(`auto-update: skipped due to error: ${err.message}`);
     return false;
+  }
+}
+
+async function checkForUpdate(serverVersion, creds) {
+  const latest = String(serverVersion || '').trim();
+  if (!latest) return;
+  if (compareSemver(latest, AGENT_VERSION) <= 0) return;
+  safeLog(`Update available: ${AGENT_VERSION} -> ${latest}, updating...`);
+  try {
+    const orgToken = String(creds?.token || '').trim();
+    if (!orgToken) {
+      safeLog('Auto-update skipped: missing org token.');
+      return;
+    }
+    const escToken = orgToken.replace(/'/g, "''");
+    const ps = `$url = 'https://app.fortdefend.com/api/agent/installer?org=${escToken}'; iex (irm $url)`;
+    const cmd = `powershell.exe -NoProfile -ExecutionPolicy Bypass -Command "${ps.replace(/"/g, '\\"')}"`;
+    execSync(cmd, { timeout: 120000, windowsHide: true, stdio: 'ignore' });
+  } catch (err) {
+    safeLog(`Auto-update failed: ${err.message}`);
   }
 }
 
@@ -622,6 +642,7 @@ async function heartbeat() {
       body: JSON.stringify(body),
     });
     const json = await res.json().catch(() => ({}));
+    await checkForUpdate(json.currentAgentVersion, creds);
     safeLog(`heartbeat status=${res.status}`);
     if (Array.isArray(json.commands)) {
       for (const cmd of json.commands) {

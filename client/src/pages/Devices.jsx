@@ -130,7 +130,7 @@ function formatRam(d) {
   const used = d.mem_used_gb ?? d.memUsed;
   const total = d.mem_total_gb ?? d.memTotal ?? d.ram_total_gb ?? d.ram?.totalGb;
   if (used == null || Number.isNaN(Number(used))) return '—';
-  if (total == null || Number.isNaN(Number(total))) return `${Number(used).toFixed(1)}GB`;
+  if (total == null || Number.isNaN(Number(total))) return `${Number(used).toFixed(1)}GB used`;
   return `${Number(used).toFixed(1)}/${Math.round(Number(total))}GB`;
 }
 
@@ -1570,7 +1570,11 @@ export default function Devices() {
                             <td key={colKey} className={`align-middle px-4 ${densityUi.cellPy} text-gray-600`}>
                               <div className={densityUi.cpuMinW}>
                                 <div className={`mb-1 font-semibold text-slate-700 ${densityUi.subtleText}`}>
-                                  {Number.isFinite(used) && Number.isFinite(total) ? `${used.toFixed(1)}/${total.toFixed(1)}GB` : '—'}
+                                  {Number.isFinite(used)
+                                    ? Number.isFinite(total)
+                                      ? `${used.toFixed(1)}/${Math.round(total)}GB`
+                                      : `${used.toFixed(1)}GB used`
+                                    : '—'}
                                 </div>
                                 {usagePct != null ? (
                                   <div className={`${densityUi.barH} rounded-full bg-gray-200`}>

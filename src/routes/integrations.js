@@ -382,6 +382,36 @@ router.post('/devices/:id/reboot', requireAuth, requireAdmin, async (req, res) =
   }
 });
 
+router.delete('/devices/:id', requireAuth, async (req, res) => {
+  try {
+    const { id } = req.params;
+    const device = await db('devices')
+      .where('org_id', req.user.orgId)
+      .where(function inner() {
+        this.where('id', id).orWhere('external_id', id);
+      })
+      .first();
+    if (!device) return res.status(404).json({ error: 'Device not found.' });
+
+    await db.transaction(async (trx) => {
+      await trx('sm_device_apps')
+        .where({ org_id: req.user.orgId, device_id: device.id })
+        .delete();
+      await trx('device_groups')
+        .where({ org_id: req.user.orgId, device_id: device.id })
+        .delete();
+      await trx('devices')
+        .where({ org_id: req.user.orgId, id: device.id })
+        .delete();
+    });
+
+    return res.json({ success: true });
+  } catch (err) {
+    console.error('Integrations delete device error:', err);
+    return res.status(500).json({ error: 'Failed to delete device.' });
+  }
+});
+
 router.delete('/intune', requireAuth, requireAdmin, async (req, res) => {
   try {
     await db('org_integrations')

@@ -11,11 +11,11 @@ import RebootPolicies from './RebootPolicies';
 
 const MAIN_DEVICE_TAB_IDS = new Set(['devices', 'software', 'alerts', 'scripts', 'reboot', 'settings']);
 
-const PAGE_SIZE = 25;
 const POLL_MS = 30_000;
 const DEVICE_COLUMNS_LS_KEY = 'fortdefend_devices_column_order_v1';
 const DEVICE_DENSITY_LS_KEY = 'fortdefend_devices_density_v1';
 const DEVICE_ROW_HEIGHT_LS_KEY = 'fortdefend_row_height';
+const DEVICE_PAGE_SIZE_LS_KEY = 'fortdefend_page_size';
 const DEFAULT_COLUMN_ORDER = [
   'os',
   'source',
@@ -31,7 +31,7 @@ const DEFAULT_COLUMN_ORDER = [
   'patches',
 ];
 const DEFAULT_EXPECTED_AGENT_VERSION = '1.0.1';
-const DENSITY_OPTIONS = ['compact', 'normal', 'comfortable'];
+const DENSITY_OPTIONS = ['micro', 'compact', 'normal', 'comfortable', 'spacious'];
 
 function formatRelativeTime(iso) {
   if (!iso) return '—';
@@ -352,7 +352,8 @@ export default function Devices() {
   const [scripts, setScripts] = useState([]);
   const [columnOrder, setColumnOrder] = useState(DEFAULT_COLUMN_ORDER);
   const [density, setDensity] = useState('normal');
-  const [rowHeight, setRowHeight] = useState(56);
+  const [rowHeight, setRowHeight] = useState(48);
+  const [pageSize, setPageSize] = useState(25);
   const [draggedColumn, setDraggedColumn] = useState(null);
   const menuRef = useRef(null);
   const panelHeaderMenuRef = useRef(null);
@@ -459,7 +460,7 @@ export default function Devices() {
   useEffect(() => {
     try {
       const raw = Number(localStorage.getItem(DEVICE_ROW_HEIGHT_LS_KEY));
-      if (Number.isFinite(raw) && raw >= 40 && raw <= 120) setRowHeight(raw);
+      if (Number.isFinite(raw) && raw >= 20 && raw <= 120) setRowHeight(raw);
     } catch {
       /* ignore */
     }
@@ -472,6 +473,28 @@ export default function Devices() {
       /* ignore */
     }
   }, [rowHeight]);
+
+  useEffect(() => {
+    try {
+      const raw = localStorage.getItem(DEVICE_PAGE_SIZE_LS_KEY);
+      if (raw === 'all') {
+        setPageSize('all');
+        return;
+      }
+      const parsed = Number(raw);
+      if ([10, 25, 50, 100].includes(parsed)) setPageSize(parsed);
+    } catch {
+      /* ignore */
+    }
+  }, []);
+
+  useEffect(() => {
+    try {
+      localStorage.setItem(DEVICE_PAGE_SIZE_LS_KEY, String(pageSize));
+    } catch {
+      /* ignore */
+    }
+  }, [pageSize]);
 
   useEffect(() => {
     if (!toast) return undefined;
@@ -775,12 +798,13 @@ export default function Devices() {
   }, [rows, expectedAgentVersion]);
 
   const total = sorted.length;
-  const pageCount = Math.max(1, Math.ceil(total / PAGE_SIZE));
+  const effectivePageSize = pageSize === 'all' ? Math.max(1, total || 1) : Number(pageSize);
+  const pageCount = pageSize === 'all' ? 1 : Math.max(1, Math.ceil(total / effectivePageSize));
   const currentPage = Math.min(page, pageCount);
-  const pageStart = (currentPage - 1) * PAGE_SIZE;
+  const pageStart = pageSize === 'all' ? 0 : (currentPage - 1) * effectivePageSize;
   const pageItems = useMemo(
-    () => sorted.slice(pageStart, pageStart + PAGE_SIZE),
-    [sorted, pageStart]
+    () => (pageSize === 'all' ? sorted : sorted.slice(pageStart, pageStart + effectivePageSize)),
+    [sorted, pageStart, pageSize, effectivePageSize]
   );
   const fleetSummary = useMemo(() => {
     let online = 0;
@@ -839,7 +863,7 @@ export default function Devices() {
 
   useEffect(() => {
     setPage(1);
-  }, [q, sourceFilter, statusFilter, osFilter, sortKey, sortDir, groupScope]);
+  }, [q, sourceFilter, statusFilter, osFilter, sortKey, sortDir, groupScope, pageSize]);
 
   const toggleSort = (key) => {
     if (sortKey === key) {
@@ -898,11 +922,24 @@ export default function Devices() {
   }, [columnOrder]);
 
   const densityUi = useMemo(() => {
+    if (density === 'micro') {
+      return {
+        tableText: 'text-xs',
+        headerPy: 'py-1',
+        cellPy: 'py-1',
+        subtleText: 'text-[10px]',
+        statusBadge: 'px-1.5 py-0.5 text-[10px]',
+        sourceBadge: 'px-1.5 py-0.5 text-[10px]',
+        scoreCircle: 'h-7 w-7 text-[10px]',
+        cpuMinW: 'min-w-[84px]',
+        barH: 'h-1.5',
+      };
+    }
     if (density === 'compact') {
       return {
         tableText: 'text-xs',
         headerPy: 'py-2',
-        cellPy: 'py-1',
+        cellPy: 'py-1.5',
         subtleText: 'text-[11px]',
         statusBadge: 'px-2 py-0.5 text-[11px]',
         sourceBadge: 'px-2 py-0.5 text-[11px]',
@@ -913,12 +950,25 @@ export default function Devices() {
     }
     if (density === 'comfortable') {
       return {
+        tableText: 'text-sm',
+        headerPy: 'py-3.5',
+        cellPy: 'py-4',
+        subtleText: 'text-sm',
+        statusBadge: 'px-4 py-1.5 text-sm',
+        sourceBadge: 'px-4 py-1.5 text-sm',
+        scoreCircle: 'h-12 w-12 text-base',
+        cpuMinW: 'min-w-[150px]',
+        barH: 'h-3.5',
+      };
+    }
+    if (density === 'spacious') {
+      return {
         tableText: 'text-base',
         headerPy: 'py-4',
         cellPy: 'py-5',
         subtleText: 'text-sm',
-        statusBadge: 'px-4 py-1.5 text-sm',
-        sourceBadge: 'px-4 py-1.5 text-sm',
+        statusBadge: 'px-5 py-2 text-sm',
+        sourceBadge: 'px-5 py-2 text-sm',
         scoreCircle: 'h-14 w-14 text-lg',
         cpuMinW: 'min-w-[160px]',
         barH: 'h-4',
@@ -936,6 +986,19 @@ export default function Devices() {
       barH: 'h-3',
     };
   }, [density]);
+
+  const applyDensityPreset = (nextDensity) => {
+    setDensity(nextDensity);
+    const presets = {
+      micro: 20,
+      compact: 32,
+      normal: 48,
+      comfortable: 64,
+      spacious: 80,
+    };
+    const nextHeight = presets[nextDensity];
+    if (Number.isFinite(nextHeight)) setRowHeight(nextHeight);
+  };
 
   const exportCsv = () => {
     const headers = [
@@ -1311,44 +1374,6 @@ export default function Devices() {
       </div>
 
       <Card className="overflow-hidden rounded-xl border border-gray-100 p-0 shadow-md">
-        <div className="flex flex-wrap items-center justify-end gap-3 border-b border-gray-100 bg-white px-4 py-2">
-          <div className="inline-flex items-center rounded-lg border border-gray-200 bg-gray-50 p-1">
-            {[
-              { id: 'compact', icon: '☰', label: 'Compact' },
-              { id: 'normal', icon: '≡', label: 'Normal' },
-              { id: 'comfortable', icon: '□', label: 'Comfortable' },
-            ].map((opt) => (
-              <button
-                key={opt.id}
-                type="button"
-                title={opt.label}
-                aria-label={opt.label}
-                onClick={() => setDensity(opt.id)}
-                className={`rounded-md px-2 py-1 text-sm font-semibold transition ${
-                  density === opt.id
-                    ? 'bg-white text-brand shadow-sm'
-                    : 'text-slate-600 hover:bg-white hover:text-slate-800'
-                }`}
-              >
-                {opt.icon}
-              </button>
-            ))}
-          </div>
-          <div className="inline-flex items-center gap-2 text-xs text-slate-600">
-            <span className="font-semibold">↕ Row height</span>
-            <input
-              type="range"
-              min="40"
-              max="120"
-              step="4"
-              value={rowHeight}
-              onChange={(e) => setRowHeight(Number(e.target.value))}
-              className="w-20 accent-brand"
-              aria-label="Row height"
-            />
-            <span className="w-10 text-right font-semibold text-slate-700">{rowHeight}px</span>
-          </div>
-        </div>
         <div className="max-h-[min(70vh,900px)] overflow-auto">
           {loading ? (
             <p className="p-6 text-sm text-gray-500">Loading…</p>
@@ -1683,10 +1708,66 @@ export default function Devices() {
           )}
         </div>
         {!loading && total > 0 && (
-          <div className="flex flex-col items-center justify-between gap-3 border-t border-gray-200 bg-gray-50 px-4 py-3 text-sm text-gray-600 sm:flex-row">
-            <p>
-              Showing {total === 0 ? 0 : pageStart + 1}-{Math.min(pageStart + PAGE_SIZE, total)} of {total} devices
-            </p>
+          <div className="flex flex-wrap items-center gap-3 border-t border-gray-200 bg-gray-50 px-4 py-3 text-sm text-gray-600">
+            <div className="inline-flex items-center rounded-lg border border-gray-200 bg-white p-1">
+              {[
+                { id: 'micro', icon: '☰', label: 'Micro' },
+                { id: 'compact', icon: '≡', label: 'Compact' },
+                { id: 'normal', icon: '□', label: 'Normal' },
+                { id: 'comfortable', icon: '▢', label: 'Comfortable' },
+                { id: 'spacious', icon: '▭', label: 'Spacious' },
+              ].map((opt) => (
+                <button
+                  key={opt.id}
+                  type="button"
+                  title={opt.label}
+                  aria-label={opt.label}
+                  onClick={() => applyDensityPreset(opt.id)}
+                  className={`rounded-md px-2 py-1 text-sm font-semibold transition ${
+                    density === opt.id
+                      ? 'bg-brand/10 text-brand shadow-sm'
+                      : 'text-slate-600 hover:bg-slate-100 hover:text-slate-800'
+                  }`}
+                >
+                  {opt.icon}
+                </button>
+              ))}
+            </div>
+            <div className="inline-flex items-center gap-2 text-xs text-slate-600">
+              <span className="font-semibold">↕</span>
+              <input
+                type="range"
+                min="20"
+                max="120"
+                step="4"
+                value={rowHeight}
+                onChange={(e) => setRowHeight(Number(e.target.value))}
+                className="w-20 accent-brand"
+                aria-label="Row height"
+              />
+              <span className="w-10 text-right font-semibold text-slate-700">{rowHeight}px</span>
+            </div>
+            <span className="ml-auto">
+              Showing {total === 0 ? 0 : pageStart + 1}-{Math.min(pageStart + effectivePageSize, total)} of {total}
+            </span>
+            <label className="inline-flex items-center gap-2 text-sm">
+              <span className="text-slate-600">Per page:</span>
+              <select
+                value={String(pageSize)}
+                onChange={(e) => {
+                  const v = e.target.value;
+                  setPage(1);
+                  setPageSize(v === 'all' ? 'all' : Number(v));
+                }}
+                className="rounded-md border border-gray-300 bg-white px-2 py-1 text-sm"
+              >
+                <option value="10">10</option>
+                <option value="25">25</option>
+                <option value="50">50</option>
+                <option value="100">100</option>
+                <option value="all">All</option>
+              </select>
+            </label>
             <div className="flex items-center gap-2">
               <Button
                 type="button"

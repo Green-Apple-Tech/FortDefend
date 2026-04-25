@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
+import QRCode from 'qrcode.react';
 import { api } from '../lib/api';
 import { Card } from '../components/ui';
 import { SectionHeader } from '../components/fds';
@@ -13,6 +14,7 @@ const btnOutline =
 /** Replace with your published extension ID from the Chrome Web Store / Google Admin. */
 const FORTDEFEND_EXTENSION_ID = 'FORTDEFEND_EXTENSION_ID';
 const CHROME_WEB_STORE_URL = 'https://chrome.google.com/webstore/detail/fortdefend/FORTDEFEND_EXTENSION_ID';
+const ANDROID_BUILD_URL = 'https://expo.dev/accounts/fortdefend/projects/fortdefend/builds/048a7cf1-0b85-4a94-a0a8-2e6af21b6aeb';
 
 function formatBytes(n) {
   if (!Number.isFinite(n) || n < 0) return '';
@@ -457,40 +459,38 @@ export default function Install() {
         <Card>
           <h2 className="text-lg font-semibold text-slate-900">Android</h2>
           <p className="mt-1 text-sm text-slate-600">Android 8.0+. Enable push notifications for fastest command delivery (FCM).</p>
+          <div className="mt-4 rounded-lg border border-blue-200 bg-blue-50 px-4 py-3">
+            <p className="text-sm font-semibold text-slate-900">Your org token</p>
+            <div className="mt-2 flex flex-wrap items-center gap-2">
+              <code className="rounded bg-white px-2 py-1 text-xs text-slate-800 ring-1 ring-blue-200">
+                {data?.token || '—'}
+              </code>
+              {data?.token ? <CopyInline text={data.token} label="Copy" /> : null}
+            </div>
+          </div>
           <NumberedSteps
             items={[
-              'Download the APK or open the Play listing on the device you want to enroll.',
-              'Complete onboarding and grant notification permission when prompted.',
-              'Scan the QR code below to jump straight to the enrollment link on another device.',
+              'Scan QR code with Android camera.',
+              'Tap the link to open in browser.',
+              'Download and install the APK.',
+              'Open FortDefend and enter your org token.',
+              'Device appears in dashboard within 30 seconds.',
             ]}
           />
           <div className="mt-4 flex flex-wrap gap-3">
-            <a href={links.apk || '#'} className={!links.apk ? `${btnPrimary} pointer-events-none opacity-50` : btnPrimary}>
-              Download Android app (.apk){apkSize}
-            </a>
-            <a
-              href={data?.googlePlayUrl || '#'}
-              target="_blank"
-              rel="noreferrer"
-              className={!data?.googlePlayUrl ? `${btnOutline} pointer-events-none opacity-50` : btnOutline}
-            >
-              Google Play
+            <a href={ANDROID_BUILD_URL} target="_blank" rel="noreferrer" className={btnPrimary}>
+              Download APK
             </a>
           </div>
-          {links.android && (
-            <div className="mt-8 flex flex-col items-center sm:flex-row sm:items-start sm:gap-10">
-              <div className="rounded-xl border border-fds-border bg-white p-4 shadow-sm ring-1 ring-slate-950/5">
-                <img src={qrUrl(links.android)} alt="QR code for Android enrollment" className="h-44 w-44" width={176} height={176} />
-              </div>
-              <div className="mt-4 max-w-md sm:mt-0">
-                <p className="text-sm font-semibold text-slate-900">Scan with your phone</p>
-                <p className="mt-1 break-all text-xs text-slate-600">{links.android}</p>
-                <div className="mt-2">
-                  <CopyInline text={links.android} label="Copy link" />
-                </div>
-              </div>
+          <div className="mt-8 flex flex-col items-center">
+            <div className="rounded-xl border border-fds-border bg-white p-4 shadow-sm ring-1 ring-slate-950/5">
+              <QRCode value={ANDROID_BUILD_URL} size={200} />
             </div>
-          )}
+            <p className="mt-3 text-sm font-medium text-slate-700">Scan with your Android camera to install</p>
+            <div className="mt-2">
+              <CopyInline text={ANDROID_BUILD_URL} label="Copy build link" />
+            </div>
+          </div>
         </Card>
       )}
 

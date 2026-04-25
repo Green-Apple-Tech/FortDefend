@@ -98,7 +98,7 @@ export function AppLayout() {
                   className={({ isActive }) =>
                     `flex items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium transition ${
                       isActive
-                        ? 'border-l-2 border-blue-500 bg-white/10 text-white'
+                        ? 'border-l-2 border-blue-300 bg-blue-600 text-white'
                         : 'border-l-2 border-transparent text-white/70 hover:bg-white/5 hover:text-white'
                     }`
                   }
@@ -179,8 +179,8 @@ export function AppLayout() {
                   key={to}
                   to={to}
                   className={({ isActive }) =>
-                    `inline-flex items-center gap-1 rounded-md px-2 py-1 text-xs font-medium ${
-                      isActive ? 'bg-brand text-white' : 'bg-slate-100 text-slate-700'
+                    `inline-flex items-center gap-1 rounded-lg border-l-2 px-2 py-1 text-xs font-medium ${
+                      isActive ? 'border-blue-300 bg-blue-600 text-white' : 'border-transparent bg-slate-100 text-slate-700'
                     }`
                   }
                 >

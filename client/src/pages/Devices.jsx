@@ -4,7 +4,6 @@ import { useNavigate } from 'react-router-dom';
 import { useSearchParams } from 'react-router-dom';
 import { api } from '../lib/api';
 import { Button, Card, Input } from '../components/ui';
-import { StatusBadge } from '../components/fds';
 import ScriptRunnerModal from '../components/ScriptRunnerModal';
 import SoftwareManager from './SoftwareManager';
 import Scripts from './Scripts';
@@ -99,6 +98,13 @@ function statusDotClass(status) {
   return 'bg-gray-400';
 }
 
+function statusBadgeClass(status) {
+  if (status === 'online') return 'bg-emerald-500 text-white';
+  if (status === 'warning') return 'bg-amber-500 text-white';
+  if (status === 'alert') return 'bg-red-500 text-white';
+  return 'bg-gray-500 text-white';
+}
+
 function sourceLabel(source) {
   if (source === 'intune') return 'Intune';
   if (source === 'google_admin') return 'Google Admin';
@@ -186,7 +192,7 @@ function renderAgentBadge(deviceVersion, expectedVersion) {
   const current = isCurrentAgentVersion(v, expectedVersion);
   if (current) {
     return (
-      <span className="inline-flex items-center gap-1 rounded-full bg-emerald-100 px-2 py-0.5 text-xs font-semibold text-emerald-900">
+      <span className="inline-flex items-center gap-1 rounded-full bg-emerald-500 px-3 py-1 text-xs font-semibold text-white">
         {v} ✓
       </span>
     );
@@ -1241,7 +1247,7 @@ export default function Devices() {
                   {orderedColumns.map((colKey) => (
                     <th
                       key={colKey}
-                      className={`whitespace-nowrap px-3 py-3 text-[11px] font-semibold uppercase tracking-wide text-slate-500 ${colKey === 'security_score' ? 'text-right' : 'text-left'}`}
+                      className={`whitespace-nowrap px-3 py-3 text-[11px] font-bold uppercase tracking-wide text-blue-700 ${colKey === 'security_score' ? 'text-right' : 'text-left'}`}
                       draggable={colKey !== 'device'}
                       onDragStart={() => {
                         if (colKey === 'device') return;
@@ -1268,7 +1274,7 @@ export default function Devices() {
                       </button>
                     </th>
                   ))}
-                  <th className="sticky right-0 z-20 whitespace-nowrap border-l border-fds-border bg-white px-3 py-3 text-right text-[11px] font-semibold uppercase tracking-wide text-slate-500">
+                  <th className="sticky right-0 z-20 whitespace-nowrap border-l border-fds-border bg-white px-3 py-3 text-right text-[11px] font-bold uppercase tracking-wide text-blue-700">
                     Actions
                   </th>
                 </tr>
@@ -1288,7 +1294,7 @@ export default function Devices() {
                   return (
                     <tr
                       key={k}
-                      className="h-12 cursor-pointer hover:bg-slate-50"
+                      className="h-12 cursor-pointer border-l-2 border-transparent odd:bg-[#F8FAFF] hover:border-l-blue-400 hover:bg-blue-50/60"
                       onClick={() => openDetails(d)}
                       onContextMenu={(e) => {
                         e.preventDefault();
@@ -1325,12 +1331,20 @@ export default function Devices() {
                         if (colKey === 'source') {
                           return (
                             <td key={colKey} className="px-3 py-2.5">
-                              <StatusBadge status="default">{displaySource(d.source)}</StatusBadge>
+                              <span className="inline-flex rounded-full bg-blue-500 px-3 py-1 text-xs font-semibold text-white">
+                                {displaySource(d.source)}
+                              </span>
                             </td>
                           );
                         }
                         if (colKey === 'status') {
-                          return <td key={colKey} className="px-3 py-2.5 capitalize text-gray-700">{st}</td>;
+                          return (
+                            <td key={colKey} className="px-3 py-2.5">
+                              <span className={`inline-flex rounded-full px-3 py-1 text-xs font-semibold capitalize ${statusBadgeClass(st)}`}>
+                                {st}
+                              </span>
+                            </td>
+                          );
                         }
                         if (colKey === 'cpu') {
                           const pct = Number(d.cpu_usage_pct ?? d.cpuUsage);
@@ -1342,9 +1356,9 @@ export default function Devices() {
                               ) : (
                                 <div className="min-w-[120px]">
                                   <div className="mb-1 text-xs font-semibold text-slate-700">{Math.round(safePct)}%</div>
-                                  <div className="h-1 rounded-full bg-slate-200">
+                                  <div className="h-2 rounded-full bg-slate-200">
                                     <div
-                                      className={`h-1 rounded-full ${cpuToneClass(safePct)}`}
+                                      className={`h-2 rounded-full ${cpuToneClass(safePct)}`}
                                       style={{ width: `${safePct}%` }}
                                     />
                                   </div>
@@ -1360,7 +1374,21 @@ export default function Devices() {
                           return <td key={colKey} className="px-3 py-2.5 text-gray-600">{d.compliance || '—'}</td>;
                         }
                         if (colKey === 'security_score') {
-                          return <td key={colKey} className="px-3 py-2.5 text-right font-semibold text-brand">{d.security_score ?? '—'}</td>;
+                          const score = Number(d.security_score);
+                          const tone = !Number.isFinite(score)
+                            ? 'bg-slate-300 text-slate-700'
+                            : score > 80
+                              ? 'bg-emerald-500 text-white'
+                              : score >= 50
+                                ? 'bg-amber-500 text-white'
+                                : 'bg-red-500 text-white';
+                          return (
+                            <td key={colKey} className="px-3 py-2.5 text-right">
+                              <span className={`inline-flex h-8 w-8 items-center justify-center rounded-full text-xs font-bold ${tone}`}>
+                                {Number.isFinite(score) ? Math.round(score) : '—'}
+                              </span>
+                            </td>
+                          );
                         }
                         if (colKey === 'last_seen') {
                           return <td key={colKey} className="whitespace-nowrap px-3 py-2.5 text-gray-600">{formatRelativeTime(getLastSeen(d))}</td>;
@@ -1383,9 +1411,9 @@ export default function Devices() {
                               <div className="min-w-[140px]">
                                 <div className="mb-1 text-xs font-semibold text-slate-700">{formatRam(d)}</div>
                                 {usagePct != null ? (
-                                  <div className="h-1 rounded-full bg-slate-200">
+                                  <div className="h-2 rounded-full bg-slate-200">
                                     <div
-                                      className={`h-1 rounded-full ${cpuToneClass(usagePct)}`}
+                                      className={`h-2 rounded-full ${cpuToneClass(usagePct)}`}
                                       style={{ width: `${usagePct}%` }}
                                     />
                                   </div>

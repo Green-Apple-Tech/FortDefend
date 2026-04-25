@@ -288,7 +288,8 @@ export default function DeviceDetail() {
     if (!device) return;
     setCommandsOpen(false);
     if (kind === 'remove') {
-      if (!window.confirm('Remove this device?')) return;
+      const name = device.name || device.id || 'this device';
+      if (!window.confirm(`Are you sure you want to remove ${name}? This will stop monitoring this device.`)) return;
       await api(`/api/devices/${encodeURIComponent(device.id)}`, { method: 'DELETE' });
       navigate('/devices');
       return;

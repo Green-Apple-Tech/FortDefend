@@ -1523,7 +1523,8 @@ export default function Devices() {
                                 type="button"
                                 className="block w-full px-3 py-2 text-left text-sm text-red-600 hover:bg-gray-50"
                                 onClick={async () => {
-                                  if (!window.confirm('Remove this device?')) return;
+                                  const deviceName = d.name || d.id || 'this device';
+                                  if (!window.confirm(`Are you sure you want to remove ${deviceName}? This will stop monitoring this device.`)) return;
                                   await api(`/api/devices/${encodeURIComponent(d.id)}`, { method: 'DELETE' }).catch(() => {});
                                   setToast('Device removed.');
                                   loadDevices({ showLoading: false });

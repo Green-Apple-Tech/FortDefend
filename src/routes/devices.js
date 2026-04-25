@@ -187,9 +187,20 @@ router.delete('/:id', async (req, res, next) => {
       .where({ id: req.params.id, org_id: req.user.orgId })
       .first();
     if (!device) return res.status(404).json({ error: 'Device not found.' });
-
-    await db('devices').where({ id: device.id }).delete();
-    res.json({ message: 'Device removed.' });
+    await db.transaction(async (trx) => {
+      if (await trx.schema.hasTable('sm_device_apps')) {
+        await trx('sm_device_apps')
+          .where({ org_id: req.user.orgId, device_id: device.id })
+          .delete();
+      }
+      await trx('device_groups')
+        .where({ device_id: device.id })
+        .delete();
+      await trx('devices')
+        .where({ id: device.id, org_id: req.user.orgId })
+        .delete();
+    });
+    res.json({ success: true });
   } catch (err) { next(err); }
 });
 

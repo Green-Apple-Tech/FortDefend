@@ -308,7 +308,7 @@ function buildOneClickInstallerScript({ baseUrl, orgId, groupId, groupName }) {
     groupName: groupName || 'General',
     serverUrl: b,
     heartbeatInterval: 30,
-    version: '1.0.0',
+    version: '1.0.2',
   };
   const configJson = JSON.stringify(cfg, null, 2);
   const escSingle = (s) => String(s).replace(/'/g, "''");
@@ -421,7 +421,7 @@ router.get('/config.json', async (req, res, next) => {
       groupName,
       serverUrl: baseUrl,
       heartbeatInterval: 30,
-      version: '1.0.0',
+      version: '1.0.2',
     };
     const configBuffer = Buffer.from(JSON.stringify(config), 'utf8');
     res.setHeader('Content-Type', 'application/octet-stream');

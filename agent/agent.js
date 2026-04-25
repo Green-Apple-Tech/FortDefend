@@ -115,7 +115,7 @@ function resolveCredentials() {
       groupId: (getRegistryStringValue(REG_GROUP_KEY) || '').trim(),
       heartbeatInterval: 900,
       groupName: '',
-      version: '1.0.0',
+      version: '1.0.2',
     };
   }
   const envTok = (process.env.ORG_TOKEN || '').trim();
@@ -126,7 +126,7 @@ function resolveCredentials() {
       groupId: (process.env.FORTDEFEND_GROUP_ID || process.env.ORG_GROUP_ID || '').trim(),
       heartbeatInterval: 900,
       groupName: '',
-      version: '1.0.0',
+      version: '1.0.2',
     };
   }
   return {
@@ -135,7 +135,7 @@ function resolveCredentials() {
     groupId: '',
     heartbeatInterval: 900,
     groupName: '',
-    version: '1.0.0',
+    version: '1.0.2',
   };
 }
 

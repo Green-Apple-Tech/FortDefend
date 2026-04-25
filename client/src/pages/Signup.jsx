@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { api } from '../lib/api';
 import { Button, Input } from '../components/ui';
+import fortDefendLogo from '../assets/fortdefend-logo.png';
 
 const PLANS = [
   {
@@ -100,8 +101,9 @@ export default function Signup() {
     <div className="flex min-h-screen flex-col justify-center bg-gray-50 px-4 py-12">
       <div className="mx-auto w-full max-w-5xl">
         <div className="mb-8 text-center">
-          <Link to="/" className="text-2xl font-bold text-brand">
-            FortDefend
+          <Link to="/" className="inline-flex items-center gap-2 text-2xl font-bold text-brand">
+            <img src={fortDefendLogo} alt="FortDefend logo" className="h-8 w-8 rounded object-cover" />
+            <span>FortDefend</span>
           </Link>
           <h1 className="mt-6 text-2xl font-semibold text-gray-900">Create your account</h1>
           <p className="mt-2 text-sm text-gray-600">All plans include a 10-day free trial. No credit card required for Personal.</p>

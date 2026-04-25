@@ -502,6 +502,13 @@ router.post('/heartbeat', async (req, res) => {
   };
   try {
     console.log('[heartbeat] installedApps keys check:', Object.keys(req.body || {}));
+    console.log('[heartbeat] body keys:', Object.keys(req.body || {}));
+    console.log(
+      '[heartbeat] agentVersion from body:',
+      req.body?.agentVersion,
+      req.body?.version,
+      req.body?.telemetry?.agentVersion,
+    );
     console.log('[agent/heartbeat] start', {
       at: heartbeatStartedAt,
       hasTokenHeader: Boolean(req.headers['x-org-token']),
@@ -536,6 +543,13 @@ router.post('/heartbeat', async (req, res) => {
       .catch(() => null);
     const orgAutoUpdate = orgSettings?.auto_update_agent === true;
     const telemetry = payload.telemetry || {};
+    const deviceVersion =
+      req.body?.agentVersion ||
+      req.body?.version ||
+      req.body?.telemetry?.agentVersion ||
+      req.body?.telemetry?.version ||
+      null;
+    console.log('[heartbeat] resolved deviceVersion:', deviceVersion);
     const installedApps = Array.isArray(payload.installedApps)
       ? payload.installedApps
       : Array.isArray(payload.apps)
@@ -602,9 +616,8 @@ router.post('/heartbeat', async (req, res) => {
       disk_free_pct: diskFreePct,
       ip_address: telemetry.ipAddress || existing?.ip_address || null,
       agent_version:
-        telemetry.agentVersion
+        deviceVersion
         || telemetry.agent_version
-        || payload.agentVersion
         || payload.agent_version
         || existing?.agent_version
         || currentAgentVersion,
@@ -695,6 +708,9 @@ router.post('/heartbeat', async (req, res) => {
         stack: err?.stack,
       });
       return safe200({ ok: false, commands: [], error: 'Device update failed.' });
+    }
+    if (deviceVersion) {
+      await db('devices').where({ id: deviceId }).update({ agent_version: deviceVersion });
     }
 
     let canPersistDeviceApps = false;
@@ -924,8 +940,8 @@ router.post('/heartbeat', async (req, res) => {
     }));
 
     const serverVersion = process.env.AGENT_VERSION || '1.0.1';
-    const deviceVersion = String(updateFields.agent_version || '').trim();
-    const isOutdated = deviceVersion && compareSemver(deviceVersion, serverVersion) < 0;
+    const normalizedDeviceVersion = String(updateFields.agent_version || '').trim();
+    const isOutdated = normalizedDeviceVersion && compareSemver(normalizedDeviceVersion, serverVersion) < 0;
     const forceRequested = existing?.pending_update === true;
     const shouldPushUpdate = isOutdated && (orgAutoUpdate || forceRequested);
 

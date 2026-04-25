@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { Link, useNavigate, useLocation } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import { Button, Input } from '../components/ui';
+import fortDefendLogo from '../assets/fortdefend-logo.png';
 
 export default function Login() {
   const { login, completeTotpLogin } = useAuth();
@@ -51,8 +52,9 @@ const from = (location.state?.from && location.state.from !== '/login') ? locati
     <div className="flex min-h-screen flex-col justify-center bg-gray-50 px-4 py-12">
       <div className="mx-auto w-full max-w-md">
         <div className="mb-8 text-center">
-          <Link to="/" className="text-2xl font-bold text-brand">
-            FortDefend
+          <Link to="/" className="inline-flex items-center gap-2 text-2xl font-bold text-brand">
+            <img src={fortDefendLogo} alt="FortDefend logo" className="h-8 w-8 rounded object-cover" />
+            <span>FortDefend</span>
           </Link>
           <h1 className="mt-6 text-2xl font-semibold text-gray-900">Sign in</h1>
           <p className="mt-1 text-sm text-gray-600">Use your work email and password.</p>

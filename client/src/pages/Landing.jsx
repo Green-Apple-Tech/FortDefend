@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { Link } from 'react-router-dom';
+import fortDefendLogo from '../assets/fortdefend-logo.png';
 
 const CHROMEBOOK_CHECKS = [
   { name: 'OS version current', desc: 'Is ChromeOS actually on the latest version — or just assumed to be?' },
@@ -172,8 +173,9 @@ export default function Landing() {
         padding: '16px 32px', borderBottom: '1px solid #e5e5e3',
         background: '#fff', position: 'sticky', top: 0, zIndex: 100,
       }}>
-        <div style={{ fontWeight: 700, fontSize: 20 }}>
-          Fort<span style={{ color: '#185FA5' }}>Defend</span>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8, fontWeight: 700, fontSize: 20 }}>
+          <img src={fortDefendLogo} alt="FortDefend logo" style={{ width: 30, height: 30, borderRadius: 6, objectFit: 'cover' }} />
+          <span>Fort<span style={{ color: '#185FA5' }}>Defend</span></span>
         </div>
         <div style={{ display: 'flex', gap: 24, alignItems: 'center' }}>
           <a href="#how" style={{ fontSize: 14, color: '#52504a', textDecoration: 'none' }}>How it works</a>
@@ -547,7 +549,10 @@ export default function Landing() {
         display: 'flex', justifyContent: 'space-between', alignItems: 'center',
         fontSize: 13, color: '#8a887e', flexWrap: 'wrap', gap: 8,
       }}>
-        <div>Fort<strong style={{ color: '#185FA5' }}>Defend</strong> — device verification for schools and MSPs</div>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+          <img src={fortDefendLogo} alt="FortDefend logo" style={{ width: 20, height: 20, borderRadius: 4, objectFit: 'cover' }} />
+          <span>Fort<strong style={{ color: '#185FA5' }}>Defend</strong> — device verification for schools and MSPs</span>
+        </div>
         <div style={{ display: 'flex', gap: 20 }}>
           <Link to="/privacy" style={{ color: '#8a887e', textDecoration: 'none' }}>Privacy</Link>
           <Link to="/terms" style={{ color: '#8a887e', textDecoration: 'none' }}>Terms</Link>

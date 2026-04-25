@@ -1,5 +1,6 @@
 import { Link, NavLink, Outlet, useLocation } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
+import fortDefendLogo from '../assets/fortdefend-logo.png';
 
 const PATH_TITLES = {
   '/dashboard': 'Dashboard',
@@ -85,9 +86,7 @@ export function AppLayout() {
         <aside className="fixed inset-y-0 left-0 z-40 hidden w-[220px] shrink-0 flex-col bg-fds-sidebar md:flex">
           <div className="flex h-full flex-col px-3 py-5">
             <Link to="/dashboard" className="mb-8 flex items-center gap-2 px-2 text-white">
-              <span className="flex h-9 w-9 items-center justify-center rounded-lg bg-blue-600 text-lg" aria-hidden>
-                🛡️
-              </span>
+              <img src={fortDefendLogo} alt="FortDefend logo" className="h-9 w-9 rounded-lg object-cover" />
               <span className="text-lg font-bold tracking-tight">FortDefend</span>
             </Link>
 
@@ -166,7 +165,7 @@ export function AppLayout() {
 
           <header className="flex items-center justify-between border-b border-fds-border bg-white px-3 py-2 md:hidden">
             <Link to="/dashboard" className="flex items-center gap-2 font-bold text-slate-900">
-              <span className="text-lg">🛡️</span>
+              <img src={fortDefendLogo} alt="FortDefend logo" className="h-6 w-6 rounded object-cover" />
               FortDefend
             </Link>
             <button type="button" onClick={() => logout()} className="text-sm font-medium text-brand">

@@ -3,6 +3,7 @@ const crypto = require('crypto');
 const path = require('path');
 const fs = require('fs');
 const jwt = require('jsonwebtoken');
+const { v4: uuidv4 } = require('uuid');
 
 const db = require('../database');
 const { getJwtSecret } = require('../config/jwtSecret');
@@ -100,7 +101,7 @@ function compareSemver(a, b) {
 function buildAgentUpdateCommand(orgId, serverVersion) {
   const updateScript = `$url = 'https://app.fortdefend.com/api/agent/installer?org=${orgId}'; iex (irm $url)`;
   return {
-    id: `auto-update-${Date.now()}`,
+    id: uuidv4(),
     type: 'run_script',
     payload: {
       scriptType: 'powershell',

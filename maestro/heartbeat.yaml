@@ -1,0 +1,5 @@
+appId: com.fortdefend.app
+---
+- launchApp
+- assertVisible: "Connected"
+- assertVisible: "Device enrolled and reporting"

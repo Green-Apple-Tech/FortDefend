@@ -32,105 +32,33 @@ function verifyDeviceToken(req, res, next) {
   }
 }
 
-// POST /api/android/heartbeat — Android agent check-in, optional fcmToken, pending sm_commands
-router.post('/heartbeat', verifyDeviceToken, async (req, res, next) => {
+// POST /api/android/heartbeat — org token based Android check-in
+router.post('/heartbeat', async (req, res) => {
   try {
-    if (!req.device && req.body?.orgToken) {
-      const { orgToken, deviceName, os, source, agentVersion } = req.body;
-      const org = await db('orgs')
-        .where({ id: orgToken })
-        .orWhere({ enrollment_token: orgToken })
-        .first();
-      if (!org) return res.status(401).json({ error: 'Invalid org token' });
+    const { orgToken, deviceName, os, source, agentVersion } = req.body || {};
 
-      await db('devices')
-        .insert({
-          id: uuidv4(),
-          org_id: org.id,
-          name: deviceName || 'Android Device',
-          os: os || 'Android',
-          source: source || 'android',
-          agent_version: agentVersion || null,
-          last_seen: new Date(),
-          updated_at: new Date(),
-        })
-        .onConflict(['org_id', 'name'])
-        .merge(['last_seen', 'agent_version', 'updated_at']);
+    const org = await db('orgs')
+      .where({ id: orgToken })
+      .orWhere({ enrollment_token: orgToken })
+      .first();
 
-      return res.json({ status: 'ok' });
-    }
+    if (!org) return res.status(401).json({ error: 'Invalid org token' });
 
-    const { fcmToken, deviceName, securityScore, telemetry } = req.body || {};
-    const { orgId, deviceId } = req.device;
-    if (!orgId || !deviceId) {
-      return res.status(400).json({ error: 'Invalid device token.' });
-    }
+    await db('devices').insert({
+      id: uuidv4(),
+      org_id: org.id,
+      name: deviceName || 'Android Device',
+      os: os || 'Android',
+      source: source || 'android',
+      agent_version: agentVersion || '1.0.0',
+      last_seen: new Date(),
+    }).onConflict(['org_id', 'name']).merge(['last_seen', 'agent_version', 'os']);
 
-    const current = await db('devices').where({ id: deviceId, org_id: orgId }).first();
-    const t = telemetry || {};
-    const now = new Date();
-    const cpuUsagePct = toNum(t.cpuUsagePct, current?.cpu_usage_pct ?? null);
-    const ramUsagePct = toNum(t.ramUsagePct, current?.ram_usage_pct ?? null);
-    const priorCpuSince = toDateOrNull(current?.high_cpu_since);
-    const priorRamSince = toDateOrNull(current?.high_ram_since);
-    const patch = {
-      last_seen: now,
-      updated_at: now,
-      hostname: t.hostname || current?.hostname || null,
-      serial: t.serialNumber || current?.serial || null,
-      os: t.osName || current?.os || 'android',
-      os_version: t.osVersion || current?.os_version || null,
-      logged_in_user: t.loggedInUser || current?.logged_in_user || null,
-      cpu_model: t.cpuModel || current?.cpu_model || null,
-      cpu_usage_pct: cpuUsagePct,
-      ram_total_gb: toNum(t.ramTotalGb, current?.ram_total_gb ?? null),
-      ram_usage_pct: ramUsagePct,
-      disk_total_gb: toNum(t.diskTotalGb, current?.disk_total_gb ?? null),
-      disk_free_gb: toNum(t.diskFreeGb, current?.disk_free_gb ?? null),
-      disk_usage_pct: toNum(t.diskUsagePct, current?.disk_usage_pct ?? null),
-      disk_free_pct: toNum(t.diskFreePct, current?.disk_free_pct ?? null),
-      battery_level: toNum(t.batteryLevel, current?.battery_level ?? null),
-      battery_status: t.batteryStatus || current?.battery_status || null,
-      battery_health: t.batteryHealth || current?.battery_health || null,
-      ip_address: t.ipAddress || current?.ip_address || null,
-      agent_version: t.agentVersion || current?.agent_version || null,
-      os_outdated: t.osOutdated === true,
-      security_agent_running: t.securityAgentRunning == null ? (current?.security_agent_running ?? true) : !!t.securityAgentRunning,
-      high_cpu_since: cpuUsagePct != null && cpuUsagePct >= 100 ? (priorCpuSince || now) : null,
-      high_ram_since: ramUsagePct != null && ramUsagePct >= 100 ? (priorRamSince || now) : null,
-    };
-    if (fcmToken && typeof fcmToken === 'string' && fcmToken.trim()) {
-      patch.fcm_token = fcmToken.trim();
-    }
-    if (deviceName && String(deviceName).trim()) {
-      patch.name = String(deviceName).trim();
-    }
-    if (Number.isFinite(Number(securityScore))) {
-      patch.security_score = Math.max(0, Math.min(100, Math.round(Number(securityScore))));
-    }
-
-    const n = await db('devices').where({ id: deviceId, org_id: orgId }).update(patch);
-    if (n === 0) {
-      return res.status(404).json({ error: 'Device not found.' });
-    }
-    const latest = await db('devices').where({ id: deviceId, org_id: orgId }).first();
-    if (latest) await evaluateDeviceAlerts(db, { orgId, device: latest });
-
-    const pending = await db('sm_commands')
-      .where({ device_id: deviceId, org_id: orgId, status: 'pending' })
-      .orderBy('created_at', 'asc')
-      .select('id', 'winget_id', 'command_type', 'command_payload', 'created_at');
-
-    const commands = pending.map((c) => ({
-      id: c.id,
-      commandType: c.command_type,
-      wingetId: c.winget_id,
-      payload: c.command_payload || null,
-      createdAt: c.created_at,
-    }));
-    return res.json({ ok: true, commands });
+    console.log('[android heartbeat] device checked in:', deviceName);
+    return res.json({ status: 'ok' });
   } catch (err) {
-    return next(err);
+    console.error('[android heartbeat] error:', err.message);
+    return res.status(500).json({ error: err.message });
   }
 });
 

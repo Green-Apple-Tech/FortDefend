@@ -1,19 +1,18 @@
-name: Deploy to Railway
+name: Deploy Check
 
 on:
   push:
     branches: [main]
 
 jobs:
-  deploy:
+  check:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v3
-      - name: Deploy to Railway
-        run: echo "Railway auto-deploys on push - this just confirms deployment triggered"
-      - name: Run migrations
-        env:
-          DATABASE_URL: ${{ secrets.DATABASE_URL }}
-        run: |
-          npm install
-          npm run migrate
+      - uses: actions/setup-node@v3
+        with:
+          node-version: '18'
+      - name: Install dependencies
+        run: npm install
+      - name: Check syntax
+        run: node --check src/server.js && echo "✅ Server syntax OK"

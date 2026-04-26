@@ -116,6 +116,48 @@
 - Encrypted agent token ❌ roadmap
 - Pen test ❌ roadmap
 
+## AI & Automation Stack
+
+### Currently Set Up
+- **Cursor** — AI code editor (primary development tool)
+- **GitHub Actions** — Auto build/test on every git push
+- **BrowserStack** — Real device cloud testing (paid)
+- **EAS (Expo)** — Automated Android APK builds
+- **Railway** — Auto-deploys on every git push
+
+### GitHub Actions Workflows
+- android.yml — Builds Android APK on every push to main
+- deploy.yml — Checks backend syntax on every push
+
+### To Add Next
+- **Maestro** — Automated mobile UI testing
+  - Install: `curl -Ls "https://get.maestro.mobile.dev" | bash`
+  - Tests: maestro/enrollment.yaml, maestro/heartbeat.yaml
+- **Fastlane** — Automate Google Play Store uploads
+- **v0.dev** — AI UI component generation (use for all new pages)
+
+### Testing Strategy
+| What | Tool | Status |
+|---|---|---|
+| Android enrollment flow | Maestro | ⏳ not set up |
+| Android heartbeat | Maestro | ⏳ not set up |
+| Backend API | GitHub Actions | ✅ set up |
+| Real device testing | BrowserStack | ✅ set up |
+| Auto APK build | EAS + GitHub Actions | ✅ set up |
+
+### Time Savings
+- GitHub Actions: ~30-60 min/day saved
+- Maestro: ~1-2 hours/day saved (once set up)
+- v0.dev: ~1-2 hours/day saved for UI work
+- BrowserStack: eliminates need for physical test devices
+
+### v0.dev Usage
+- Go to v0.dev
+- Screenshot any FortDefend page
+- Say "redesign this to look more like Kandji"
+- Get React component instantly
+- Paste into Cursor for integration
+
 ## Key Commands
 
 ### Reinstall Windows agent

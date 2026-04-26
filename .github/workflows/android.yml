@@ -13,7 +13,7 @@ jobs:
         with:
           node-version: '18'
       - name: Install EAS CLI
-        run: npm install -g eas-cli
+        run: npm install -g eas-cli@latest
       - name: Build Android APK
         working-directory: ./android
         env:

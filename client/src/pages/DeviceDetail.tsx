@@ -9,7 +9,6 @@ import {
 import { AreaChart, Area, XAxis, YAxis, Tooltip, ResponsiveContainer } from 'recharts'
 import { Card, CardHeader, CardTitle, CardContent } from '../components/ui/Card'
 import { Badge } from '../components/ui/Badge'
-import { ContextMenu, useToast } from '../components/ui/ContextMenu'
 
 // Mock device data
 const deviceData = {
@@ -17,22 +16,23 @@ const deviceData = {
     id: 'andretablet',
     name: 'AndreTablet',
     serial: '5F08R14',
-    os: 'MS 11 Home',
+    os: 'MS 10 Pro',
     osIcon: 'windows',
     status: 'online',
+    health: 'Healthy',
     securityScore: 75,
-    lastSeen: 'just now',
-    cpu: 12,
-    ram: { used: 13.1, total: 16 },
-    disk: { used: 250, total: 512, free: 262 },
+    lastSeen: '2026-04-26T23:08:44.230Z',
+    cpu: 3,
+    ram: { used: 7, total: 8 },
+    disk: { used: 510, total: 512, free: 2 },
     agent: '1.0.2',
     user: 'andre@company.com',
     department: 'Engineering',
     enrolled: '2024-01-15',
-    model: 'Surface Pro 9',
-    manufacturer: 'Microsoft',
-    ip: '192.168.1.45',
-    mac: '00:1B:44:11:3A:B7',
+    model: 'ThinkPad X1 Carbon',
+    manufacturer: 'Lenovo',
+    ip: '192.168.1.67',
+    mac: '00:1B:44:11:3A:C8',
   },
   'carolepc': {
     id: 'carolepc',
@@ -41,10 +41,11 @@ const deviceData = {
     os: 'MS 10 Pro',
     osIcon: 'windows',
     status: 'online',
+    health: 'Healthy',
     securityScore: 75,
-    lastSeen: 'just now',
+    lastSeen: '2026-04-26T23:08:44.230Z',
     cpu: 3,
-    ram: { used: 7.0, total: 8 },
+    ram: { used: 7, total: 8 },
     disk: { used: 510, total: 512, free: 2 },
     agent: '1.0.2',
     user: 'carole@company.com',
@@ -59,9 +60,14 @@ const deviceData = {
 
 const performanceData = Array.from({ length: 24 }, (_, i) => ({
   time: `${i}:00`,
-  cpu: Math.floor(Math.random() * 40) + 10,
-  ram: Math.floor(Math.random() * 30) + 40,
+  cpu: Math.floor(Math.random() * 40) + 20,
 }))
+
+const recentAlerts = [
+  { id: 1, type: 'warning', message: 'Disk space running low (< 5GB free)', time: '2 hours ago' },
+  { id: 2, type: 'info', message: 'Agent updated to version 1.0.2', time: '1 day ago' },
+  { id: 3, type: 'success', message: 'Security scan completed - no threats found', time: '2 days ago' },
+]
 
 const installedApps = [
   { name: 'Google Chrome', version: '122.0.6261.112', status: 'up-to-date' },
@@ -72,19 +78,12 @@ const installedApps = [
   { name: 'Slack', version: '4.36.140', status: 'up-to-date' },
 ]
 
-const recentAlerts = [
-  { id: 1, type: 'warning', message: 'Disk space running low (< 5GB free)', time: '2 hours ago' },
-  { id: 2, type: 'info', message: 'Agent updated to version 1.0.2', time: '1 day ago' },
-  { id: 3, type: 'success', message: 'Security scan completed - no threats found', time: '2 days ago' },
-]
-
 export default function DeviceDetail() {
   const { deviceId } = useParams<{ deviceId: string }>()
   const navigate = useNavigate()
   const [activeTab, setActiveTab] = useState('overview')
-  const { showToast, ToastComponent } = useToast()
   
-  const device = deviceData[deviceId as keyof typeof deviceData] || deviceData['andretablet']
+  const device = deviceData[deviceId as keyof typeof deviceData] || deviceData['carolepc']
 
   const tabs = [
     { id: 'overview', label: 'Overview' },
@@ -94,392 +93,379 @@ export default function DeviceDetail() {
     { id: 'live-actions', label: 'Live Actions' },
   ]
 
-  const quickActions = [
-    { label: 'Lock Device', icon: <Lock className="w-4 h-4" />, onClick: () => showToast('Device locked', 'success') },
-    { label: 'Restart', icon: <Power className="w-4 h-4" />, onClick: () => showToast('Restart command sent', 'success') },
-    { label: 'Send Message', icon: <MessageSquare className="w-4 h-4" />, onClick: () => showToast('Message dialog opened', 'info') },
-    { label: 'Locate', icon: <MapPin className="w-4 h-4" />, onClick: () => showToast('Locating device...', 'info') },
-    { label: 'Play Sound', icon: <Volume2 className="w-4 h-4" />, onClick: () => showToast('Playing sound on device', 'success') },
-  ]
-
-  const contextMenuItems = [
-    { label: 'Refresh', icon: <RefreshCw className="w-4 h-4" />, onClick: () => showToast('Refreshing...', 'info'), shortcut: '⌘R' },
-    { label: 'Lock Device', icon: <Lock className="w-4 h-4" />, onClick: () => showToast('Device locked', 'success') },
-    { label: 'Restart', icon: <Power className="w-4 h-4" />, onClick: () => showToast('Restart command sent', 'success') },
-    { label: 'Send Message', icon: <MessageSquare className="w-4 h-4" />, onClick: () => showToast('Opening message dialog', 'info') },
-    { divider: true },
-    { label: 'Run Script', icon: <Terminal className="w-4 h-4" />, onClick: () => setActiveTab('scripts') },
-    { label: 'View Alerts', icon: <AlertTriangle className="w-4 h-4" />, onClick: () => setActiveTab('alerts') },
-    { divider: true },
-    { label: 'Wipe Device', icon: <Trash2 className="w-4 h-4" />, onClick: () => showToast('Wipe requires confirmation', 'error'), danger: true },
-  ]
+  const ramPercent = (device.ram.used / device.ram.total) * 100
+  const diskPercent = (device.disk.used / device.disk.total) * 100
 
   return (
-    <ContextMenu items={contextMenuItems}>
-      <div className="space-y-6">
-        {/* Breadcrumb */}
-        <div className="flex items-center gap-2 text-sm">
-          <Link to="/devices" className="text-muted-foreground hover:text-foreground transition-colors">
-            Devices
-          </Link>
-          <ChevronRight className="w-4 h-4 text-muted-foreground" />
-          <span className="text-foreground font-medium">{device.name}</span>
-        </div>
-
-        {/* Header */}
-        <div className="flex items-start justify-between">
-          <div className="flex items-center gap-4">
-            <button 
-              onClick={() => navigate('/devices')}
-              className="p-2 rounded-lg hover:bg-secondary transition-colors"
-            >
-              <ArrowLeft className="w-5 h-5 text-muted-foreground" />
-            </button>
-            <div className="w-14 h-14 rounded-2xl bg-secondary flex items-center justify-center">
-              {device.osIcon === 'windows' ? (
-                <Monitor className="w-7 h-7 text-electric-blue" />
-              ) : (
-                <Smartphone className="w-7 h-7 text-electric-blue" />
-              )}
-            </div>
-            <div>
-              <div className="flex items-center gap-3">
-                <h1 className="text-2xl font-bold text-foreground">{device.name}</h1>
-                <Badge variant={device.status === 'online' ? 'success' : 'secondary'}>
-                  {device.status}
-                </Badge>
-              </div>
-              <p className="text-muted-foreground mt-0.5">{device.os} • {device.serial}</p>
-            </div>
-          </div>
-
-          <div className="flex items-center gap-2">
-            {quickActions.slice(0, 3).map((action) => (
-              <button
-                key={action.label}
-                onClick={action.onClick}
-                className="flex items-center gap-2 px-3 py-2 rounded-lg border border-border hover:bg-secondary transition-colors text-sm"
-              >
-                {action.icon}
-                <span className="hidden sm:inline">{action.label}</span>
-              </button>
-            ))}
-            <button className="p-2 rounded-lg border border-border hover:bg-secondary transition-colors">
-              <MoreVertical className="w-4 h-4" />
-            </button>
-          </div>
-        </div>
-
-        {/* Live Metrics */}
-        <div className="grid grid-cols-4 gap-4">
-          <Card className="p-4">
-            <div className="flex items-center justify-between mb-2">
-              <span className="text-sm text-muted-foreground">CPU</span>
-              <Cpu className="w-4 h-4 text-electric-blue" />
-            </div>
-            <div className="text-2xl font-bold text-foreground">{device.cpu}%</div>
-            <div className="mt-2 h-2 bg-secondary rounded-full overflow-hidden">
-              <div 
-                className="h-full bg-electric-blue rounded-full transition-all duration-500"
-                style={{ width: `${device.cpu}%` }}
-              />
-            </div>
-          </Card>
-          <Card className="p-4">
-            <div className="flex items-center justify-between mb-2">
-              <span className="text-sm text-muted-foreground">RAM</span>
-              <MemoryStick className="w-4 h-4 text-emerald-500" />
-            </div>
-            <div className="text-2xl font-bold text-foreground">{device.ram.used} GB</div>
-            <p className="text-xs text-muted-foreground">of {device.ram.total} GB</p>
-            <div className="mt-2 h-2 bg-secondary rounded-full overflow-hidden">
-              <div 
-                className="h-full bg-emerald-500 rounded-full transition-all duration-500"
-                style={{ width: `${(device.ram.used / device.ram.total) * 100}%` }}
-              />
-            </div>
-          </Card>
-          <Card className="p-4">
-            <div className="flex items-center justify-between mb-2">
-              <span className="text-sm text-muted-foreground">Disk</span>
-              <HardDrive className="w-4 h-4 text-amber-500" />
-            </div>
-            <div className="text-2xl font-bold text-foreground">{device.disk.free} GB</div>
-            <p className="text-xs text-muted-foreground">free of {device.disk.total} GB</p>
-            <div className="mt-2 h-2 bg-secondary rounded-full overflow-hidden">
-              <div 
-                className={`h-full rounded-full transition-all duration-500 ${device.disk.free < 10 ? 'bg-red-500' : 'bg-amber-500'}`}
-                style={{ width: `${(device.disk.used / device.disk.total) * 100}%` }}
-              />
-            </div>
-          </Card>
-          <Card className="p-4">
-            <div className="flex items-center justify-between mb-2">
-              <span className="text-sm text-muted-foreground">Security</span>
-              <Shield className="w-4 h-4 text-electric-blue" />
-            </div>
-            <div className="text-2xl font-bold text-foreground">{device.securityScore}</div>
-            <p className="text-xs text-muted-foreground">Security score</p>
-            <div className="mt-2 h-2 bg-secondary rounded-full overflow-hidden">
-              <div 
-                className={`h-full rounded-full transition-all duration-500 ${device.securityScore >= 80 ? 'bg-emerald-500' : device.securityScore >= 60 ? 'bg-amber-500' : 'bg-red-500'}`}
-                style={{ width: `${device.securityScore}%` }}
-              />
-            </div>
-          </Card>
-        </div>
-
-        {/* Tabs */}
-        <div className="border-b border-border">
-          <div className="flex gap-1">
-            {tabs.map((tab) => (
-              <button
-                key={tab.id}
-                onClick={() => setActiveTab(tab.id)}
-                className={`px-4 py-3 text-sm font-medium border-b-2 transition-colors ${
-                  activeTab === tab.id
-                    ? 'border-electric-blue text-electric-blue'
-                    : 'border-transparent text-muted-foreground hover:text-foreground'
-                }`}
-              >
-                {tab.label}
-              </button>
-            ))}
-          </div>
-        </div>
-
-        {/* Tab Content */}
-        {activeTab === 'overview' && (
-          <div className="grid grid-cols-3 gap-6">
-            {/* Device Info */}
-            <Card className="col-span-2">
-              <CardHeader>
-                <CardTitle>Device Information</CardTitle>
-              </CardHeader>
-              <CardContent>
-                <div className="grid grid-cols-2 gap-4">
-                  {[
-                    { label: 'Model', value: device.model },
-                    { label: 'Manufacturer', value: device.manufacturer },
-                    { label: 'Serial Number', value: device.serial },
-                    { label: 'Operating System', value: device.os },
-                    { label: 'IP Address', value: device.ip },
-                    { label: 'MAC Address', value: device.mac },
-                    { label: 'Assigned User', value: device.user },
-                    { label: 'Department', value: device.department },
-                    { label: 'Enrolled', value: device.enrolled },
-                    { label: 'Agent Version', value: device.agent },
-                  ].map((item) => (
-                    <div key={item.label} className="flex justify-between py-2 border-b border-border last:border-0">
-                      <span className="text-muted-foreground">{item.label}</span>
-                      <span className="font-medium text-foreground">{item.value}</span>
-                    </div>
-                  ))}
-                </div>
-              </CardContent>
-            </Card>
-
-            {/* Recent Alerts */}
-            <Card>
-              <CardHeader>
-                <CardTitle>Recent Alerts</CardTitle>
-              </CardHeader>
-              <CardContent>
-                <div className="space-y-3">
-                  {recentAlerts.map((alert) => (
-                    <div key={alert.id} className="flex items-start gap-3 p-3 rounded-lg bg-secondary/50">
-                      {alert.type === 'warning' && <AlertTriangle className="w-4 h-4 text-amber-500 mt-0.5" />}
-                      {alert.type === 'info' && <CheckCircle className="w-4 h-4 text-electric-blue mt-0.5" />}
-                      {alert.type === 'success' && <CheckCircle className="w-4 h-4 text-emerald-500 mt-0.5" />}
-                      <div className="flex-1 min-w-0">
-                        <p className="text-sm text-foreground">{alert.message}</p>
-                        <p className="text-xs text-muted-foreground mt-1">{alert.time}</p>
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              </CardContent>
-            </Card>
-
-            {/* Performance Chart */}
-            <Card className="col-span-3">
-              <CardHeader>
-                <CardTitle>24-Hour Performance</CardTitle>
-              </CardHeader>
-              <CardContent>
-                <div className="h-64">
-                  <ResponsiveContainer width="100%" height="100%">
-                    <AreaChart data={performanceData}>
-                      <defs>
-                        <linearGradient id="cpuGradient" x1="0" y1="0" x2="0" y2="1">
-                          <stop offset="5%" stopColor="#3b82f6" stopOpacity={0.3} />
-                          <stop offset="95%" stopColor="#3b82f6" stopOpacity={0} />
-                        </linearGradient>
-                        <linearGradient id="ramGradient" x1="0" y1="0" x2="0" y2="1">
-                          <stop offset="5%" stopColor="#10b981" stopOpacity={0.3} />
-                          <stop offset="95%" stopColor="#10b981" stopOpacity={0} />
-                        </linearGradient>
-                      </defs>
-                      <XAxis dataKey="time" stroke="#64748b" fontSize={12} />
-                      <YAxis stroke="#64748b" fontSize={12} />
-                      <Tooltip 
-                        contentStyle={{ 
-                          backgroundColor: 'var(--card)', 
-                          border: '1px solid var(--border)',
-                          borderRadius: '8px'
-                        }}
-                      />
-                      <Area type="monotone" dataKey="cpu" stroke="#3b82f6" fill="url(#cpuGradient)" name="CPU %" />
-                      <Area type="monotone" dataKey="ram" stroke="#10b981" fill="url(#ramGradient)" name="RAM %" />
-                    </AreaChart>
-                  </ResponsiveContainer>
-                </div>
-              </CardContent>
-            </Card>
-          </div>
-        )}
-
-        {activeTab === 'applications' && (
-          <Card>
-            <CardHeader>
-              <CardTitle>Installed Applications</CardTitle>
-            </CardHeader>
-            <CardContent>
-              <table className="w-full">
-                <thead>
-                  <tr className="border-b border-border">
-                    <th className="text-left py-3 px-4 text-sm font-medium text-muted-foreground">Application</th>
-                    <th className="text-left py-3 px-4 text-sm font-medium text-muted-foreground">Version</th>
-                    <th className="text-left py-3 px-4 text-sm font-medium text-muted-foreground">Status</th>
-                    <th className="text-right py-3 px-4 text-sm font-medium text-muted-foreground">Actions</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {installedApps.map((app) => (
-                    <tr key={app.name} className="border-b border-border hover:bg-secondary/50 transition-colors">
-                      <td className="py-3 px-4 text-foreground font-medium">{app.name}</td>
-                      <td className="py-3 px-4 text-muted-foreground">{app.version}</td>
-                      <td className="py-3 px-4">
-                        <Badge variant={app.status === 'up-to-date' ? 'success' : 'warning'}>
-                          {app.status === 'up-to-date' ? 'Up to date' : 'Update available'}
-                        </Badge>
-                      </td>
-                      <td className="py-3 px-4 text-right">
-                        {app.status === 'update-available' && (
-                          <button 
-                            onClick={() => showToast(`Updating ${app.name}...`, 'info')}
-                            className="text-sm text-electric-blue hover:underline"
-                          >
-                            Update
-                          </button>
-                        )}
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </CardContent>
-          </Card>
-        )}
-
-        {activeTab === 'live-actions' && (
-          <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-4">
-            {[
-              { label: 'Lock Device', icon: <Lock className="w-6 h-6" />, color: 'text-electric-blue' },
-              { label: 'Restart', icon: <Power className="w-6 h-6" />, color: 'text-amber-500' },
-              { label: 'Locate', icon: <MapPin className="w-6 h-6" />, color: 'text-emerald-500' },
-              { label: 'Send Message', icon: <MessageSquare className="w-6 h-6" />, color: 'text-purple-500' },
-              { label: 'Play Sound', icon: <Volume2 className="w-6 h-6" />, color: 'text-cyan-500' },
-              { label: 'Run Script', icon: <Terminal className="w-6 h-6" />, color: 'text-indigo-500' },
-              { label: 'Update Agent', icon: <Download className="w-6 h-6" />, color: 'text-teal-500' },
-              { label: 'Refresh', icon: <RefreshCw className="w-6 h-6" />, color: 'text-blue-500' },
-              { label: 'Wipe Device', icon: <Trash2 className="w-6 h-6" />, color: 'text-red-500', danger: true },
-            ].map((action) => (
-              <button
-                key={action.label}
-                onClick={() => showToast(`${action.label} initiated`, action.danger ? 'error' : 'success')}
-                className={`p-6 rounded-xl border border-border hover:bg-secondary transition-all hover:shadow-lg hover:-translate-y-0.5 ${action.danger ? 'hover:border-red-500/50' : ''}`}
-              >
-                <div className={`mb-3 ${action.color}`}>{action.icon}</div>
-                <span className="text-sm font-medium text-foreground">{action.label}</span>
-              </button>
-            ))}
-          </div>
-        )}
-
-        {activeTab === 'scripts' && (
-          <Card>
-            <CardHeader>
-              <CardTitle>Available Scripts</CardTitle>
-            </CardHeader>
-            <CardContent>
-              <div className="space-y-3">
-                {[
-                  { name: 'Clear Temp Files', description: 'Remove temporary files and clear cache', lastRun: '2 days ago' },
-                  { name: 'Check Disk Health', description: 'Run SMART diagnostics on all drives', lastRun: '1 week ago' },
-                  { name: 'Update All Apps', description: 'Update all managed applications to latest versions', lastRun: 'Never' },
-                  { name: 'Collect Logs', description: 'Gather system and application logs for debugging', lastRun: '3 days ago' },
-                ].map((script) => (
-                  <div key={script.name} className="flex items-center justify-between p-4 rounded-lg border border-border hover:bg-secondary/50 transition-colors">
-                    <div>
-                      <h4 className="font-medium text-foreground">{script.name}</h4>
-                      <p className="text-sm text-muted-foreground">{script.description}</p>
-                      <p className="text-xs text-muted-foreground mt-1">Last run: {script.lastRun}</p>
-                    </div>
-                    <button 
-                      onClick={() => showToast(`Running "${script.name}"...`, 'info')}
-                      className="flex items-center gap-2 px-4 py-2 rounded-lg bg-electric-blue text-white text-sm font-medium hover:bg-electric-blue/90 transition-colors"
-                    >
-                      <Play className="w-4 h-4" />
-                      Run
-                    </button>
-                  </div>
-                ))}
-              </div>
-            </CardContent>
-          </Card>
-        )}
-
-        {activeTab === 'alerts' && (
-          <Card>
-            <CardHeader>
-              <CardTitle>All Alerts</CardTitle>
-            </CardHeader>
-            <CardContent>
-              <div className="space-y-3">
-                {[
-                  { type: 'warning', message: 'Disk space running low (< 5GB free)', time: '2 hours ago', resolved: false },
-                  { type: 'info', message: 'Agent updated to version 1.0.2', time: '1 day ago', resolved: true },
-                  { type: 'success', message: 'Security scan completed - no threats found', time: '2 days ago', resolved: true },
-                  { type: 'error', message: 'Failed to install Chrome update', time: '3 days ago', resolved: true },
-                  { type: 'warning', message: 'High CPU usage detected (>90%)', time: '5 days ago', resolved: true },
-                ].map((alert, i) => (
-                  <div key={i} className={`flex items-start gap-3 p-4 rounded-lg border ${alert.resolved ? 'border-border bg-secondary/30' : 'border-amber-500/50 bg-amber-500/5'}`}>
-                    {alert.type === 'warning' && <AlertTriangle className="w-5 h-5 text-amber-500 mt-0.5" />}
-                    {alert.type === 'info' && <CheckCircle className="w-5 h-5 text-electric-blue mt-0.5" />}
-                    {alert.type === 'success' && <CheckCircle className="w-5 h-5 text-emerald-500 mt-0.5" />}
-                    {alert.type === 'error' && <XCircle className="w-5 h-5 text-red-500 mt-0.5" />}
-                    <div className="flex-1">
-                      <p className="text-foreground">{alert.message}</p>
-                      <p className="text-sm text-muted-foreground mt-1">{alert.time}</p>
-                    </div>
-                    {!alert.resolved && (
-                      <button 
-                        onClick={() => showToast('Alert acknowledged', 'success')}
-                        className="text-sm text-electric-blue hover:underline"
-                      >
-                        Acknowledge
-                      </button>
-                    )}
-                  </div>
-                ))}
-              </div>
-            </CardContent>
-          </Card>
-        )}
-
-        {ToastComponent}
+    <div className="space-y-6">
+      {/* Breadcrumb */}
+      <div className="flex items-center gap-2 text-sm text-muted-foreground">
+        <Link to="/devices" className="hover:text-foreground transition-colors">Devices</Link>
+        <ChevronRight className="w-4 h-4" />
+        <span className="text-foreground">{device.name}</span>
       </div>
-    </ContextMenu>
+
+      {/* Device Header */}
+      <div className="flex items-center justify-between">
+        <div className="flex items-center gap-4">
+          <button 
+            onClick={() => navigate('/devices')}
+            className="w-10 h-10 rounded-lg border border-border flex items-center justify-center hover:bg-secondary transition-colors"
+          >
+            <ArrowLeft className="w-5 h-5 text-muted-foreground" />
+          </button>
+          <div className="w-12 h-12 rounded-lg bg-secondary flex items-center justify-center">
+            <Monitor className="w-6 h-6 text-foreground" />
+          </div>
+          <div>
+            <div className="flex items-center gap-3">
+              <h1 className="text-xl font-semibold text-foreground">{device.name}</h1>
+              <Badge variant="success" className="text-xs">online</Badge>
+            </div>
+            <p className="text-muted-foreground text-sm">{device.os} - {device.serial}</p>
+          </div>
+        </div>
+        <div className="flex items-center gap-2">
+          <button className="flex items-center gap-2 px-4 py-2 border border-border rounded-lg hover:bg-secondary transition-colors">
+            <Lock className="w-4 h-4" />
+            <span className="text-sm">Lock Device</span>
+          </button>
+          <button className="flex items-center gap-2 px-4 py-2 border border-border rounded-lg hover:bg-secondary transition-colors">
+            <RefreshCw className="w-4 h-4" />
+            <span className="text-sm">Restart</span>
+          </button>
+          <button className="flex items-center gap-2 px-4 py-2 border border-border rounded-lg hover:bg-secondary transition-colors">
+            <MessageSquare className="w-4 h-4" />
+            <span className="text-sm">Send Message</span>
+          </button>
+          <button className="p-2 border border-border rounded-lg hover:bg-secondary transition-colors">
+            <MoreVertical className="w-4 h-4" />
+          </button>
+        </div>
+      </div>
+
+      {/* Metric Cards with Progress Bars */}
+      <div className="grid grid-cols-4 gap-4">
+        {/* CPU */}
+        <Card className="p-4">
+          <div className="flex items-center justify-between mb-3">
+            <span className="text-sm text-muted-foreground">CPU</span>
+            <Cpu className="w-4 h-4 text-muted-foreground" />
+          </div>
+          <p className="text-2xl font-bold text-foreground mb-2">{device.cpu}%</p>
+          <div className="w-full h-2 bg-secondary rounded-full overflow-hidden">
+            <div 
+              className="h-full bg-electric-blue rounded-full transition-all"
+              style={{ width: `${device.cpu}%` }}
+            />
+          </div>
+        </Card>
+
+        {/* RAM */}
+        <Card className="p-4">
+          <div className="flex items-center justify-between mb-3">
+            <span className="text-sm text-muted-foreground">RAM</span>
+            <MemoryStick className="w-4 h-4 text-emerald" />
+          </div>
+          <p className="text-2xl font-bold text-foreground mb-1">{device.ram.used} GB</p>
+          <p className="text-xs text-muted-foreground mb-2">of {device.ram.total} GB</p>
+          <div className="w-full h-2 bg-secondary rounded-full overflow-hidden">
+            <div 
+              className="h-full bg-emerald rounded-full transition-all"
+              style={{ width: `${ramPercent}%` }}
+            />
+          </div>
+        </Card>
+
+        {/* Disk */}
+        <Card className="p-4">
+          <div className="flex items-center justify-between mb-3">
+            <span className="text-sm text-muted-foreground">Disk</span>
+            <HardDrive className="w-4 h-4 text-danger" />
+          </div>
+          <p className="text-2xl font-bold text-foreground mb-1">{device.disk.free} GB</p>
+          <p className="text-xs text-muted-foreground mb-2">free of {device.disk.total} GB</p>
+          <div className="w-full h-2 bg-secondary rounded-full overflow-hidden">
+            <div 
+              className="h-full bg-danger rounded-full transition-all"
+              style={{ width: `${diskPercent}%` }}
+            />
+          </div>
+        </Card>
+
+        {/* Security */}
+        <Card className="p-4">
+          <div className="flex items-center justify-between mb-3">
+            <span className="text-sm text-muted-foreground">Security</span>
+            <Shield className="w-4 h-4 text-emerald" />
+          </div>
+          <p className="text-2xl font-bold text-foreground mb-1">{device.securityScore}</p>
+          <p className="text-xs text-muted-foreground mb-2">Security score</p>
+          <div className="w-full h-2 bg-secondary rounded-full overflow-hidden">
+            <div 
+              className="h-full bg-emerald rounded-full transition-all"
+              style={{ width: `${device.securityScore}%` }}
+            />
+          </div>
+        </Card>
+      </div>
+
+      {/* Tabs */}
+      <div className="border-b border-border">
+        <div className="flex gap-1">
+          {tabs.map((tab) => (
+            <button
+              key={tab.id}
+              onClick={() => setActiveTab(tab.id)}
+              className={`px-4 py-3 text-sm font-medium border-b-2 transition-colors ${
+                activeTab === tab.id
+                  ? 'border-electric-blue text-electric-blue'
+                  : 'border-transparent text-muted-foreground hover:text-foreground'
+              }`}
+            >
+              {tab.label}
+            </button>
+          ))}
+        </div>
+      </div>
+
+      {/* Tab Content */}
+      {activeTab === 'overview' && (
+        <div className="grid grid-cols-3 gap-6">
+          {/* Device Information */}
+          <Card className="col-span-2 p-6">
+            <h3 className="text-lg font-semibold text-foreground mb-6">Device Information</h3>
+            <div className="grid grid-cols-2 gap-y-4">
+              <div className="flex justify-between pr-8">
+                <span className="text-muted-foreground">Model</span>
+                <span className="text-foreground font-medium">{device.model}</span>
+              </div>
+              <div className="flex justify-between">
+                <span className="text-muted-foreground">Manufacturer</span>
+                <span className="text-foreground font-medium">{device.manufacturer}</span>
+              </div>
+              <div className="flex justify-between pr-8">
+                <span className="text-muted-foreground">Serial Number</span>
+                <span className="text-foreground font-medium">{device.serial}</span>
+              </div>
+              <div className="flex justify-between">
+                <span className="text-muted-foreground">Operating System</span>
+                <span className="text-foreground font-medium">{device.os}</span>
+              </div>
+              <div className="flex justify-between pr-8">
+                <span className="text-muted-foreground">IP Address</span>
+                <span className="text-foreground font-medium">{device.ip}</span>
+              </div>
+              <div className="flex justify-between">
+                <span className="text-muted-foreground">MAC Address</span>
+                <span className="text-foreground font-medium">{device.mac}</span>
+              </div>
+              <div className="flex justify-between pr-8">
+                <span className="text-muted-foreground">Assigned User</span>
+                <span className="text-foreground font-medium">{device.user}</span>
+              </div>
+              <div className="flex justify-between">
+                <span className="text-muted-foreground">Department</span>
+                <span className="text-foreground font-medium">{device.department}</span>
+              </div>
+              <div className="flex justify-between pr-8">
+                <span className="text-muted-foreground">Enrolled</span>
+                <span className="text-foreground font-medium">{device.enrolled}</span>
+              </div>
+              <div className="flex justify-between">
+                <span className="text-muted-foreground">Agent Version</span>
+                <span className="text-foreground font-medium">{device.agent}</span>
+              </div>
+            </div>
+          </Card>
+
+          {/* Recent Alerts */}
+          <Card className="p-6">
+            <h3 className="text-lg font-semibold text-foreground mb-4">Recent Alerts</h3>
+            <div className="space-y-4">
+              {recentAlerts.map((alert) => (
+                <div key={alert.id} className="flex items-start gap-3">
+                  {alert.type === 'warning' && <AlertTriangle className="w-5 h-5 text-warning mt-0.5" />}
+                  {alert.type === 'info' && <CheckCircle className="w-5 h-5 text-electric-blue mt-0.5" />}
+                  {alert.type === 'success' && <CheckCircle className="w-5 h-5 text-emerald mt-0.5" />}
+                  <div>
+                    <p className="text-sm text-foreground">{alert.message}</p>
+                    <p className="text-xs text-muted-foreground mt-1">{alert.time}</p>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </Card>
+        </div>
+      )}
+
+      {/* 24-Hour Performance Chart */}
+      {activeTab === 'overview' && (
+        <Card className="p-6">
+          <h3 className="text-lg font-semibold text-foreground mb-4">24-Hour Performance</h3>
+          <div className="h-64">
+            <ResponsiveContainer width="100%" height="100%">
+              <AreaChart data={performanceData}>
+                <defs>
+                  <linearGradient id="cpuGradient" x1="0" y1="0" x2="0" y2="1">
+                    <stop offset="5%" stopColor="#3b82f6" stopOpacity={0.3}/>
+                    <stop offset="95%" stopColor="#3b82f6" stopOpacity={0}/>
+                  </linearGradient>
+                </defs>
+                <XAxis 
+                  dataKey="time" 
+                  stroke="#64748b" 
+                  fontSize={12}
+                  tickLine={false}
+                  axisLine={false}
+                />
+                <YAxis 
+                  stroke="#64748b" 
+                  fontSize={12}
+                  tickLine={false}
+                  axisLine={false}
+                  domain={[0, 80]}
+                />
+                <Tooltip 
+                  contentStyle={{ 
+                    backgroundColor: 'var(--card)',
+                    border: '1px solid var(--border)',
+                    borderRadius: '8px'
+                  }}
+                />
+                <Area 
+                  type="monotone" 
+                  dataKey="cpu" 
+                  stroke="#3b82f6" 
+                  fillOpacity={1} 
+                  fill="url(#cpuGradient)" 
+                  strokeWidth={2}
+                />
+              </AreaChart>
+            </ResponsiveContainer>
+          </div>
+        </Card>
+      )}
+
+      {activeTab === 'applications' && (
+        <Card>
+          <CardHeader>
+            <CardTitle>Installed Applications</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <table className="w-full">
+              <thead>
+                <tr className="border-b border-border">
+                  <th className="text-left py-3 px-4 text-sm font-medium text-muted-foreground">Application</th>
+                  <th className="text-left py-3 px-4 text-sm font-medium text-muted-foreground">Version</th>
+                  <th className="text-left py-3 px-4 text-sm font-medium text-muted-foreground">Status</th>
+                  <th className="text-right py-3 px-4 text-sm font-medium text-muted-foreground">Actions</th>
+                </tr>
+              </thead>
+              <tbody>
+                {installedApps.map((app) => (
+                  <tr key={app.name} className="border-b border-border hover:bg-secondary/50 transition-colors">
+                    <td className="py-3 px-4 text-foreground font-medium">{app.name}</td>
+                    <td className="py-3 px-4 text-muted-foreground">{app.version}</td>
+                    <td className="py-3 px-4">
+                      <Badge variant={app.status === 'up-to-date' ? 'success' : 'warning'}>
+                        {app.status === 'up-to-date' ? 'Up to date' : 'Update available'}
+                      </Badge>
+                    </td>
+                    <td className="py-3 px-4 text-right">
+                      {app.status === 'update-available' && (
+                        <button className="text-sm text-electric-blue hover:underline">
+                          Update
+                        </button>
+                      )}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </CardContent>
+        </Card>
+      )}
+
+      {activeTab === 'live-actions' && (
+        <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-4">
+          {[
+            { label: 'Lock Device', icon: <Lock className="w-6 h-6" />, color: 'text-electric-blue' },
+            { label: 'Restart', icon: <Power className="w-6 h-6" />, color: 'text-amber-500' },
+            { label: 'Locate', icon: <MapPin className="w-6 h-6" />, color: 'text-emerald-500' },
+            { label: 'Send Message', icon: <MessageSquare className="w-6 h-6" />, color: 'text-purple-500' },
+            { label: 'Play Sound', icon: <Volume2 className="w-6 h-6" />, color: 'text-cyan-500' },
+            { label: 'Run Script', icon: <Terminal className="w-6 h-6" />, color: 'text-indigo-500' },
+            { label: 'Update Agent', icon: <Download className="w-6 h-6" />, color: 'text-teal-500' },
+            { label: 'Refresh', icon: <RefreshCw className="w-6 h-6" />, color: 'text-blue-500' },
+            { label: 'Wipe Device', icon: <Trash2 className="w-6 h-6" />, color: 'text-red-500', danger: true },
+          ].map((action) => (
+            <button
+              key={action.label}
+              className={`p-6 rounded-xl border border-border hover:bg-secondary transition-all hover:shadow-lg hover:-translate-y-0.5 ${action.danger ? 'hover:border-red-500/50' : ''}`}
+            >
+              <div className={`mb-3 ${action.color}`}>{action.icon}</div>
+              <span className="text-sm font-medium text-foreground">{action.label}</span>
+            </button>
+          ))}
+        </div>
+      )}
+
+      {activeTab === 'scripts' && (
+        <Card>
+          <CardHeader>
+            <CardTitle>Available Scripts</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <div className="space-y-3">
+              {[
+                { name: 'Clear Temp Files', description: 'Remove temporary files and clear cache', lastRun: '2 days ago' },
+                { name: 'Check Disk Health', description: 'Run SMART diagnostics on all drives', lastRun: '1 week ago' },
+                { name: 'Update Drivers', description: 'Check and update device drivers', lastRun: 'Never' },
+                { name: 'Security Scan', description: 'Run full system security scan', lastRun: '3 days ago' },
+              ].map((script) => (
+                <div
+                  key={script.name}
+                  className="flex items-center justify-between p-4 rounded-lg border border-border hover:bg-secondary/50 transition-colors"
+                >
+                  <div>
+                    <p className="font-medium text-foreground">{script.name}</p>
+                    <p className="text-sm text-muted-foreground">{script.description}</p>
+                    <p className="text-xs text-muted-foreground mt-1">Last run: {script.lastRun}</p>
+                  </div>
+                  <button className="flex items-center gap-2 px-4 py-2 bg-electric-blue text-white rounded-lg hover:bg-electric-blue/90 transition-colors">
+                    <Play className="w-4 h-4" />
+                    Run
+                  </button>
+                </div>
+              ))}
+            </div>
+          </CardContent>
+        </Card>
+      )}
+
+      {activeTab === 'alerts' && (
+        <Card>
+          <CardHeader>
+            <CardTitle>Device Alerts</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <div className="space-y-3">
+              {recentAlerts.map((alert) => (
+                <div key={alert.id} className="flex items-start gap-3 p-4 rounded-lg border border-border">
+                  {alert.type === 'warning' && <AlertTriangle className="w-5 h-5 text-amber-500 mt-0.5" />}
+                  {alert.type === 'info' && <CheckCircle className="w-5 h-5 text-electric-blue mt-0.5" />}
+                  {alert.type === 'success' && <CheckCircle className="w-5 h-5 text-emerald-500 mt-0.5" />}
+                  <div className="flex-1">
+                    <p className="text-foreground">{alert.message}</p>
+                    <p className="text-sm text-muted-foreground mt-1">{alert.time}</p>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </CardContent>
+        </Card>
+      )}
+    </div>
   )
 }

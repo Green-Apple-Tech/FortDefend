@@ -284,13 +284,6 @@ interface StatCardProps {
 }
 
 function StatCard({ title, value, change, changeType, icon: Icon, color }: StatCardProps) {
-  const colorClasses = {
-    blue: 'bg-electric-blue/10 text-electric-blue',
-    emerald: 'bg-emerald/10 text-emerald',
-    cyan: 'bg-electric-cyan/10 text-electric-cyan',
-    amber: 'bg-warning/10 text-warning',
-  }
-
   const iconBgClasses = {
     blue: 'bg-gradient-to-br from-electric-blue to-blue-600',
     emerald: 'bg-gradient-to-br from-emerald to-green-600',
@@ -304,12 +297,14 @@ function StatCard({ title, value, change, changeType, icon: Icon, color }: StatC
         <div>
           <p className="text-sm text-muted-foreground font-medium">{title}</p>
           <p className="text-3xl font-bold text-foreground mt-2">{value}</p>
-          <p className={`text-sm mt-2 ${
-            changeType === 'positive' ? 'text-emerald' :
-            changeType === 'negative' ? 'text-danger' : 'text-muted-foreground'
-          }`}>
-            {change}
-          </p>
+          {change && (
+            <p className={`text-sm mt-2 ${
+              changeType === 'positive' ? 'text-emerald' :
+              changeType === 'negative' ? 'text-danger' : 'text-muted-foreground'
+            }`}>
+              {change}
+            </p>
+          )}
         </div>
         <div className={`w-12 h-12 rounded-xl ${iconBgClasses[color]} flex items-center justify-center shadow-lg`}>
           <Icon className="w-6 h-6 text-white" />

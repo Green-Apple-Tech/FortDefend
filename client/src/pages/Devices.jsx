@@ -1157,8 +1157,11 @@ export default function Devices() {
   const resolveDeleteTargetId = (d) => {
     const dbId = resolveFleetRowToDbId(d, dbLookup);
     if (dbId) return dbId;
+    if (d?.device_id) return String(d.device_id);
+    if (d?.deviceId) return String(d.deviceId);
+    if (d?.id) return String(d.id);
     if (d?.external_id) return String(d.external_id);
-    return d?.id ? String(d.id) : null;
+    return null;
   };
 
   const saveGroupSettingsName = async () => {
@@ -1721,6 +1724,7 @@ export default function Devices() {
                                   if (!window.confirm(`Are you sure you want to remove ${deviceName}? This will stop monitoring this device.`)) return;
                                   const token = localStorage.getItem('accessToken');
                                   const targetId = resolveDeleteTargetId(d);
+                                  console.log('Deleting device id:', targetId, 'raw id:', d?.id, 'device_id:', d?.device_id, 'deviceId:', d?.deviceId, 'name:', d?.name);
                                   if (!targetId) {
                                     setToast('Could not resolve device id for delete.');
                                     alert('Could not resolve device id for delete.');
@@ -2040,6 +2044,7 @@ export default function Devices() {
                             try {
                               const token = localStorage.getItem('accessToken');
                               const targetId = resolveDeleteTargetId(panelDevice);
+                              console.log('Deleting device id:', targetId, 'raw id:', panelDevice?.id, 'device_id:', panelDevice?.device_id, 'deviceId:', panelDevice?.deviceId, 'name:', panelDevice?.name);
                               if (!targetId) {
                                 setToast('Could not resolve device id for delete.');
                                 alert('Could not resolve device id for delete.');

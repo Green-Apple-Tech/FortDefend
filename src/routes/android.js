@@ -37,10 +37,7 @@ router.post('/heartbeat', async (req, res) => {
   try {
     const { orgToken, deviceName, os, source, agentVersion } = req.body || {};
 
-    const org = await db('orgs')
-      .where({ id: orgToken })
-      .orWhere({ enrollment_token: orgToken })
-      .first();
+    const org = await db('orgs').where({ id: orgToken }).first();
 
     if (!org) return res.status(401).json({ error: 'Invalid org token' });
 

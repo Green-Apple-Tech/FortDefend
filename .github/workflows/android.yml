@@ -22,11 +22,17 @@ jobs:
         env:
           EXPO_TOKEN: ${{ secrets.EXPO_TOKEN }}
         run: eas build --platform android --profile preview --non-interactive
-      - name: Upload to BrowserStack
+      - name: Upload APK to BrowserStack
         env:
           BROWSERSTACK_USERNAME: ${{ secrets.BROWSERSTACK_USERNAME }}
           BROWSERSTACK_ACCESS_KEY: ${{ secrets.BROWSERSTACK_ACCESS_KEY }}
         run: |
-          curl -u "$BROWSERSTACK_USERNAME:$BROWSERSTACK_ACCESS_KEY" \
-          -X POST "https://api-cloud.browserstack.com/app-automate/upload" \
-          -F "file=@android/build/outputs/apk/release/app-release.apk"
+          APK_PATH=$(find ./android -name "*.apk" | head -1)
+          if [ -f "$APK_PATH" ]; then
+            curl -u "$BROWSERSTACK_USERNAME:$BROWSERSTACK_ACCESS_KEY" \
+            -X POST "https://api-cloud.browserstack.com/app-automate/upload" \
+            -F "file=@$APK_PATH"
+            echo "APK uploaded to BrowserStack"
+          else
+            echo "No APK found - EAS builds in cloud, skipping BrowserStack upload"
+          fi

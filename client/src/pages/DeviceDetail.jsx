@@ -124,6 +124,9 @@ export default function DeviceDetail() {
     if (!Number.isFinite(free) || !Number.isFinite(total) || total <= 0) return null;
     return ((total - free) / total) * 100;
   })();
+  const diskUsedPct = device?.disk_total_gb && device?.disk_free_gb
+    ? Math.round(((device.disk_total_gb - device.disk_free_gb) / device.disk_total_gb) * 100)
+    : 0;
 
   if (loading) return <Card>Loading device...</Card>;
   if (error) return <Card className="text-red-700">{error}</Card>;
@@ -158,7 +161,7 @@ export default function DeviceDetail() {
       <div className="grid gap-4 md:grid-cols-3">
         <Gauge label="CPU" value={cpu} color="#2563EB" />
         <Gauge label="RAM" value={ram} color="#F59E0B" />
-        <Gauge label="Disk" value={disk} color="#10B981" />
+        <Gauge label="Disk" value={diskUsedPct || disk} color="#10B981" />
       </div>
 
       <div className="flex gap-1 overflow-x-auto border-b border-fds-border">

@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { api } from '../lib/api';
+import { useAuth } from '../context/AuthContext';
 import { Button, Card, Input } from '../components/ui';
 import ScriptRunnerModal from '../components/ScriptRunnerModal';
 
@@ -80,6 +81,8 @@ function parseResultOutput(raw) {
 }
 
 export default function DeviceDetail() {
+  const { user } = useAuth();
+  const isViewer = user?.role === 'viewer';
   const { deviceId } = useParams();
   const navigate = useNavigate();
   const [tab, setTab] = useState('overview');
@@ -132,8 +135,10 @@ export default function DeviceDetail() {
       await loadLive();
       const v = await api('/api/agent/version').catch(() => ({ version: '1.0.1' }));
       if (!cancelled) setExpectedAgentVersion(String(v?.version || '1.0.1'));
-      const scr = await api('/api/scripts').catch(() => ({ scripts: [] }));
-      if (!cancelled) setScripts(Array.isArray(scr?.scripts) ? scr.scripts : []);
+      if (!isViewer) {
+        const scr = await api('/api/scripts').catch(() => ({ scripts: [] }));
+        if (!cancelled) setScripts(Array.isArray(scr?.scripts) ? scr.scripts : []);
+      }
     })();
     const t = setInterval(() => {
       if (!cancelled) loadLive();
@@ -142,7 +147,11 @@ export default function DeviceDetail() {
       cancelled = true;
       clearInterval(t);
     };
-  }, [deviceId]);
+  }, [deviceId, isViewer]);
+
+  useEffect(() => {
+    if (isViewer && tab === 'scripts') setTab('overview');
+  }, [isViewer, tab]);
 
   useEffect(() => {
     if (tab !== 'live_actions') return;
@@ -322,7 +331,10 @@ export default function DeviceDetail() {
       await api('/api/agent/force-update', { method: 'POST', body: { deviceIds: [device.id] } });
       return;
     }
-    if (kind === 'run_script') setShowRunner(true);
+    if (kind === 'run_script') {
+      if (isViewer) return;
+      setShowRunner(true);
+    }
   };
 
   const resolveAlert = async (id) => {
@@ -407,7 +419,9 @@ export default function DeviceDetail() {
                       ['Lock Screen', 'lock'],
                       ['Send Message to User', 'message'],
                       ['Remove Device', 'remove'],
-                    ].map(([label, id]) => (
+                    ]
+                      .filter(([, id]) => !(isViewer && id === 'run_script'))
+                      .map(([label, id]) => (
                       <button key={id} className={`block w-full rounded px-3 py-2 text-left text-sm hover:bg-slate-50 ${id === 'remove' ? 'text-red-600' : 'text-slate-700'}`} onClick={() => runDeviceCommand(id)}>
                         {label}
                       </button>
@@ -422,7 +436,9 @@ export default function DeviceDetail() {
       </div>
 
       <div className="flex gap-1 overflow-x-auto border-b border-fds-border">
-        {['overview', 'software', 'alerts', 'scripts', 'live_actions', 'activity'].map((t) => (
+        {['overview', 'software', 'alerts', 'scripts', 'live_actions', 'activity']
+          .filter((t) => !(isViewer && t === 'scripts'))
+          .map((t) => (
           <button key={t} onClick={() => setTab(t)} className={`whitespace-nowrap border-b-2 px-4 py-2.5 text-sm font-semibold ${tab === t ? 'border-brand text-brand' : 'border-transparent text-slate-600 hover:text-slate-900'}`}>
             {t === 'live_actions' ? 'Live Actions' : t.charAt(0).toUpperCase() + t.slice(1)}
           </button>
@@ -524,7 +540,7 @@ export default function DeviceDetail() {
         </div>
       )}
 
-      {tab === 'scripts' && (
+      {!isViewer && tab === 'scripts' && (
         <Card>
           <div className="mb-3 flex items-center justify-between">
             <h2 className="text-sm font-semibold text-slate-900">Scripts</h2>
@@ -806,13 +822,15 @@ export default function DeviceDetail() {
         </Card>
       )}
 
-      <ScriptRunnerModal
-        open={showRunner}
-        onClose={() => setShowRunner(false)}
-        selectedDevices={device ? [device] : []}
-        scripts={scripts}
-        title="Run Script on Device"
-      />
+      {!isViewer ? (
+        <ScriptRunnerModal
+          open={showRunner}
+          onClose={() => setShowRunner(false)}
+          selectedDevices={device ? [device] : []}
+          scripts={scripts}
+          title="Run Script on Device"
+        />
+      ) : null}
 
       {showOutput && (
         <div className="fixed inset-0 z-[80] flex items-center justify-center bg-black/40 p-4">

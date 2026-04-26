@@ -11,6 +11,8 @@ export default function MspDashboard() {
   const [overview, setOverview] = useState({ clients: 0, totalDevices: 0, totalAlerts: 0, patchesToday: 0 });
   const [clients, setClients] = useState([]);
   const [name, setName] = useState('');
+  const [clientPortalAccess, setClientPortalAccess] = useState(false);
+  const [newPortalCreds, setNewPortalCreds] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
 
@@ -36,8 +38,11 @@ export default function MspDashboard() {
     e.preventDefault();
     if (!name.trim()) return;
     try {
-      await api('/api/msp/clients', { method: 'POST', body: { name } });
+      const res = await api('/api/msp/clients', { method: 'POST', body: { name, clientPortalAccess } });
+      if (res?.portalCredentials) setNewPortalCreds(res.portalCredentials);
+      else setNewPortalCreds(null);
       setName('');
+      setClientPortalAccess(false);
       await load();
     } catch (e) {
       setError(e.message || 'Failed to create client.');
@@ -89,6 +94,9 @@ export default function MspDashboard() {
         <Card><p className="text-sm text-gray-500">Active alerts</p><p className="mt-2 text-3xl font-bold text-amber-600">{overview.totalAlerts || 0}</p></Card>
         <Card><p className="text-sm text-gray-500">Overall patch compliance</p><p className="mt-2 text-3xl font-bold text-emerald-600">{Math.max(0, Math.min(100, 100 - (overview.totalAlerts || 0)))}%</p></Card>
       </div>
+      <div className="rounded-lg border border-blue-200 bg-blue-50 px-4 py-3 text-sm text-blue-900">
+        Billing is based on total devices across all clients
+      </div>
 
       <Card>
         <div className="mb-4 flex items-center justify-between">
@@ -103,6 +111,7 @@ export default function MspDashboard() {
                 <tr>
                   <th className="px-3 py-2">Client name</th>
                   <th className="px-3 py-2">Devices</th>
+                  <th className="px-3 py-2">Client portal</th>
                   <th className="px-3 py-2">Security Score</th>
                   <th className="px-3 py-2">Active alerts</th>
                   <th className="px-3 py-2">Last seen</th>
@@ -119,6 +128,11 @@ export default function MspDashboard() {
                   >
                     <td className="px-3 py-2 font-medium text-gray-900">{c.name}</td>
                     <td className="px-3 py-2">{c.devices ?? 0}</td>
+                    <td className="px-3 py-2">
+                      <span className={`inline-flex rounded-full px-2 py-0.5 text-xs font-semibold ${c.client_portal_access ? 'bg-emerald-100 text-emerald-800' : 'bg-slate-100 text-slate-700'}`}>
+                        {c.client_portal_access ? 'Enabled' : 'Off'}
+                      </span>
+                    </td>
                     <td className="px-3 py-2">{c.securityScore ?? 'N/A'}</td>
                     <td className="px-3 py-2">{c.activeAlerts ?? 0}</td>
                     <td className="px-3 py-2">{c.lastSeen ? new Date(c.lastSeen).toLocaleString() : 'Never'}</td>
@@ -131,7 +145,7 @@ export default function MspDashboard() {
                   </tr>
                 ))}
                 {clients.length === 0 && (
-                  <tr><td className="px-3 py-4 text-gray-500" colSpan={6}>No client orgs yet.</td></tr>
+                  <tr><td className="px-3 py-4 text-gray-500" colSpan={7}>No client orgs yet.</td></tr>
                 )}
               </tbody>
             </table>
@@ -141,12 +155,35 @@ export default function MspDashboard() {
 
       <Card id="add-client-form">
         <h2 className="font-semibold text-gray-900">Add new client</h2>
-        <form onSubmit={onCreate} className="mt-4 flex flex-col gap-3 sm:flex-row">
+        <form onSubmit={onCreate} className="mt-4 flex flex-col gap-3">
           <Input label="Client organization name" value={name} onChange={(e) => setName(e.target.value)} className="sm:flex-1" />
-          <div className="sm:pt-6">
+          <label className="flex items-center justify-between rounded-lg border border-fds-border bg-slate-50 px-3 py-2">
+            <div>
+              <p className="text-sm font-medium text-slate-900">Client Portal Access</p>
+              <p className="text-xs text-slate-600">
+                OFF = MSP manages silently. ON = create limited read-only client login (devices, alerts, reports only).
+              </p>
+            </div>
+            <input
+              type="checkbox"
+              checked={clientPortalAccess}
+              onChange={(e) => setClientPortalAccess(e.target.checked)}
+            />
+          </label>
+          <div>
             <Button type="submit">Add new client</Button>
           </div>
         </form>
+        {newPortalCreds && (
+          <div className="mt-3 rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-2 text-sm text-emerald-900">
+            <p className="font-semibold">Limited client portal login created</p>
+            <p>Email: {newPortalCreds.email}</p>
+            <p>Password: {newPortalCreds.password}</p>
+          </div>
+        )}
+        <p className="mt-3 text-xs text-slate-500">
+          Client portal users are read-only and cannot access settings, scripts, or other clients.
+        </p>
       </Card>
     </div>
   );

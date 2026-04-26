@@ -43,7 +43,7 @@ function normalizeStatus(raw) {
   return 'pending';
 }
 
-router.get('/', async (req, res, next) => {
+router.get('/', requireAdmin, async (req, res, next) => {
   try {
     const scripts = await db('scripts')
       .where('org_id', req.user.orgId)
@@ -214,7 +214,7 @@ async function queueScriptRun(req, res, next, scriptIdParam) {
 router.post('/quick/run', requireAdmin, async (req, res, next) => queueScriptRun(req, res, next, 'quick'));
 router.post('/:id/run', requireAdmin, async (req, res, next) => queueScriptRun(req, res, next, req.params.id));
 
-router.get('/:id/history', async (req, res, next) => {
+router.get('/:id/history', requireAdmin, async (req, res, next) => {
   try {
     const commandIds = String(req.query.commandIds || '')
       .split(',')

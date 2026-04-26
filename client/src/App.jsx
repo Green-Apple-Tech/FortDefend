@@ -1,5 +1,6 @@
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
 import { AuthProvider } from './context/AuthContext';
+import { useAuth } from './context/AuthContext';
 import { MarketingLayout } from './components/MarketingLayout';
 import { ProtectedRoute } from './components/ProtectedRoute';
 import { AppLayout } from './components/AppLayout';
@@ -20,6 +21,12 @@ import Settings from './pages/Settings';
 import Integrations from './pages/Integrations';
 import Install from './pages/Install';
 import ApiDocs from './pages/ApiDocs';
+
+function ViewerGuard({ children }) {
+  const { user } = useAuth();
+  if (user?.role === 'viewer') return <Navigate to="/dashboard" replace />;
+  return children;
+}
 
 export default function App() {
   return (
@@ -47,10 +54,10 @@ export default function App() {
               <Route path="/reports" element={<Reports />} />
               <Route path="/alerts" element={<Navigate to="/devices?tab=alerts" replace />} />
               <Route path="/billing" element={<Billing />} />
-              <Route path="/settings" element={<Settings />} />
+              <Route path="/settings" element={<ViewerGuard><Settings /></ViewerGuard>} />
               <Route path="/integrations" element={<Integrations />} />
               <Route path="/install" element={<Install />} />
-              <Route path="/scripts" element={<Navigate to="/devices?tab=scripts" replace />} />
+              <Route path="/scripts" element={<ViewerGuard><Navigate to="/devices?tab=scripts" replace /></ViewerGuard>} />
               <Route path="/reboot-policies" element={<Navigate to="/devices?tab=reboot" replace />} />
               <Route path="/api-docs" element={<ApiDocs />} />
               <Route path="/msp" element={<Navigate to="/settings?tab=msp" replace />} />

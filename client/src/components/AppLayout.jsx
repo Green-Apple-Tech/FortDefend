@@ -77,6 +77,8 @@ function breadcrumbFromPath(pathname) {
 export function AppLayout() {
   const { user, org, logout } = useAuth();
   const { pathname } = useLocation();
+  const canAccessSettings = user?.role !== 'viewer';
+  const visibleNavItems = canAccessSettings ? navItems : navItems.filter((item) => item.to !== '/settings');
   const pageTitle = PATH_TITLES[pathname] || 'FortDefend';
   const crumbs = breadcrumbFromPath(pathname);
 
@@ -91,7 +93,7 @@ export function AppLayout() {
             </Link>
 
             <nav className="flex flex-1 flex-col gap-0.5 overflow-y-auto">
-              {navItems.map(({ to, label, icon }) => (
+              {visibleNavItems.map(({ to, label, icon }) => (
                 <NavLink
                   key={to}
                   to={to}
@@ -174,7 +176,7 @@ export function AppLayout() {
           </header>
           <div className="border-b border-fds-border bg-white px-2 py-2 md:hidden">
             <div className="flex max-h-36 flex-wrap gap-1 overflow-y-auto">
-              {navItems.map(({ to, label, icon }) => (
+              {visibleNavItems.map(({ to, label, icon }) => (
                 <NavLink
                   key={to}
                   to={to}

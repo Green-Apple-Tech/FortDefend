@@ -384,6 +384,7 @@ router.post('/devices/:id/reboot', requireAuth, requireAdmin, async (req, res) =
 
 router.delete('/devices/:id', requireAuth, async (req, res) => {
   try {
+    console.log('[delete device] deleting:', req.params.id);
     const { id } = req.params;
     const device = await db('devices')
       .where('org_id', req.user.orgId)

@@ -3,6 +3,7 @@ import { createPortal } from 'react-dom';
 import { useNavigate } from 'react-router-dom';
 import { useSearchParams } from 'react-router-dom';
 import { api } from '../lib/api';
+import { useAuth } from '../context/AuthContext';
 import { Button, Card, Input } from '../components/ui';
 import ScriptRunnerModal from '../components/ScriptRunnerModal';
 import SoftwareManager from './SoftwareManager';
@@ -83,9 +84,11 @@ const formatOS = (os) => {
   if (!os) return '—';
   return String(os)
     .replace('Microsoft ', '')
+    .replace(/\bWindows\b/i, 'MS')
     .replace(/\s+\d+\.\d+\.\d+.*$/, '')
+    .replace(/^\w/, (c) => c.toUpperCase())
     .trim();
-}
+};
 
 function getLastSeen(d) {
   return d.lastSeen || d.last_seen || null;
@@ -311,12 +314,19 @@ function escapeCsv(s) {
 }
 
 export default function Devices() {
+  const { user } = useAuth();
+  const isViewer = user?.role === 'viewer';
   const navigate = useNavigate();
   const [searchParams, setSearchParams] = useSearchParams();
+  const availableTabs = useMemo(
+    () => (isViewer ? ['devices', 'software', 'alerts', 'reboot'] : ['devices', 'software', 'alerts', 'scripts', 'reboot', 'settings']),
+    [isViewer],
+  );
+  const availableTabSet = useMemo(() => new Set(availableTabs), [availableTabs]);
   const mainTab = useMemo(() => {
     const t = searchParams.get('tab') || 'devices';
-    return MAIN_DEVICE_TAB_IDS.has(t) ? t : 'devices';
-  }, [searchParams]);
+    return availableTabSet.has(t) ? t : 'devices';
+  }, [searchParams, availableTabSet]);
 
   const selectMainTab = useCallback(
     (id) => {
@@ -382,6 +392,12 @@ export default function Devices() {
   const [headerControlsTarget, setHeaderControlsTarget] = useState(null);
   const [orgAutoUpdateAgent, setOrgAutoUpdateAgent] = useState(false);
   const [agentUpdatesOpen, setAgentUpdatesOpen] = useState(false);
+
+  useEffect(() => {
+    if (isViewer && (mainTab === 'scripts' || mainTab === 'settings')) {
+      selectMainTab('devices');
+    }
+  }, [isViewer, mainTab, selectMainTab]);
 
   const groupsFlat = useMemo(() => flattenGroupTree(groupsTree), [groupsTree]);
   const dbLookup = useMemo(() => buildDbDeviceLookup(dbList), [dbList]);
@@ -1138,6 +1154,13 @@ export default function Devices() {
     navigate(`/devices/${encodeURIComponent(d.id)}`);
   };
 
+  const resolveDeleteTargetId = (d) => {
+    const dbId = resolveFleetRowToDbId(d, dbLookup);
+    if (dbId) return dbId;
+    if (d?.external_id) return String(d.external_id);
+    return d?.id ? String(d.id) : null;
+  };
+
   const saveGroupSettingsName = async () => {
     if (!/^[0-9a-f-]{36}$/i.test(groupScope)) return;
     try {
@@ -1231,7 +1254,7 @@ export default function Devices() {
           { id: 'scripts', label: 'Scripts' },
           { id: 'reboot', label: 'Reboot' },
           { id: 'settings', label: 'Settings' },
-        ].map((t) => (
+        ].filter((t) => availableTabSet.has(t.id)).map((t) => (
           <button
             key={t.id}
             type="button"
@@ -1295,7 +1318,7 @@ export default function Devices() {
         {checkedDevices.length > 0 && (
           <div className="mb-4 flex flex-wrap items-center gap-2 rounded-lg border border-brand/30 bg-brand-light/40 px-3 py-2">
             <span className="text-sm font-medium text-brand">{checkedDevices.length} selected</span>
-            <Button variant="outline" className="!py-1.5 text-xs" onClick={() => setShowScriptRunner(true)}>Run Script</Button>
+            {!isViewer ? <Button variant="outline" className="!py-1.5 text-xs" onClick={() => setShowScriptRunner(true)}>Run Script</Button> : null}
             <Button variant="outline" className="!py-1.5 text-xs" onClick={rebootSelected}>Reboot</Button>
             <Button variant="outline" className="!py-1.5 text-xs" onClick={assignSelectedToGroup}>Assign Group</Button>
             <Button variant="outline" className="!py-1.5 text-xs" onClick={exportCsv}>Export Selected</Button>
@@ -1637,17 +1660,19 @@ export default function Devices() {
                           </button>
                           {openMenu === k && (
                             <div className="absolute right-0 z-[100] mt-1 min-w-[220px] w-max rounded-lg border border-gray-200 bg-white py-1 shadow-lg">
-                              <button
-                                type="button"
-                                className="block w-full whitespace-nowrap px-4 py-2 pr-6 text-left text-sm text-gray-700 hover:bg-gray-50"
-                                onClick={() => {
-                                  setOpenMenu(null);
-                                  setCheckedIds([d.id]);
-                                  setShowScriptRunner(true);
-                                }}
-                              >
-                                Run Script
-                              </button>
+                              {!isViewer ? (
+                                <button
+                                  type="button"
+                                  className="block w-full whitespace-nowrap px-4 py-2 pr-6 text-left text-sm text-gray-700 hover:bg-gray-50"
+                                  onClick={() => {
+                                    setOpenMenu(null);
+                                    setCheckedIds([d.id]);
+                                    setShowScriptRunner(true);
+                                  }}
+                                >
+                                  Run Script
+                                </button>
+                              ) : null}
                               <button
                                 type="button"
                                 className="block w-full whitespace-nowrap px-4 py-2 pr-6 text-left text-sm text-gray-700 hover:bg-gray-50"
@@ -1695,9 +1720,15 @@ export default function Devices() {
                                   const deviceName = d.name || d.id || 'this device';
                                   if (!window.confirm(`Are you sure you want to remove ${deviceName}? This will stop monitoring this device.`)) return;
                                   const token = localStorage.getItem('accessToken');
-                                  console.log('Deleting device:', d.id);
+                                  const targetId = resolveDeleteTargetId(d);
+                                  if (!targetId) {
+                                    setToast('Could not resolve device id for delete.');
+                                    alert('Could not resolve device id for delete.');
+                                    return;
+                                  }
+                                  console.log('Deleting device:', targetId);
                                   try {
-                                    await api(`/api/devices/${encodeURIComponent(d.id)}`, {
+                                    await api(`/api/integrations/devices/${encodeURIComponent(targetId)}`, {
                                       method: 'DELETE',
                                       headers: token ? { Authorization: `Bearer ${token}` } : {},
                                     });
@@ -1707,6 +1738,7 @@ export default function Devices() {
                                     loadDevices({ showLoading: false });
                                   } catch (err) {
                                     setToast(err?.message || 'Failed to remove device.');
+                                    alert(err?.message || 'Failed to remove device.');
                                   }
                                 }}
                               >
@@ -1815,7 +1847,7 @@ export default function Devices() {
 
       {mainTab === 'software' && <SoftwareManager deviceIdsAllowlist={softwareAllowlist} />}
 
-      {mainTab === 'scripts' && <Scripts />}
+      {!isViewer && mainTab === 'scripts' && <Scripts />}
 
       {mainTab === 'reboot' && <RebootPolicies />}
 
@@ -1844,14 +1876,14 @@ export default function Devices() {
         </Card>
       )}
 
-      {mainTab === 'settings' && !/^[0-9a-f-]{36}$/i.test(groupScope) && (
+      {!isViewer && mainTab === 'settings' && !/^[0-9a-f-]{36}$/i.test(groupScope) && (
         <Card className="border-fds-border p-6 text-sm text-slate-600">
           Select a group in <strong className="font-medium text-slate-800">Group scope</strong> to rename it and
           adjust basic preferences.
         </Card>
       )}
 
-      {mainTab === 'settings' && /^[0-9a-f-]{36}$/i.test(groupScope) && (
+      {!isViewer && mainTab === 'settings' && /^[0-9a-f-]{36}$/i.test(groupScope) && (
         <Card className="space-y-4 border-fds-border p-5">
           <h2 className="text-sm font-semibold text-slate-900">Group settings</h2>
           <Input label="Group name" value={groupSettingsName} onChange={(e) => setGroupSettingsName(e.target.value)} />
@@ -2006,12 +2038,25 @@ export default function Devices() {
                             setPanelHeaderMenuOpen(false);
                             if (!window.confirm('Remove this device from FortDefend?')) return;
                             try {
-                              await api(`/api/devices/${encodeURIComponent(panelDevice.id)}`, { method: 'DELETE' });
+                              const token = localStorage.getItem('accessToken');
+                              const targetId = resolveDeleteTargetId(panelDevice);
+                              if (!targetId) {
+                                setToast('Could not resolve device id for delete.');
+                                alert('Could not resolve device id for delete.');
+                                return;
+                              }
+                              await api(`/api/integrations/devices/${encodeURIComponent(targetId)}`, {
+                                method: 'DELETE',
+                                headers: token ? { Authorization: `Bearer ${token}` } : {},
+                              });
                               setToast('Device removed.');
+                              setRows((prev) => prev.filter((row) => row.id !== panelDevice.id));
+                              setCheckedIds((prev) => prev.filter((id) => id !== panelDevice.id));
                               setSelected(null);
                               loadDevices({ showLoading: false });
                             } catch (err) {
                               setToast(err.message || 'Remove failed.');
+                              alert(err?.message || 'Remove failed.');
                             }
                           }}
                         >
@@ -2263,13 +2308,15 @@ export default function Devices() {
           {toast}
         </div>
       )}
-      <ScriptRunnerModal
-        open={showScriptRunner}
-        onClose={() => setShowScriptRunner(false)}
-        selectedDevices={checkedDevices}
-        scripts={scripts}
-        title="Run Script on Devices"
-      />
+      {!isViewer ? (
+        <ScriptRunnerModal
+          open={showScriptRunner}
+          onClose={() => setShowScriptRunner(false)}
+          selectedDevices={checkedDevices}
+          scripts={scripts}
+          title="Run Script on Devices"
+        />
+      ) : null}
     </div>
   );
 }

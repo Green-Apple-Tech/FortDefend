@@ -2,6 +2,8 @@ const express = require('express');
 const router = express.Router();
 const db = require('../database');
 const { v4: uuidv4 } = require('uuid');
+const crypto = require('crypto');
+const bcrypt = require('bcryptjs');
 const { requireAuth, requireAdmin } = require('../middleware/auth');
 const {
   PLANS, MSP_TEST_CLIENT_LIMIT, MSP_TEST_DEVICE_LIMIT, getTrialEndDate,
@@ -40,7 +42,7 @@ router.get('/clients', async (req, res, next) => {
     const clients = await db('orgs')
       .where({ msp_parent_org_id: req.user.orgId })
       .select('id','name','plan','device_limit','subscription_status',
-              'is_test_client','trial_ends_at','created_at')
+              'is_test_client','trial_ends_at','created_at', 'client_portal_access')
       .orderBy('created_at', 'desc');
     const withCounts = await Promise.all(clients.map(async (c) => {
       const { n } = await db('devices').where({ org_id: c.id })
@@ -53,7 +55,7 @@ router.get('/clients', async (req, res, next) => {
 
 router.post('/clients', async (req, res, next) => {
   try {
-    const { name, plan, isTest = false } = req.body;
+    const { name, plan, isTest = false, clientPortalAccess = false } = req.body;
     if (!name) return res.status(400).json({ error: 'Client name required.' });
 
     if (isTest) {
@@ -98,12 +100,33 @@ router.post('/clients', async (req, res, next) => {
       stripe_subscription_id: stripeSubscriptionId,
       subscription_status: isTest ? 'trialing' : 'active',
       trial_ends_at: isTest ? getTrialEndDate() : null,
+      client_portal_access: clientPortalAccess === true,
       created_at: new Date(),
       updated_at: new Date(),
     };
 
-    await db('orgs').insert(clientOrg);
-    res.status(201).json({ client: clientOrg });
+    let portalCredentials = null;
+    await db.transaction(async (trx) => {
+      await trx('orgs').insert(clientOrg);
+      if (clientPortalAccess === true) {
+        const suffix = String(clientOrg.id).replace(/-/g, '').slice(0, 10);
+        const email = `client.${suffix}@portal.fortdefend.local`;
+        const password = crypto.randomBytes(9).toString('base64url');
+        const passwordHash = await bcrypt.hash(password, 12);
+        await trx('users').insert({
+          id: uuidv4(),
+          org_id: clientOrg.id,
+          email,
+          password_hash: passwordHash,
+          role: 'viewer',
+          email_verified: true,
+          created_at: new Date(),
+          updated_at: new Date(),
+        });
+        portalCredentials = { email, password };
+      }
+    });
+    res.status(201).json({ client: clientOrg, portalCredentials });
   } catch (err) { next(err); }
 });
 

@@ -120,9 +120,12 @@
 
 ### Currently Set Up
 - **Cursor** — AI code editor (primary development tool)
-- **GitHub Actions** — Auto build/test on every git push
-- **BrowserStack** — Real device cloud testing (paid)
-- **EAS (Expo)** — Automated Android APK builds
+- ✅ **GitHub Actions** — set up and running
+- ✅ **Maestro** — installed and test files created
+- ✅ **v0.dev** — signed in and ready
+- ✅ **Java** — installed (OpenJDK 26)
+- ✅ **BrowserStack** — paid plan active
+- ✅ **EAS** — builds working
 - **Railway** — Auto-deploys on every git push
 
 ### GitHub Actions Workflows
@@ -130,11 +133,7 @@
 - deploy.yml — Checks backend syntax on every push
 
 ### To Add Next
-- **Maestro** — Automated mobile UI testing
-  - Install: `curl -Ls "https://get.maestro.mobile.dev" | bash`
-  - Tests: maestro/enrollment.yaml, maestro/heartbeat.yaml
 - **Fastlane** — Automate Google Play Store uploads
-- **v0.dev** — AI UI component generation (use for all new pages)
 
 ### Testing Strategy
 | What | Tool | Status |

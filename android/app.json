@@ -1,0 +1,16 @@
+{
+  "expo": {
+    "name": "FortDefend",
+    "slug": "fortdefend",
+    "version": "1.0.0",
+    "orientation": "portrait",
+    "android": {
+      "package": "com.fortdefend.app"
+    },
+    "extra": {
+      "eas": {
+        "projectId": "5ae6302c-c074-4963-a0e2-db11eefa0f77"
+      }
+    }
+  }
+}

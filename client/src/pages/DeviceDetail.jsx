@@ -47,6 +47,8 @@ export default function DeviceDetail() {
   const navigate = useNavigate();
   const [tab, setTab] = useState('overview');
   const [device, setDevice] = useState(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState('');
   const [alerts, setAlerts] = useState([]);
   const [apps, setApps] = useState([]);
   const [scripts, setScripts] = useState([]);
@@ -54,20 +56,49 @@ export default function DeviceDetail() {
 
   useEffect(() => {
     let cancelled = false;
+    let timeoutId;
     (async () => {
-      const [dRes, appRes, scrRes] = await Promise.all([
-        api(`/api/integrations/devices/${encodeURIComponent(deviceId)}`).catch(() => null),
-        api(`/api/devices/${encodeURIComponent(deviceId)}/apps`).catch(() => ({ applications: [] })),
-        api(`/api/devices/${encodeURIComponent(deviceId)}/script-history`).catch(() => ({ history: [] })),
-      ]);
-      if (cancelled) return;
-      setDevice(dRes?.device || null);
-      setAlerts(Array.isArray(dRes?.alerts) ? dRes.alerts : []);
-      setApps(Array.isArray(appRes?.applications) ? appRes.applications : []);
-      setScripts(Array.isArray(scrRes?.history) ? scrRes.history : []);
+      setLoading(true);
+      setError('');
+      if (!deviceId) {
+        setError('Missing device ID in route params.');
+        setLoading(false);
+        return;
+      }
+
+      timeoutId = setTimeout(() => {
+        if (cancelled) return;
+        setError('Request timed out after 5 seconds.');
+        setLoading(false);
+      }, 5000);
+
+      try {
+        console.log('Fetching device:', deviceId);
+        const [dRes, appRes, scrRes] = await Promise.all([
+          api(`/api/integrations/devices/${encodeURIComponent(deviceId)}`),
+          api(`/api/devices/${encodeURIComponent(deviceId)}/apps`).catch(() => ({ applications: [] })),
+          api(`/api/devices/${encodeURIComponent(deviceId)}/script-history`).catch(() => ({ history: [] })),
+        ]);
+        if (cancelled) return;
+        setDevice(dRes?.device || null);
+        setAlerts(Array.isArray(dRes?.alerts) ? dRes.alerts : []);
+        setApps(Array.isArray(appRes?.applications) ? appRes.applications : []);
+        setScripts(Array.isArray(scrRes?.history) ? scrRes.history : []);
+        if (!dRes?.device) {
+          setError('Device not found from integrations endpoint.');
+        }
+      } catch (err) {
+        if (cancelled) return;
+        setError(err?.message || 'Failed to load device details.');
+      } finally {
+        if (cancelled) return;
+        clearTimeout(timeoutId);
+        setLoading(false);
+      }
     })();
     return () => {
       cancelled = true;
+      clearTimeout(timeoutId);
     };
   }, [deviceId]);
 
@@ -93,7 +124,9 @@ export default function DeviceDetail() {
     return ((total - free) / total) * 100;
   })();
 
-  if (!device) return <Card>Loading device details...</Card>;
+  if (loading) return <Card>Loading device...</Card>;
+  if (error) return <Card className="text-red-700">{error}</Card>;
+  if (!device) return <Card>Device not found.</Card>;
 
   return (
     <div className="space-y-4">

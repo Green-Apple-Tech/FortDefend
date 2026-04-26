@@ -15,7 +15,7 @@ jobs:
       - name: Install EAS CLI
         run: npm install -g eas-cli
       - name: Build Android APK
-        working-directory: ./FortDefendMobile/FortDefendV2
+        working-directory: ./android
         env:
           EXPO_TOKEN: ${{ secrets.EXPO_TOKEN }}
         run: eas build --platform android --profile preview --non-interactive

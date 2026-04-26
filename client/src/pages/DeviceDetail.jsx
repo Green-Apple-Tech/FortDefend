@@ -76,15 +76,16 @@ export default function DeviceDetail() {
         console.log('Fetching device:', deviceId);
         const [dRes, appRes, scrRes] = await Promise.all([
           api(`/api/integrations/devices/${encodeURIComponent(deviceId)}`),
-          api(`/api/devices/${encodeURIComponent(deviceId)}/apps`).catch(() => ({ applications: [] })),
-          api(`/api/devices/${encodeURIComponent(deviceId)}/script-history`).catch(() => ({ history: [] })),
+          api(`/api/integrations/devices/${encodeURIComponent(deviceId)}/apps`).catch(() => []),
+          api(`/api/integrations/devices/${encodeURIComponent(deviceId)}/script-history`).catch(() => []),
         ]);
         if (cancelled) return;
-        setDevice(dRes?.device || null);
+        const detailDevice = dRes?.device || dRes || null;
+        setDevice(detailDevice);
         setAlerts(Array.isArray(dRes?.alerts) ? dRes.alerts : []);
-        setApps(Array.isArray(appRes?.applications) ? appRes.applications : []);
-        setScripts(Array.isArray(scrRes?.history) ? scrRes.history : []);
-        if (!dRes?.device) {
+        setApps(Array.isArray(appRes?.applications) ? appRes.applications : Array.isArray(appRes) ? appRes : []);
+        setScripts(Array.isArray(scrRes?.history) ? scrRes.history : Array.isArray(scrRes) ? scrRes : []);
+        if (!detailDevice) {
           setError('Device not found from integrations endpoint.');
         }
       } catch (err) {

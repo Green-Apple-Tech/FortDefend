@@ -45,10 +45,19 @@ function normalizeStatus(raw) {
 
 router.get('/', requireAdmin, async (req, res, next) => {
   try {
-    const scripts = await db('scripts')
-      .where('org_id', req.user.orgId)
-      .select('id', 'name', 'description', 'platforms', 'script_type', 'content', 'created_by', 'last_run_at', 'created_at', 'updated_at')
-      .orderBy('created_at', 'desc');
+    let scripts;
+    try {
+      scripts = await db('scripts')
+        .where('org_id', req.user.orgId)
+        .select('id', 'name', 'description', 'platforms', 'script_type', 'content', 'created_by', 'last_run_at', 'created_at', 'updated_at')
+        .orderBy('created_at', 'desc');
+    } catch (selectErr) {
+      // Fallback for environments where newer script columns have not been migrated yet.
+      scripts = await db('scripts')
+        .where('org_id', req.user.orgId)
+        .select('*')
+        .orderBy('created_at', 'desc');
+    }
     res.json({ scripts });
   } catch (err) {
     next(err);

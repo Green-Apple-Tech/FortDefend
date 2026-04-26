@@ -13,28 +13,45 @@ const enrollmentModule = require('./routes/enrollment');
 
 const app = express();
 
-// ── Security headers ──────────────────────────────────────────────────────────
+// Security headers
 app.use(helmet({
-  contentSecurityPolicy: {
-    directives: {
-      defaultSrc: ["'self'"],
-      scriptSrc: ["'self'"],
-      styleSrc: ["'self'", "'unsafe-inline'"],
-      // Software Manager favicons + org icon_url load from arbitrary HTTPS hosts
-      imgSrc: ["'self'", 'data:', 'https:'],
-      connectSrc: ["'self'"],
-      frameSrc: ["'none'"],
-      objectSrc: ["'none'"],
-    },
-  },
-  hsts: {
-    maxAge: 31536000,
-    includeSubDomains: true,
-    preload: true,
-  },
-  frameguard: { action: 'deny' },
-  noSniff: true,
-  referrerPolicy: { policy: 'strict-origin-when-cross-origin' },
+  contentSecurityPolicy: false, // disable for now since we serve frontend
+}));
+
+// General API rate limit
+app.use('/api/', rateLimit({
+  windowMs: 15 * 60 * 1000,
+  max: 200,
+  message: { error: 'Too many requests, please try again later' },
+  standardHeaders: true,
+  legacyHeaders: false,
+}));
+
+// Strict limit for auth endpoints
+app.use('/api/auth/', rateLimit({
+  windowMs: 15 * 60 * 1000,
+  max: 10,
+  message: { error: 'Too many auth attempts, please try again in 15 minutes' },
+  standardHeaders: true,
+  legacyHeaders: false,
+}));
+
+// Agent heartbeat - per device limit
+app.use('/api/agent/heartbeat', rateLimit({
+  windowMs: 60 * 1000,
+  max: 10,
+  message: { error: 'Too many heartbeats' },
+  standardHeaders: true,
+  legacyHeaders: false,
+}));
+
+// Android heartbeat limit
+app.use('/api/android/heartbeat', rateLimit({
+  windowMs: 60 * 1000,
+  max: 10,
+  message: { error: 'Too many heartbeats' },
+  standardHeaders: true,
+  legacyHeaders: false,
 }));
 
 app.set('trust proxy', 1);
@@ -67,23 +84,6 @@ app.use(cookieParser());
 if (process.env.NODE_ENV !== 'test') {
   app.use(morgan('combined'));
 }
-
-// ── Global rate limiter ───────────────────────────────────────────────────────
-app.use('/api/auth', rateLimit({
-  windowMs: 15 * 60 * 1000,
-  max: 20,
-  message: { error: 'Too many requests. Try again in 15 minutes.' },
-  standardHeaders: true,
-  legacyHeaders: false,
-}));
-
-app.use('/api', rateLimit({
-  windowMs: 60 * 1000,
-  max: 200,
-  message: { error: 'Too many requests.' },
-  standardHeaders: true,
-  legacyHeaders: false,
-}));
 
 // ── Health check ──────────────────────────────────────────────────────────────
 app.get('/health', (req, res) => {

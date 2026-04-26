@@ -491,6 +491,10 @@ router.get('/uninstall.ps1', (req, res) => {
 router.post('/heartbeat', async (req, res) => {
   const heartbeatStartedAt = new Date().toISOString();
   const currentAgentVersion = process.env.AGENT_VERSION || '1.0.1';
+  const orgToken = req.body?.orgToken || req.headers['x-org-token'];
+  if (!orgToken || typeof orgToken !== 'string') {
+    return res.status(400).json({ error: 'Invalid request' });
+  }
   const safe200 = (body = {}) => {
     const status = body.ok === false ? 'error' : 'ok';
     const commands = Array.isArray(body.commands) ? body.commands : [];
@@ -516,7 +520,7 @@ router.post('/heartbeat', async (req, res) => {
       hasBodyToken: Boolean(req.body?.orgToken),
       hasBody: Boolean(req.body),
     });
-    const token = req.headers['x-org-token'] || req.body?.orgToken;
+    const token = orgToken;
     let auth = null;
     try {
       auth = await authAgentRequest(token);

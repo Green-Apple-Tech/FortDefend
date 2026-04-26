@@ -36,6 +36,12 @@ function verifyDeviceToken(req, res, next) {
 router.post('/heartbeat', async (req, res) => {
   try {
     const { orgToken, deviceName, os, source, agentVersion } = req.body || {};
+    if (!orgToken || typeof orgToken !== 'string' || orgToken.length > 100) {
+      return res.status(400).json({ error: 'Invalid org token' });
+    }
+    if (deviceName && String(deviceName).length > 255) {
+      return res.status(400).json({ error: 'Device name too long' });
+    }
 
     const org = await db('orgs').where({ id: orgToken }).first();
 

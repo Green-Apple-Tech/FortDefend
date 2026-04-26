@@ -141,8 +141,8 @@ function formatRam(d) {
   const used = d.mem_used_gb ?? d.memUsed;
   const total = d.mem_total_gb ?? d.memTotal ?? d.ram_total_gb ?? d.ram?.totalGb;
   if (used == null || Number.isNaN(Number(used))) return '—';
-  if (total == null || Number.isNaN(Number(total))) return `${Number(used).toFixed(1)}GB used`;
-  return `${Number(used).toFixed(1)}/${Math.round(Number(total))}GB`;
+  if (total == null || Number.isNaN(Number(total))) return `${Number(used).toFixed(1)} GB used`;
+  return `${Number(used).toFixed(1)} / ${Math.round(Number(total))} GB`;
 }
 
 function formatPct(v) {
@@ -1273,16 +1273,14 @@ export default function Devices() {
         ))}
       </div>
 
-      {mainTab === 'devices' && (
+      {mainTab === 'devices' && outdatedDevices.length > 0 && (
         <div className="flex justify-end">
           <details className="relative" open={agentUpdatesOpen} onToggle={(e) => setAgentUpdatesOpen(e.currentTarget.open)}>
             <summary className="list-none cursor-pointer rounded-lg border border-fds-border bg-white px-3 py-2 text-sm font-medium text-slate-800 shadow-sm hover:bg-slate-50">
               Agent Updates
-              {outdatedDevices.length > 0 ? (
-                <span className="ml-2 rounded-full bg-amber-100 px-2 py-0.5 text-xs font-semibold text-amber-900">
-                  {outdatedDevices.length} devices need update
-                </span>
-              ) : null}
+              <span className="ml-2 rounded-full bg-amber-100 px-2 py-0.5 text-xs font-semibold text-amber-900">
+                {outdatedDevices.length} devices need update
+              </span>
             </summary>
             <div className="absolute right-0 z-20 mt-2 w-80 rounded-lg border border-fds-border bg-white p-3 shadow-lg">
               <label className="flex items-center justify-between gap-3 rounded-md border border-fds-border px-3 py-2 text-sm">
@@ -1588,6 +1586,7 @@ export default function Devices() {
                         }
                         if (colKey === 'disk') {
                           const free = Number(d.disk_free_gb ?? d.disk?.freeGb);
+                          const totalGb = Number(d.disk_total_gb ?? d.disk?.totalGb);
                           const diskTone = !Number.isFinite(free)
                             ? 'text-gray-600'
                             : free < 5
@@ -1595,7 +1594,15 @@ export default function Devices() {
                               : free <= 20
                                 ? 'text-amber-600'
                                 : 'text-emerald-600';
-                          return <td key={colKey} className={`align-middle px-4 ${densityUi.cellPy} font-semibold ${diskTone}`}>{formatDisk(d)}</td>;
+                          const diskTooltip =
+                            Number.isFinite(free) && Number.isFinite(totalGb)
+                              ? `${Math.round(free)} GB free of ${Math.round(totalGb)} GB total`
+                              : undefined;
+                          return (
+                            <td key={colKey} title={diskTooltip} className={`align-middle px-4 ${densityUi.cellPy} font-semibold ${diskTone}`}>
+                              {formatDisk(d)}
+                            </td>
+                          );
                         }
                         if (colKey === 'ram') {
                           const used = Number(d.mem_used_gb ?? d.memUsed);
@@ -1610,8 +1617,8 @@ export default function Devices() {
                                 <div className={`mb-1 font-semibold text-slate-700 ${densityUi.subtleText}`}>
                                   {Number.isFinite(used)
                                     ? Number.isFinite(total)
-                                      ? `${used.toFixed(1)}/${Math.round(total)}GB`
-                                      : `${used.toFixed(1)}GB used`
+                                      ? `${used.toFixed(1)} / ${Math.round(total)} GB`
+                                      : `${used.toFixed(1)} GB used`
                                     : '—'}
                                 </div>
                                 {usagePct != null ? (
@@ -1736,7 +1743,7 @@ export default function Devices() {
                                       method: 'DELETE',
                                       headers: token ? { Authorization: `Bearer ${token}` } : {},
                                     });
-                                    setRows((prev) => prev.filter((row) => row.id !== d.id));
+                                    setRows((prev) => prev.filter((row) => resolveDeleteTargetId(row) !== String(targetId)));
                                     setCheckedIds((prev) => prev.filter((id) => id !== d.id));
                                     setToast('Device removed');
                                     loadDevices({ showLoading: false });
@@ -2055,7 +2062,7 @@ export default function Devices() {
                                 headers: token ? { Authorization: `Bearer ${token}` } : {},
                               });
                               setToast('Device removed.');
-                              setRows((prev) => prev.filter((row) => row.id !== panelDevice.id));
+                              setRows((prev) => prev.filter((row) => resolveDeleteTargetId(row) !== String(targetId)));
                               setCheckedIds((prev) => prev.filter((id) => id !== panelDevice.id));
                               setSelected(null);
                               loadDevices({ showLoading: false });

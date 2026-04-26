@@ -116,6 +116,43 @@
 - Encrypted agent token ❌ roadmap
 - Pen test ❌ roadmap
 
+## Remote Control
+
+### Windows/Mac/Linux — MeshCentral
+- Tool: MeshCentral (open source, Node.js, HTML5)
+- GitHub: github.com/Ylianst/MeshCentral
+- Self-host on Railway as separate service
+- FortDefend agent installs MeshCentral agent alongside
+- Device detail page shows "Remote Control" button
+- Opens full HTML5 remote desktop in browser
+- Status: ⏳ roadmap
+
+### Android — Screen View (read-only)
+Options:
+- **scrcpy** — mirror Android screen over ADB (USB only, not remote)
+- **Google MDM Screenshot** — via Android Enterprise API, take screenshot remotely
+- **FCM command** → Android app captures screenshot → uploads to FortDefend server → displays in dashboard
+- **TeamViewer SDK** — embed in Android app for full remote control (paid)
+
+Recommended approach for Android:
+1. FortDefend sends FCM push to Android device
+2. Android app takes screenshot
+3. Uploads to FortDefend API
+4. Dashboard shows latest screenshot with timestamp
+5. Refresh button to request new screenshot
+6. Delayed by ~5-10 seconds but works over any network
+- Status: ⏳ roadmap
+
+### Chromebook
+- Chrome extension can capture tab screenshots via chrome.tabs.captureVisibleTab API
+- Full remote via Chrome Remote Desktop API (Google account required)
+- Status: ⏳ roadmap
+
+### iOS
+- Not possible without MDM supervision + Apple Remote Desktop
+- Via Intune: limited screen capture in managed apps only
+- Status: ⏳ future (post MDM integration)
+
 ## AI & Automation Stack
 
 ### Currently Set Up

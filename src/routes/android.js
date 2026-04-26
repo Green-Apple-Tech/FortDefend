@@ -1,5 +1,6 @@
 const express = require('express');
 const jwt = require('jsonwebtoken');
+const { v4: uuidv4 } = require('uuid');
 const router = express.Router();
 const db = require('../database');
 const { getJwtSecret } = require('../config/jwtSecret');
@@ -16,6 +17,7 @@ const { toNum, toDateOrNull, evaluateDeviceAlerts } = require('../lib/deviceMoni
 function verifyDeviceToken(req, res, next) {
   const authHeader = req.headers.authorization;
   if (!authHeader?.startsWith('Bearer ')) {
+    if (req.body?.orgToken) return next();
     return res.status(401).json({ error: 'Device token required.' });
   }
   try {
@@ -33,6 +35,31 @@ function verifyDeviceToken(req, res, next) {
 // POST /api/android/heartbeat — Android agent check-in, optional fcmToken, pending sm_commands
 router.post('/heartbeat', verifyDeviceToken, async (req, res, next) => {
   try {
+    if (!req.device && req.body?.orgToken) {
+      const { orgToken, deviceName, os, source, agentVersion } = req.body;
+      const org = await db('orgs')
+        .where({ id: orgToken })
+        .orWhere({ enrollment_token: orgToken })
+        .first();
+      if (!org) return res.status(401).json({ error: 'Invalid org token' });
+
+      await db('devices')
+        .insert({
+          id: uuidv4(),
+          org_id: org.id,
+          name: deviceName || 'Android Device',
+          os: os || 'Android',
+          source: source || 'android',
+          agent_version: agentVersion || null,
+          last_seen: new Date(),
+          updated_at: new Date(),
+        })
+        .onConflict(['org_id', 'name'])
+        .merge(['last_seen', 'agent_version', 'updated_at']);
+
+      return res.json({ status: 'ok' });
+    }
+
     const { fcmToken, deviceName, securityScore, telemetry } = req.body || {};
     const { orgId, deviceId } = req.device;
     if (!orgId || !deviceId) {

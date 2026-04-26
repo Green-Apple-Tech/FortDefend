@@ -131,6 +131,8 @@
 ### GitHub Actions Workflows
 - android.yml — Builds Android APK on every push to main
 - deploy.yml — Checks backend syntax on every push
+- BrowserStack auto-upload via GitHub Actions — in progress
+- Need to add BROWSERSTACK_USERNAME and BROWSERSTACK_ACCESS_KEY to GitHub secrets
 
 ### To Add Next
 - **Fastlane** — Automate Google Play Store uploads

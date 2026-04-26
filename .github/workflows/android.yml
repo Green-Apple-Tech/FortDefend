@@ -34,5 +34,5 @@ jobs:
             -F "file=@$APK_PATH"
             echo "APK uploaded to BrowserStack"
           else
-            echo "No APK found - EAS builds in cloud, skipping BrowserStack upload"
+            echo "No APK found - EAS builds in cloud, skipping local upload"
           fi

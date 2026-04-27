@@ -14,7 +14,7 @@ import ResetPassword from './pages/ResetPassword';
 import Setup2FA from './pages/Setup2FA';
 import Dashboard from './pages/Dashboard.tsx';
 import Devices from './pages/Devices';
-import DeviceDetail from './pages/DeviceDetail';
+import DeviceDetail from './pages/DeviceDetail.tsx';
 import Reports from './pages/Reports';
 import Billing from './pages/Billing';
 import Settings from './pages/Settings';

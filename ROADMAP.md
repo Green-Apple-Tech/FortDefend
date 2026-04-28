@@ -1,5 +1,13 @@
 # FortDefend — Project Roadmap & Status
 
+## Project Summary (Current)
+- FortDefend is live on Railway with JWT auth, 2FA, core device inventory, alerting, and script execution flows.
+- Backend hardening is in place (Helmet, API rate limits, heartbeat validation, scoped delete/device routes).
+- Frontend has been stabilized back to the original FortDefend UI (pre-v0 sync) to avoid Tailwind build regressions.
+- Device detail loading regressions were fixed by aligning requests to `/api/integrations/devices/:id` endpoints and adding timeout/error handling.
+- Software view was simplified to prioritize third-party apps by default with an Advanced toggle for full/system software.
+- CI/CD is active (GitHub Actions + Railway deploys) with Android build automation and BrowserStack integration in progress.
+
 ## What's Built and Working
 - Login/signup with 2FA
 - Windows agent v1.0.2 — auto-update working
@@ -16,6 +24,8 @@
 - Agent auto-update working
 - All migrations up to 032
 - Security hardening — helmet, rate limiting, input validation
+- Integrations API routes for device detail/apps/script history
+- Device detail page no longer hangs on infinite loading
 
 ## Tech Stack
 - Backend: Node.js/Express, PostgreSQL/Knex, Railway
@@ -54,8 +64,10 @@
 - Android device name shows as "Android Device" — needs real device name
 - Chromebook — Android app installed but needs testing
 - ANDRETABLET — Windows PC with wrong name, ignore
-- Certum code signing cert purchased — arriving by mail
+- Code signing setup still pending end-to-end verification
 - CPU shows 0% on some devices — WMI timing issue
+- Some device detail sections still display raw enterprise patch/update entries unless filtered in UI
+- BrowserStack upload step depends on secrets being present in GitHub repo settings
 
 ## Roadmap
 
@@ -65,7 +77,8 @@
 - [ ] Android Enterprise basic enrollment
 - [ ] BYOD Work Profile (Android)
 - [ ] Per-group QR code enrollment
-- [ ] Device detail page (Addigy-style)
+- [x] Device detail page baseline redesign + endpoint alignment
+- [ ] Device detail polish (performance, tab UX, richer visuals)
 - [ ] Chromebook — test Android app
 - [ ] Google Admin API for Chromebook fleet
 
@@ -77,6 +90,7 @@
 - [ ] Code signing cert + sign Windows agent
 - [ ] Push notifications (FCM)
 - [ ] Android Enterprise full device data
+- [ ] Reporting reliability improvements for CPU/memory telemetry
 
 ### Week 5-6
 - [ ] BYOD Work Profile fully polished
@@ -87,7 +101,7 @@
 - [ ] iOS via Intune/Google MDM
 
 ### Week 7-8
-- [ ] MSP client portal
+- [ ] MSP client portal (read-only client access)
 - [ ] Reports page
 - [ ] Compliance scoring using osquery
 - [ ] Alert system polished
@@ -111,8 +125,8 @@
 - JWT auth ✅
 - Rate limiting ✅
 - Helmet.js ✅
-- Input validation ✅ partial
-- Code signing ⏳ cert arriving
+- Input validation ✅ partial (heartbeat routes done, continue expanding)
+- Code signing ⏳ pending full release pipeline
 - Encrypted agent token ❌ roadmap
 - Pen test ❌ roadmap
 
@@ -173,12 +187,13 @@ Recommended approach for Android:
 
 ### To Add Next
 - **Fastlane** — Automate Google Play Store uploads
+- **Automated smoke test gate** — fail deploy on broken device detail/device list paths
 
 ### Testing Strategy
 | What | Tool | Status |
 |---|---|---|
-| Android enrollment flow | Maestro | ⏳ not set up |
-| Android heartbeat | Maestro | ⏳ not set up |
+| Android enrollment flow | Maestro | ✅ basic files created |
+| Android heartbeat | Maestro | ✅ basic files created |
 | Backend API | GitHub Actions | ✅ set up |
 | Real device testing | BrowserStack | ✅ set up |
 | Auto APK build | EAS + GitHub Actions | ✅ set up |

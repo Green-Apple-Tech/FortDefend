@@ -108,18 +108,28 @@ export default function DeviceDetail() {
   const [serviceRows, setServiceRows] = useState([]);
   const [printerRows, setPrinterRows] = useState([]);
   const [appsFilter, setAppsFilter] = useState('all');
+  const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState('');
 
   const loadBase = async () => {
+    const timeoutMs = 5000;
+    const withTimeout = (promise) =>
+      Promise.race([
+        promise,
+        new Promise((_, reject) => setTimeout(() => reject(new Error('Request timed out')), timeoutMs)),
+      ]);
+    console.log('Fetching device:', deviceId);
     const [detail, appsRes, histRes] = await Promise.all([
-      api(`/api/devices/${encodeURIComponent(deviceId)}`),
-      api(`/api/devices/${encodeURIComponent(deviceId)}/apps`).catch(() => ({ applications: [] })),
-      api(`/api/devices/${encodeURIComponent(deviceId)}/script-history`).catch(() => ({ history: [] })),
+      withTimeout(api(`/api/integrations/devices/${encodeURIComponent(deviceId)}`)),
+      withTimeout(api(`/api/integrations/devices/${encodeURIComponent(deviceId)}/apps`)).catch(() => []),
+      withTimeout(api(`/api/integrations/devices/${encodeURIComponent(deviceId)}/script-history`)).catch(() => []),
     ]);
-    setDevice(detail?.device || null);
+    const resolvedDevice = detail?.device || detail || null;
+    setDevice(resolvedDevice);
     setAlerts(Array.isArray(detail?.alerts) ? detail.alerts : []);
     setScanResults(Array.isArray(detail?.scanResults) ? detail.scanResults : []);
-    setApps(Array.isArray(appsRes?.applications) ? appsRes.applications : []);
-    setScriptHistory(Array.isArray(histRes?.history) ? histRes.history : []);
+    setApps(Array.isArray(appsRes) ? appsRes : []);
+    setScriptHistory(Array.isArray(histRes) ? histRes : []);
   };
 
   const loadLive = async () => {
@@ -131,13 +141,21 @@ export default function DeviceDetail() {
   useEffect(() => {
     let cancelled = false;
     (async () => {
-      await loadBase();
-      await loadLive();
-      const v = await api('/api/agent/version').catch(() => ({ version: '1.0.1' }));
-      if (!cancelled) setExpectedAgentVersion(String(v?.version || '1.0.1'));
-      if (!isViewer) {
-        const scr = await api('/api/scripts').catch(() => ({ scripts: [] }));
-        if (!cancelled) setScripts(Array.isArray(scr?.scripts) ? scr.scripts : []);
+      setLoading(true);
+      setLoadError('');
+      try {
+        await loadBase();
+        await loadLive();
+        const v = await api('/api/agent/version').catch(() => ({ version: '1.0.1' }));
+        if (!cancelled) setExpectedAgentVersion(String(v?.version || '1.0.1'));
+        if (!isViewer) {
+          const scr = await api('/api/scripts').catch(() => ({ scripts: [] }));
+          if (!cancelled) setScripts(Array.isArray(scr?.scripts) ? scr.scripts : []);
+        }
+      } catch (err) {
+        if (!cancelled) setLoadError(err?.message || 'Failed to load device');
+      } finally {
+        if (!cancelled) setLoading(false);
       }
     })();
     const t = setInterval(() => {
@@ -350,8 +368,14 @@ export default function DeviceDetail() {
   const diskTotal = Number(live?.disk_total_gb ?? device?.disk_total_gb);
   const diskPct = Number.isFinite(diskFree) && Number.isFinite(diskTotal) && diskTotal > 0 ? ((diskTotal - diskFree) / diskTotal) * 100 : null;
 
-  if (!device) {
+  if (loading) {
     return <Card>Loading device...</Card>;
+  }
+  if (loadError) {
+    return <Card className="text-red-700">Failed to load device: {loadError}</Card>;
+  }
+  if (!device) {
+    return <Card>Device not found.</Card>;
   }
 
   return (
@@ -474,7 +498,7 @@ export default function DeviceDetail() {
             <div className="space-y-3">
               <MetricRow label="Memory" pct={memTotal > 0 ? (memUsed / memTotal) * 100 : null} tone="bg-amber-500" />
               <MetricRow label="CPU" pct={cpu} tone={barTone(cpu)} />
-              <MetricRow label="Disk" pct={diskUsedPct} tone="bg-blue-500" />
+              <MetricRow label="Disk" pct={diskPct} tone="bg-blue-500" />
             </div>
           </Card>
         </div>

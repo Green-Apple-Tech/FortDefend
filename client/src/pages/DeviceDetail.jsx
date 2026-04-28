@@ -80,6 +80,29 @@ function parseResultOutput(raw) {
   }
 }
 
+function isThirdPartyApp(app = {}) {
+  const name = String(app.app_name || '').toLowerCase();
+  const publisher = String(app.publisher || '').toLowerCase();
+  const blocked = [
+    'microsoft',
+    'security intelligence update',
+    'cumulative update',
+    '.net framework',
+    'kb',
+    'defender antivirus',
+    'redistributable',
+  ];
+  return !blocked.some((term) => name.includes(term) || publisher.includes(term));
+}
+
+function appLogoText(app = {}) {
+  const raw = String(app.app_name || '').trim();
+  if (!raw) return 'AP';
+  const words = raw.replace(/[^a-zA-Z0-9 ]/g, ' ').split(/\s+/).filter(Boolean);
+  const letters = words.slice(0, 2).map((w) => w[0]).join('');
+  return (letters || raw.slice(0, 2)).toUpperCase();
+}
+
 export default function DeviceDetail() {
   const { user } = useAuth();
   const isViewer = user?.role === 'viewer';
@@ -108,6 +131,7 @@ export default function DeviceDetail() {
   const [serviceRows, setServiceRows] = useState([]);
   const [printerRows, setPrinterRows] = useState([]);
   const [appsFilter, setAppsFilter] = useState('all');
+  const [showAdvancedSoftware, setShowAdvancedSoftware] = useState(false);
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState('');
 
@@ -197,6 +221,11 @@ export default function DeviceDetail() {
     }
     return filteredApps;
   }, [filteredApps, appsFilter]);
+
+  const thirdPartyApps = useMemo(
+    () => filteredAppsDetailed.filter((a) => isThirdPartyApp(a)),
+    [filteredAppsDetailed],
+  );
 
   const facts = useMemo(() => {
     if (!device) return [];
@@ -509,37 +538,66 @@ export default function DeviceDetail() {
           <div className="mb-3 flex flex-wrap items-end justify-between gap-3">
             <div>
               <h2 className="text-sm font-semibold text-slate-900">Software</h2>
-              <p className="text-xs text-slate-500">{apps.length.toLocaleString()} applications</p>
+              <p className="text-xs text-slate-500">
+                {thirdPartyApps.length.toLocaleString()} third-party apps
+                {showAdvancedSoftware ? ` · ${apps.length.toLocaleString()} total apps` : ''}
+              </p>
             </div>
             <div className="flex items-center gap-2">
               <Input placeholder="Search software..." value={softwareSearch} onChange={(e) => setSoftwareSearch(e.target.value)} />
+              <Button type="button" variant="outline" onClick={() => setShowAdvancedSoftware((v) => !v)}>
+                {showAdvancedSoftware ? 'Hide Advanced' : 'Advanced'}
+              </Button>
               <Button type="button" variant="outline" onClick={exportSoftwareCsv}>Export CSV</Button>
             </div>
           </div>
-          <div className="overflow-x-auto">
-            <table className="min-w-full text-sm">
-              <thead className="bg-slate-50 text-left text-xs uppercase text-slate-500">
-                <tr>
-                  <th className="px-3 py-2">App Name</th>
-                  <th className="px-3 py-2">Version</th>
-                  <th className="px-3 py-2">Publisher</th>
-                  <th className="px-3 py-2">Installed Date</th>
-                  <th className="px-3 py-2">Source</th>
-                </tr>
-              </thead>
-              <tbody>
-                {filteredApps.map((a) => (
-                  <tr key={`${a.app_name}-${a.winget_id || ''}-${a.installed_version || ''}`} className="border-t border-fds-border">
-                    <td className="px-3 py-2">{a.app_name || '—'}</td>
-                    <td className="px-3 py-2">{a.installed_version || '—'}</td>
-                    <td className="px-3 py-2">{a.publisher || '—'}</td>
-                    <td className="px-3 py-2">{a.last_scanned_at ? new Date(a.last_scanned_at).toLocaleString() : '—'}</td>
-                    <td className="px-3 py-2">{a.winget_id ? 'Winget' : 'Get-Package'}</td>
+          {!showAdvancedSoftware ? (
+            <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
+              {thirdPartyApps.map((a) => (
+                <div key={`${a.app_name}-${a.winget_id || ''}-${a.installed_version || ''}`} className="flex items-center gap-3 rounded-lg border border-fds-border bg-white px-3 py-2">
+                  <div className="flex h-9 w-9 items-center justify-center rounded-md bg-slate-100 text-xs font-bold text-slate-700">
+                    {appLogoText(a)}
+                  </div>
+                  <div className="min-w-0">
+                    <div className="truncate text-sm font-semibold text-slate-900">{a.app_name || 'Unknown app'}</div>
+                    <div className="truncate text-xs text-slate-500">
+                      {a.publisher || 'Unknown publisher'} · {a.installed_version || '—'}
+                    </div>
+                  </div>
+                </div>
+              ))}
+              {thirdPartyApps.length === 0 ? (
+                <div className="rounded-lg border border-dashed border-fds-border px-3 py-4 text-sm text-slate-500">
+                  No third-party apps found for current filters.
+                </div>
+              ) : null}
+            </div>
+          ) : (
+            <div className="overflow-x-auto">
+              <table className="min-w-full text-sm">
+                <thead className="bg-slate-50 text-left text-xs uppercase text-slate-500">
+                  <tr>
+                    <th className="px-3 py-2">App Name</th>
+                    <th className="px-3 py-2">Version</th>
+                    <th className="px-3 py-2">Publisher</th>
+                    <th className="px-3 py-2">Installed Date</th>
+                    <th className="px-3 py-2">Source</th>
                   </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
+                </thead>
+                <tbody>
+                  {filteredApps.map((a) => (
+                    <tr key={`${a.app_name}-${a.winget_id || ''}-${a.installed_version || ''}`} className="border-t border-fds-border">
+                      <td className="px-3 py-2">{a.app_name || '—'}</td>
+                      <td className="px-3 py-2">{a.installed_version || '—'}</td>
+                      <td className="px-3 py-2">{a.publisher || '—'}</td>
+                      <td className="px-3 py-2">{a.last_scanned_at ? new Date(a.last_scanned_at).toLocaleString() : '—'}</td>
+                      <td className="px-3 py-2">{a.winget_id ? 'Winget' : 'Get-Package'}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
         </Card>
       )}
 

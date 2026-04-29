@@ -35,7 +35,28 @@ function verifyDeviceToken(req, res, next) {
 // POST /api/android/heartbeat — org token based Android check-in
 router.post('/heartbeat', async (req, res) => {
   try {
-    const { orgToken, deviceName, os, source, agentVersion } = req.body || {};
+    const {
+      orgToken,
+      deviceName,
+      os,
+      source,
+      agentVersion,
+      manufacturer,
+      model,
+      serialNumber,
+      deviceId,
+      osVersion,
+      apiLevel,
+      securityPatchLevel,
+      buildNumber,
+      memTotalGb,
+      memUsedGb,
+      diskTotalGb,
+      diskFreeGb,
+      batteryLevel,
+      batteryStatus,
+      onAcPower,
+    } = req.body || {};
     if (!orgToken || typeof orgToken !== 'string' || orgToken.length > 100) {
       return res.status(400).json({ error: 'Invalid org token' });
     }
@@ -47,17 +68,67 @@ router.post('/heartbeat', async (req, res) => {
 
     if (!org) return res.status(401).json({ error: 'Invalid org token' });
 
-    await db('devices').insert({
-      id: uuidv4(),
-      org_id: org.id,
-      name: deviceName || 'Android Device',
-      os: os || 'Android',
-      source: source || 'android',
-      agent_version: agentVersion || '1.0.0',
-      last_seen: new Date(),
-    }).onConflict(['org_id', 'name']).merge(['last_seen', 'agent_version', 'os']);
+    const normalizedName = String(deviceName || '').trim() || 'Android Device';
+    const normalizedSource = source || 'android';
+    const normalizedExternalId = String(deviceId || serialNumber || normalizedName).trim();
+    const now = new Date();
+    const mergedOsVersion = [
+      osVersion,
+      apiLevel != null ? `API ${apiLevel}` : null,
+      securityPatchLevel ? `patch ${securityPatchLevel}` : null,
+      buildNumber ? `build ${buildNumber}` : null,
+    ]
+      .filter(Boolean)
+      .join(' | ')
+      .slice(0, 255) || null;
 
-    console.log('[android heartbeat] device checked in:', deviceName);
+    await db('devices')
+      .insert({
+        id: uuidv4(),
+        org_id: org.id,
+        name: normalizedName,
+        hostname: [manufacturer, model].filter(Boolean).join(' ').trim() || normalizedName,
+        serial: String(serialNumber || '').trim() || null,
+        external_id: normalizedExternalId || null,
+        os: os || 'Android',
+        os_version: mergedOsVersion,
+        source: normalizedSource,
+        agent_version: agentVersion || '1.0.0',
+        mem_total_gb: Number.isFinite(Number(memTotalGb)) ? Number(memTotalGb) : null,
+        mem_used_gb: Number.isFinite(Number(memUsedGb)) ? Number(memUsedGb) : null,
+        ram_total_gb: Number.isFinite(Number(memTotalGb)) ? Number(memTotalGb) : null,
+        disk_total_gb: Number.isFinite(Number(diskTotalGb)) ? Number(diskTotalGb) : null,
+        disk_free_gb: Number.isFinite(Number(diskFreeGb)) ? Number(diskFreeGb) : null,
+        battery_level: Number.isFinite(Number(batteryLevel)) ? Number(batteryLevel) : null,
+        battery_status: batteryStatus || null,
+        on_ac_power: onAcPower == null ? true : !!onAcPower,
+        last_seen: now,
+        status: 'online',
+        updated_at: now,
+        created_at: now,
+      })
+      .onConflict(['org_id', 'name'])
+      .merge({
+        hostname: [manufacturer, model].filter(Boolean).join(' ').trim() || normalizedName,
+        serial: String(serialNumber || '').trim() || null,
+        external_id: normalizedExternalId || null,
+        os: os || 'Android',
+        os_version: mergedOsVersion,
+        agent_version: agentVersion || '1.0.0',
+        mem_total_gb: Number.isFinite(Number(memTotalGb)) ? Number(memTotalGb) : null,
+        mem_used_gb: Number.isFinite(Number(memUsedGb)) ? Number(memUsedGb) : null,
+        ram_total_gb: Number.isFinite(Number(memTotalGb)) ? Number(memTotalGb) : null,
+        disk_total_gb: Number.isFinite(Number(diskTotalGb)) ? Number(diskTotalGb) : null,
+        disk_free_gb: Number.isFinite(Number(diskFreeGb)) ? Number(diskFreeGb) : null,
+        battery_level: Number.isFinite(Number(batteryLevel)) ? Number(batteryLevel) : null,
+        battery_status: batteryStatus || null,
+        on_ac_power: onAcPower == null ? true : !!onAcPower,
+        last_seen: now,
+        status: 'online',
+        updated_at: now,
+      });
+
+    console.log('[android heartbeat] device checked in:', normalizedName);
     return res.json({ status: 'ok' });
   } catch (err) {
     console.error('[android heartbeat] error:', err.message);

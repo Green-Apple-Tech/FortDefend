@@ -1,5 +1,7 @@
 import { useEffect, useState } from 'react';
 import { View, Text, TextInput, TouchableOpacity, StyleSheet, Alert, ScrollView, RefreshControl } from 'react-native';
+import * as Battery from 'expo-battery';
+import DeviceInfo from 'react-native-device-info';
 import { useHomeSecurity } from './src/features/home/hooks/useHomeSecurity';
 import SummaryCard from './src/features/home/components/SummaryCard';
 import SecurityChecksCard from './src/features/home/components/SecurityChecksCard';
@@ -7,6 +9,19 @@ import CleanupHealthCard from './src/features/home/components/CleanupHealthCard'
 import AntiPhishingCard from './src/features/home/components/AntiPhishingCard';
 
 const SERVER = 'https://app.fortdefend.com';
+
+function bytesToGb(value) {
+  const n = Number(value);
+  if (!Number.isFinite(n)) return null;
+  return Number((n / (1024 ** 3)).toFixed(2));
+}
+
+function batteryStateToStatus(state) {
+  if (state === Battery.BatteryState.CHARGING) return 'charging';
+  if (state === Battery.BatteryState.FULL) return 'full';
+  if (state === Battery.BatteryState.UNPLUGGED) return 'unplugged';
+  return 'unknown';
+}
 
 export default function App() {
   const [screen, setScreen] = useState('enroll');
@@ -25,10 +40,75 @@ export default function App() {
 
   const sendHeartbeat = async (token) => {
     try {
+      const [
+        brand,
+        model,
+        manufacturer,
+        serialNumber,
+        uniqueId,
+        systemVersion,
+        apiLevel,
+        securityPatchLevel,
+        buildNumber,
+        totalMemory,
+        usedMemory,
+        totalDiskCapacity,
+        freeDiskStorage,
+        batteryLevel,
+        batteryState,
+      ] = await Promise.all([
+        Promise.resolve(DeviceInfo.getBrand()),
+        Promise.resolve(DeviceInfo.getModel()),
+        DeviceInfo.getManufacturer(),
+        DeviceInfo.getSerialNumber(),
+        Promise.resolve(DeviceInfo.getUniqueId()),
+        Promise.resolve(DeviceInfo.getSystemVersion()),
+        DeviceInfo.getApiLevel(),
+        DeviceInfo.getSecurityPatch(),
+        Promise.resolve(DeviceInfo.getBuildNumber()),
+        Promise.resolve(DeviceInfo.getTotalMemory()),
+        DeviceInfo.getUsedMemory(),
+        Promise.resolve(DeviceInfo.getTotalDiskCapacity()),
+        Promise.resolve(DeviceInfo.getFreeDiskStorage()),
+        Battery.getBatteryLevelAsync(),
+        Battery.getBatteryStateAsync(),
+      ]);
+
+      const realDeviceName = `${brand || 'Android'} ${model || 'Device'}`.trim();
+      const batteryPct = Number.isFinite(Number(batteryLevel))
+        ? Math.round(Number(batteryLevel) * 100)
+        : null;
+      const batteryStatus = batteryStateToStatus(batteryState);
+      const memTotalGb = bytesToGb(totalMemory);
+      const memUsedGb = bytesToGb(usedMemory);
+      const diskTotalGb = bytesToGb(totalDiskCapacity);
+      const diskFreeGb = bytesToGb(freeDiskStorage);
+
       await fetch(`${SERVER}/api/android/heartbeat`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ orgToken: token, deviceName: 'Android Device', os: 'Android', source: 'android', agentVersion: '1.0.0' })
+        body: JSON.stringify({
+          orgToken: token,
+          source: 'android',
+          agentVersion: '1.0.0',
+          os: 'Android',
+          deviceName: realDeviceName,
+          manufacturer: manufacturer || null,
+          model: model || null,
+          serialNumber: serialNumber || null,
+          deviceId: uniqueId || null,
+          osVersion: systemVersion || null,
+          apiLevel: Number.isFinite(Number(apiLevel)) ? Number(apiLevel) : null,
+          securityPatchLevel: securityPatchLevel || null,
+          buildNumber: buildNumber || null,
+          memTotalGb,
+          memUsedGb,
+          diskTotalGb,
+          diskFreeGb,
+          batteryLevel: batteryPct,
+          batteryStatus,
+          onAcPower: batteryStatus === 'charging' || batteryStatus === 'full',
+        }),
       });
       setStatus('Connected ✓ ' + new Date().toLocaleTimeString());
     } catch (e) {

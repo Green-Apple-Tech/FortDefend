@@ -1,0 +1,46 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="UTF-8">
+<style>
+  body { width: 340px; font-family: system-ui, sans-serif; margin: 0; background: #fff; color: #1d1d1f; }
+  .header { background: #185FA5; color: white; padding: 14px 16px; display: flex; align-items: center; gap: 8px; }
+  .header h1 { font-size: 15px; font-weight: 600; margin: 0; }
+  .connection {
+    margin: 12px 16px 0;
+    padding: 8px 10px;
+    border-radius: 8px;
+    font-size: 12px;
+    font-weight: 500;
+  }
+  .connection.ok { background: #e8f4e0; color: #1f4d0f; }
+  .connection.no { background: #f5f5f5; color: #6e6e73; }
+  .score-section { padding: 16px; text-align: center; border-bottom: 1px solid #e5e5e3; }
+  .score { font-size: 42px; font-weight: 700; line-height: 1; }
+  .score.green { color: #3B6D11; }
+  .score.amber { color: #854F0B; }
+  .score.red { color: #A32D2D; }
+  .meta { font-size: 12px; color: #6e6e73; margin-top: 6px; }
+  .commands { margin: 12px 16px; }
+  .commands h2 { font-size: 12px; font-weight: 600; margin: 0 0 6px; color: #3c3c43; }
+  .cmd { font-size: 12px; padding: 6px 0; border-bottom: 1px solid #f5f5f7; }
+  .cmd:last-child { border-bottom: none; }
+  .not-enrolled { padding: 16px; text-align: center; }
+  .not-enrolled p { font-size: 13px; color: #6e6e73; margin: 0 0 10px; }
+  input { width: 100%; padding: 8px; border: 1px solid #d2d2d7; border-radius: 8px; font-size: 13px; box-sizing: border-box; margin-bottom: 8px; }
+  .footer { padding: 10px 16px 16px; display: flex; flex-direction: column; gap: 8px; }
+  button { width: 100%; padding: 8px; border: 1px solid #d2d2d7; border-radius: 8px; background: #fff; cursor: pointer; font-size: 13px; font-weight: 500; }
+  button.primary { background: #185FA5; color: white; border-color: #185FA5; }
+</style>
+</head>
+<body>
+<div class="header">
+  <div>🛡️</div>
+  <h1>FortDefend Security</h1>
+</div>
+<div id="content">
+  <div style="padding:20px;text-align:center;color:#6e6e73;font-size:13px">Loading...</div>
+</div>
+<script src="popup.js"></script>
+</body>
+</html>

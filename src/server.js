@@ -1,0 +1,213 @@
+const express = require('express');
+const helmet = require('helmet');
+const cors = require('cors');
+const morgan = require('morgan');
+const rateLimit = require('express-rate-limit');
+const path = require('path');
+const fs = require('fs');
+const cookieParser = require('cookie-parser');
+
+const db = require('./database');
+const { startTrialMonitor } = require('./agents/trialMonitor');
+const enrollmentModule = require('./routes/enrollment');
+
+const app = express();
+
+// Security headers
+app.use(helmet({
+  contentSecurityPolicy: false, // disable for now since we serve frontend
+}));
+
+// General API rate limit
+app.use('/api/', rateLimit({
+  windowMs: 15 * 60 * 1000,
+  max: 200,
+  message: { error: 'Too many requests, please try again later' },
+  standardHeaders: true,
+  legacyHeaders: false,
+}));
+
+// Strict limit for auth endpoints
+app.use('/api/auth/', rateLimit({
+  windowMs: 15 * 60 * 1000,
+  max: 10,
+  message: { error: 'Too many auth attempts, please try again in 15 minutes' },
+  standardHeaders: true,
+  legacyHeaders: false,
+}));
+
+// Agent heartbeat - per device limit
+app.use('/api/agent/heartbeat', rateLimit({
+  windowMs: 60 * 1000,
+  max: 10,
+  message: { error: 'Too many heartbeats' },
+  standardHeaders: true,
+  legacyHeaders: false,
+}));
+
+// Android heartbeat limit
+app.use('/api/android/heartbeat', rateLimit({
+  windowMs: 60 * 1000,
+  max: 10,
+  message: { error: 'Too many heartbeats' },
+  standardHeaders: true,
+  legacyHeaders: false,
+}));
+
+app.set('trust proxy', 1);
+
+// ── CORS ──────────────────────────────────────────────────────────────────────
+const allowedOrigins = [
+  'https://fortdefend.com',
+  'https://app.fortdefend.com',
+  'https://fortdefend-production.up.railway.app',
+  ...(process.env.NODE_ENV !== 'production' ? ['http://localhost:5173', 'http://localhost:3000'] : []),
+];
+
+app.use(cors({
+  origin: (origin, cb) => {
+    if (!origin || allowedOrigins.includes(origin)) return cb(null, true);
+    cb(new Error('Not allowed by CORS'));
+  },
+  credentials: true,
+}));
+
+// ── Stripe webhook — raw body BEFORE json parser ──────────────────────────────
+app.use('/api/billing/webhook', express.raw({ type: 'application/json' }));
+
+// ── Body parsing ──────────────────────────────────────────────────────────────
+app.use(express.json({ limit: '10mb' }));
+app.use(express.urlencoded({ extended: true, limit: '10mb' }));
+app.use(cookieParser());
+
+// ── Logging ───────────────────────────────────────────────────────────────────
+if (process.env.NODE_ENV !== 'test') {
+  app.use(morgan('combined'));
+}
+
+// ── Health check ──────────────────────────────────────────────────────────────
+app.get('/health', (req, res) => {
+  res.json({ status: 'ok', timestamp: new Date().toISOString() });
+});
+
+// ── API routes ────────────────────────────────────────────────────────────────
+app.use('/api/auth',            require('./routes/auth'));
+// GET /api/orgs/me/enrollment (defined on orgsMeApiRouter in routes/enrollment.js)
+app.use('/api',                 enrollmentModule.orgsMeApiRouter);
+app.use('/api/orgs',            require('./routes/orgs'));
+app.use('/api/billing',         require('./routes/billing'));
+app.use('/api/msp',             require('./routes/msp'));
+app.use('/api/android',         require('./routes/android'));
+app.use('/api/nmap',            require('./routes/nmap'));
+app.use('/api/integrations',    require('./routes/integrations'));
+app.use('/api/reports',         require('./routes/reports'));
+app.use('/api/alerts',          require('./routes/alerts'));
+app.use('/api/enrollment',      require('./routes/enrollment'));
+app.use('/api/extension',       require('./routes/chromebook-extension'));
+app.use('/api/devices',         require('./routes/devices'));
+app.use('/api/remediation',     require('./routes/remediation'));
+app.use('/api/agent',           require('./routes/agent'));
+app.use('/api/reboot-policies', require('./routes/rebootPolicies'));
+app.use('/api/groups',          require('./routes/groups'));
+app.use('/api/software',        require('./routes/softwareManager'));
+app.use('/api/scripts',         require('./routes/scripts'));
+
+// ── Agent / installer downloads (token query param is for your tracking; optional) ─
+const agentDir = path.join(__dirname, '..', 'agent');
+function agentExePath() {
+  return path.join(agentDir, 'agent.exe');
+}
+function downloadIfExists(res, diskName, downloadName) {
+  const p = path.join(agentDir, diskName);
+  if (!fs.existsSync(p)) {
+    return res.status(404).json({
+      error: `${downloadName} is not available on this server. Use the PowerShell installer or contact support.`,
+    });
+  }
+  return res.download(p, downloadName);
+}
+
+app.get('/download/agent.exe', (req, res) => downloadIfExists(res, 'agent.exe', 'agent.exe'));
+app.get('/download/fortdefend-agent.exe', (req, res) => {
+  const p = agentExePath();
+  if (!fs.existsSync(p)) {
+    return res.status(404).json({ error: 'Agent binary not found.' });
+  }
+  return res.download(p, 'fortdefend-agent.exe');
+});
+app.get('/download/fortdefend-setup.msi', (req, res) => downloadIfExists(res, 'fortdefend-setup.msi', 'fortdefend-setup.msi'));
+app.get('/download/fortdefend-extension.crx', (req, res) => downloadIfExists(res, 'fortdefend-extension.crx', 'fortdefend-extension.crx'));
+app.get('/download/fortdefend.apk', (req, res) => downloadIfExists(res, 'fortdefend.apk', 'fortdefend.apk'));
+app.get('/download/fortdefend-mac.pkg', (req, res) => downloadIfExists(res, 'fortdefend-mac.pkg', 'fortdefend-mac.pkg'));
+
+// ── Serve React frontend ──────────────────────────────────────────────────────
+const clientBuild = path.join(__dirname, '..', 'client', 'dist');
+if (fs.existsSync(clientBuild)) {
+  app.use(express.static(clientBuild));
+  app.get('*', (req, res) => {
+    res.sendFile(path.join(clientBuild, 'index.html'));
+  });
+}
+
+// ── API 404 ───────────────────────────────────────────────────────────────────
+app.use('/api', (req, res) => {
+  res.status(404).json({ error: 'Not found' });
+});
+
+// ── Global error handler ──────────────────────────────────────────────────────
+app.use((err, req, res, next) => {
+  const status = err.status || err.statusCode || 500;
+  const isDev = process.env.NODE_ENV !== 'production';
+
+  if (status >= 500) {
+    console.error('[FortDefend Error]', err.message, isDev ? err.stack : '');
+  }
+
+  res.status(status).json({
+    error: isDev ? err.message : 'Something went wrong. Please try again.',
+    ...(isDev && { stack: err.stack }),
+  });
+});
+
+// ── Start ─────────────────────────────────────────────────────────────────────
+const PORT = process.env.PORT || 3000;
+const server = app.listen(PORT, () => {
+  console.log(`[FortDefend] Server running on port ${PORT}`);
+  startTrialMonitor();
+});
+
+server.on('error', (err) => {
+  if (err && err.code === 'EADDRINUSE') {
+    console.error(`[FortDefend] Port ${PORT} is already in use. Stop the existing process or set a different PORT, then restart.`);
+    process.exit(1);
+  }
+
+  console.error('[FortDefend] Server failed to start:', err.message || err);
+  process.exit(1);
+});
+
+let isShuttingDown = false;
+async function shutdown(signal) {
+  if (isShuttingDown) return;
+  isShuttingDown = true;
+
+  console.log(`[FortDefend] Received ${signal}. Shutting down gracefully...`);
+
+  server.close(async () => {
+    try {
+      await db.destroy();
+    } catch (err) {
+      console.error('[FortDefend] Error closing database pool:', err.message || err);
+      process.exit(1);
+      return;
+    }
+
+    console.log('[FortDefend] Shutdown complete.');
+    process.exit(0);
+  });
+}
+
+process.on('SIGINT', () => shutdown('SIGINT'));
+process.on('SIGTERM', () => shutdown('SIGTERM'));
+
+module.exports = app;

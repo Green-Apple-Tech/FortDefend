@@ -1,0 +1,10 @@
+appId: com.fortdefend.app
+---
+- launchApp:
+    clearState: true
+- assertVisible: "FortDefend"
+- assertVisible: "Enter your org token to enroll"
+- tapOn: "Paste org token here"
+- inputText: "1e0934d8-f5ab-4b78-8a99-fab9426cf253"
+- tapOn: "Enroll Device"
+- assertVisible: "Connected"

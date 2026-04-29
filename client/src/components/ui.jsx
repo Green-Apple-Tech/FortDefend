@@ -1,0 +1,75 @@
+export function Button({ children, className = '', variant = 'primary', type = 'button', ...props }) {
+  const base =
+    'inline-flex items-center justify-center rounded-lg px-4 py-2 text-sm font-medium transition focus:outline-none focus:ring-2 focus:ring-brand focus:ring-offset-2 disabled:opacity-50';
+  const variants = {
+    primary: 'bg-gradient-to-r from-blue-600 to-blue-500 text-white shadow-md hover:from-blue-700 hover:to-blue-600',
+    secondary: 'border border-blue-300 bg-white text-blue-700 shadow-sm hover:bg-blue-50',
+    outline: 'border border-blue-300 bg-white text-blue-700 shadow-sm hover:bg-blue-50',
+    danger: 'bg-red-500 text-white shadow-md hover:bg-red-600',
+  };
+  return (
+    <button type={type} className={`${base} ${variants[variant] || variants.primary} ${className}`} {...props}>
+      {children}
+    </button>
+  );
+}
+
+export function Input({ label, className = '', id, ...props }) {
+  const inputId = id || (label && label.replace(/\s+/g, '-').toLowerCase());
+  return (
+    <label className="block">
+      {label && (
+        <span className="mb-1 block text-sm font-medium text-slate-700">{label}</span>
+      )}
+      <input
+        id={inputId}
+        className={`w-full rounded-lg border border-fds-border bg-white px-3 py-2.5 text-sm text-slate-900 shadow-sm placeholder:text-slate-400 focus:border-brand focus:outline-none focus:ring-2 focus:ring-brand/20 ${className}`}
+        {...props}
+      />
+    </label>
+  );
+}
+
+export function Card({ children, className = '', ...props }) {
+  return (
+    <div
+      className={`rounded-xl border border-fds-border border-t-2 border-t-blue-100 bg-white p-6 shadow-md ring-1 ring-slate-950/5 ${className}`}
+      {...props}
+    >
+      {children}
+    </div>
+  );
+}
+
+export function Badge({ children, tone = 'default' }) {
+  const tones = {
+    default: 'bg-slate-100 text-slate-800 ring-1 ring-slate-200',
+    success: 'bg-emerald-50 text-emerald-800 ring-1 ring-emerald-200',
+    warning: 'bg-amber-50 text-amber-900 ring-1 ring-amber-200',
+    danger: 'bg-red-50 text-red-800 ring-1 ring-red-200',
+    brand: 'bg-brand-light text-brand ring-1 ring-blue-200',
+  };
+  return (
+    <span className={`inline-flex rounded-full px-2.5 py-0.5 text-xs font-medium ${tones[tone]}`}>{children}</span>
+  );
+}
+
+export function Spinner() {
+  return (
+    <div className="flex justify-center py-12">
+      <div className="h-10 w-10 animate-spin rounded-full border-2 border-brand border-t-transparent" />
+    </div>
+  );
+}
+
+export function HelpTip({ text }) {
+  return (
+    <button
+      type="button"
+      title={text}
+      className="ml-1 inline-flex h-4 w-4 items-center justify-center rounded-full bg-gray-200 text-[10px] font-bold text-gray-700 hover:bg-gray-300"
+    >
+      ?
+    </button>
+  );
+}

@@ -1,0 +1,508 @@
+import { useEffect, useState } from 'react';
+import { Link, useSearchParams } from 'react-router-dom';
+import { api } from '../lib/api';
+import { useAuth } from '../context/AuthContext';
+import { Card, Button, Input } from '../components/ui';
+import { SectionHeader, ToggleCard } from '../components/fds';
+import MspDashboard from './MspDashboard';
+import Groups from './groups';
+
+const LS_PREFIX = 'fds_settings_v1_';
+
+function loadBool(key, fallback) {
+  try {
+    const v = localStorage.getItem(LS_PREFIX + key);
+    if (v === null) return fallback;
+    return v === 'true';
+  } catch {
+    return fallback;
+  }
+}
+
+function saveBool(key, val) {
+  try {
+    localStorage.setItem(LS_PREFIX + key, val ? 'true' : 'false');
+  } catch {
+    /* ignore */
+  }
+}
+
+export default function Settings() {
+  const { user } = useAuth();
+  const [searchParams, setSearchParams] = useSearchParams();
+  const isMspUser = user?.role === 'msp';
+  const activeTab = searchParams.get('tab') || 'general';
+  const mspTabActive = isMspUser && activeTab === 'msp';
+  const groupsTabActive = activeTab === 'groups';
+
+  useEffect(() => {
+    if (searchParams.get('tab') === 'msp' && !isMspUser) {
+      setSearchParams(
+        (prev) => {
+          const p = new URLSearchParams(prev);
+          p.delete('tab');
+          return p;
+        },
+        { replace: true },
+      );
+    }
+  }, [searchParams, isMspUser, setSearchParams]);
+
+  const [orgName, setOrgName] = useState('');
+  const [msg, setMsg] = useState('');
+  const [loading, setLoading] = useState(true);
+  const [advancedOpen, setAdvancedOpen] = useState(false);
+  const [rawJson, setRawJson] = useState('{}');
+  const [jsonError, setJsonError] = useState('');
+
+  const [require2fa, setRequire2fa] = useState(() => loadBool('require2fa', true));
+  const [autoLock, setAutoLock] = useState(() => loadBool('autoLock', true));
+  const [blockUsb, setBlockUsb] = useState(() => loadBool('blockUsb', false));
+
+  const [autoCritical, setAutoCritical] = useState(() => loadBool('autoCritical', true));
+  const [autoSecurity, setAutoSecurity] = useState(() => loadBool('autoSecurity', true));
+  const [notifyPatch, setNotifyPatch] = useState(() => loadBool('notifyPatch', true));
+
+  const [emailAlerts, setEmailAlerts] = useState(() => loadBool('emailAlerts', true));
+  const [weeklyDigest, setWeeklyDigest] = useState(() => loadBool('weeklyDigest', false));
+  const [enrollNotify, setEnrollNotify] = useState(() => loadBool('enrollNotify', true));
+
+  const [heartbeat30, setHeartbeat30] = useState(() => loadBool('heartbeat30', true));
+  const [autoUpdateAgent, setAutoUpdateAgent] = useState(false);
+  const [notifyBeforeAgentUpdate, setNotifyBeforeAgentUpdate] = useState(true);
+  const [fullInventory, setFullInventory] = useState(() => loadBool('fullInventory', true));
+  const [currentAgentVersion, setCurrentAgentVersion] = useState('1.0.1');
+
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      try {
+        const org = await api('/api/orgs/me');
+        if (!cancelled && org?.name) {
+          setOrgName(org.name);
+          setAutoUpdateAgent(org.autoUpdateAgent === true);
+          setNotifyBeforeAgentUpdate(org.notifyBeforeAgentUpdate !== false);
+        }
+      } catch {
+        /* ignore */
+      } finally {
+        if (!cancelled) setLoading(false);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      try {
+        const r = await api('/api/agent/version');
+        if (!cancelled && r?.version) setCurrentAgentVersion(String(r.version));
+      } catch {
+        if (!cancelled) setCurrentAgentVersion('1.0.1');
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  function buildSnapshot() {
+    return {
+      security: { require2fa, autoLock15m: autoLock, blockUsb },
+      patch: { autoCritical, autoSecurity, notifyBefore: notifyPatch },
+      notifications: { emailAlerts, weeklyDigest, enrollNotify },
+      agent: { heartbeat30s: heartbeat30, autoUpdateAgent, fullInventory },
+    };
+  }
+
+  function refreshAdvancedJson() {
+    setRawJson(JSON.stringify(buildSnapshot(), null, 2));
+    setJsonError('');
+  }
+
+  async function saveOrg(e) {
+    e.preventDefault();
+    setMsg('');
+    try {
+      await api('/api/orgs/me', { method: 'PATCH', body: { name: orgName } });
+      setMsg('Organization updated.');
+    } catch (err) {
+      setMsg(err.message || 'Save failed');
+    }
+  }
+
+  function applyJson() {
+    setJsonError('');
+    try {
+      const o = JSON.parse(rawJson);
+      if (o.security) {
+        if (typeof o.security.require2fa === 'boolean') setRequire2fa(o.security.require2fa);
+        if (typeof o.security.autoLock15m === 'boolean') setAutoLock(o.security.autoLock15m);
+        if (typeof o.security.blockUsb === 'boolean') setBlockUsb(o.security.blockUsb);
+      }
+      if (o.patch) {
+        if (typeof o.patch.autoCritical === 'boolean') setAutoCritical(o.patch.autoCritical);
+        if (typeof o.patch.autoSecurity === 'boolean') setAutoSecurity(o.patch.autoSecurity);
+        if (typeof o.patch.notifyBefore === 'boolean') setNotifyPatch(o.patch.notifyBefore);
+      }
+      if (o.notifications) {
+        if (typeof o.notifications.emailAlerts === 'boolean') setEmailAlerts(o.notifications.emailAlerts);
+        if (typeof o.notifications.weeklyDigest === 'boolean') setWeeklyDigest(o.notifications.weeklyDigest);
+        if (typeof o.notifications.enrollNotify === 'boolean') setEnrollNotify(o.notifications.enrollNotify);
+      }
+      if (o.agent) {
+        if (typeof o.agent.heartbeat30s === 'boolean') setHeartbeat30(o.agent.heartbeat30s);
+        if (typeof o.agent.fullInventory === 'boolean') setFullInventory(o.agent.fullInventory);
+      }
+      setMsg('Applied JSON to toggles (saved locally).');
+    } catch {
+      setJsonError('Invalid JSON — fix syntax and try again.');
+    }
+  }
+
+  async function saveAgentManagement(patch) {
+    try {
+      await api('/api/orgs/me', { method: 'PATCH', body: patch });
+      if (patch.autoUpdateAgent !== undefined) setAutoUpdateAgent(patch.autoUpdateAgent);
+      if (patch.notifyBeforeAgentUpdate !== undefined) setNotifyBeforeAgentUpdate(patch.notifyBeforeAgentUpdate);
+      setMsg('Agent management settings saved.');
+    } catch (err) {
+      setMsg(err.message || 'Could not save agent settings.');
+    }
+  }
+
+  async function forceUpdateAllDevices() {
+    try {
+      const r = await api('/api/agent/force-update', { method: 'POST', body: {} });
+      setMsg(`Queued updates for ${r?.flagged ?? 0} devices.`);
+    } catch (err) {
+      setMsg(err.message || 'Failed to queue updates.');
+    }
+  }
+
+  const section = (title, desc, children) => (
+    <div className="space-y-3">
+      <div>
+        <h2 className="text-xs font-bold uppercase tracking-wide text-slate-500">{title}</h2>
+        {desc && <p className="mt-1 text-sm text-slate-600">{desc}</p>}
+      </div>
+      <div className="space-y-3">{children}</div>
+    </div>
+  );
+
+  return (
+    <div className={`mx-auto space-y-8 ${mspTabActive ? 'max-w-5xl' : 'max-w-3xl'}`}>
+      <SectionHeader
+        title="Settings"
+        description="Set policies once with large toggles. Values below are stored in this browser until your org API persists them."
+      />
+
+      <div className="flex gap-0 border-b border-fds-border">
+        <button
+          type="button"
+          onClick={() =>
+            setSearchParams(
+              (prev) => {
+                const p = new URLSearchParams(prev);
+                p.delete('tab');
+                return p;
+              },
+              { replace: true },
+            )
+          }
+          className={`border-b-2 px-4 py-2.5 text-sm font-semibold transition ${
+            !mspTabActive && !groupsTabActive ? 'border-brand text-brand' : 'border-transparent text-slate-600 hover:text-slate-900'
+          }`}
+        >
+          General
+        </button>
+        <button
+          type="button"
+          onClick={() =>
+            setSearchParams(
+              (prev) => {
+                const p = new URLSearchParams(prev);
+                p.set('tab', 'groups');
+                return p;
+              },
+              { replace: true },
+            )
+          }
+          className={`border-b-2 px-4 py-2.5 text-sm font-semibold transition ${
+            groupsTabActive ? 'border-brand text-brand' : 'border-transparent text-slate-600 hover:text-slate-900'
+          }`}
+        >
+          Groups
+        </button>
+        {isMspUser && (
+          <button
+            type="button"
+            onClick={() =>
+              setSearchParams(
+                (prev) => {
+                  const p = new URLSearchParams(prev);
+                  p.set('tab', 'msp');
+                  return p;
+                },
+                { replace: true },
+              )
+            }
+            className={`border-b-2 px-4 py-2.5 text-sm font-semibold transition ${
+              mspTabActive ? 'border-brand text-brand' : 'border-transparent text-slate-600 hover:text-slate-900'
+            }`}
+          >
+            MSP
+          </button>
+        )}
+      </div>
+
+      {msg && (
+        <div className="rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-2 text-sm text-emerald-900">{msg}</div>
+      )}
+
+      {groupsTabActive ? (
+        <>
+          <Card className="p-0 overflow-hidden">
+            <Groups embedded />
+          </Card>
+        </>
+      ) : null}
+
+      {mspTabActive ? (
+        <MspDashboard />
+      ) : !groupsTabActive ? (
+        <>
+      <Card>
+        <h2 className="text-sm font-semibold text-slate-900">Organization</h2>
+        <p className="mt-1 text-sm text-slate-600">Display name used across FortDefend and reports.</p>
+        <form onSubmit={saveOrg} className="mt-4 space-y-4">
+          <Input label="Organization name" value={orgName} onChange={(e) => setOrgName(e.target.value)} />
+          <Button type="submit" disabled={loading}>
+            Save
+          </Button>
+        </form>
+      </Card>
+
+      <Card className="space-y-8">
+        {section(
+          'Security policies',
+          'Baseline protections for every admin session and managed endpoint.',
+          <>
+            <ToggleCard
+              icon="🔐"
+              title="Require 2FA"
+              description="Require two-factor authentication for all org users."
+              on={require2fa}
+              onChange={(v) => {
+                setRequire2fa(v);
+                saveBool('require2fa', v);
+              }}
+            />
+            <ToggleCard
+              icon="⏱"
+              title="Auto-lock after 15 minutes"
+              description="Lock the FortDefend console when idle."
+              on={autoLock}
+              onChange={(v) => {
+                setAutoLock(v);
+                saveBool('autoLock', v);
+              }}
+            />
+            <ToggleCard
+              icon="💾"
+              title="Block USB storage"
+              description="Prevent mass storage on managed devices (agent policy)."
+              on={blockUsb}
+              onChange={(v) => {
+                setBlockUsb(v);
+                saveBool('blockUsb', v);
+              }}
+            />
+            <p className="text-xs text-slate-500">
+              2FA enrollment:{' '}
+              <Link to="/setup-2fa" className="font-semibold text-brand hover:underline">
+                Open 2FA setup
+              </Link>
+            </p>
+          </>,
+        )}
+
+        {section(
+          'Patch management',
+          'Control how aggressive automatic patching should be.',
+          <>
+            <ToggleCard
+              icon="🛡"
+              title="Auto-approve critical patches"
+              description="Queue critical updates without manual approval."
+              on={autoCritical}
+              onChange={(v) => {
+                setAutoCritical(v);
+                saveBool('autoCritical', v);
+              }}
+            />
+            <ToggleCard
+              icon="🔒"
+              title="Auto-approve security patches"
+              description="Security-class updates roll out on the next maintenance window."
+              on={autoSecurity}
+              onChange={(v) => {
+                setAutoSecurity(v);
+                saveBool('autoSecurity', v);
+              }}
+            />
+            <ToggleCard
+              icon="📣"
+              title="Notify before patching"
+              description="Send a heads-up before installs run on user machines."
+              on={notifyPatch}
+              onChange={(v) => {
+                setNotifyPatch(v);
+                saveBool('notifyPatch', v);
+              }}
+            />
+          </>,
+        )}
+
+        {section(
+          'Notifications',
+          'Stay informed without drowning in noise.',
+          <>
+            <ToggleCard
+              icon="✉️"
+              title="Email alerts"
+              description="Send email when new alerts are raised."
+              on={emailAlerts}
+              onChange={(v) => {
+                setEmailAlerts(v);
+                saveBool('emailAlerts', v);
+              }}
+            />
+            <ToggleCard
+              icon="📅"
+              title="Weekly digest"
+              description="Summary of fleet posture every Monday."
+              on={weeklyDigest}
+              onChange={(v) => {
+                setWeeklyDigest(v);
+                saveBool('weeklyDigest', v);
+              }}
+            />
+            <ToggleCard
+              icon="📱"
+              title="Alert on new device enrollment"
+              description="Ping admins when a new device joins the org."
+              on={enrollNotify}
+              onChange={(v) => {
+                setEnrollNotify(v);
+                saveBool('enrollNotify', v);
+              }}
+            />
+          </>,
+        )}
+
+        {section(
+          'Agent',
+          'How often endpoints check in and what they collect.',
+          <>
+            <ToggleCard
+              icon="💓"
+              title="30-second heartbeat"
+              description="Faster command delivery; slightly more traffic."
+              on={heartbeat30}
+              onChange={(v) => {
+                setHeartbeat30(v);
+                saveBool('heartbeat30', v);
+              }}
+            />
+            <ToggleCard
+              icon="📋"
+              title="Collect full inventory"
+              description="Include detailed hardware and software lists in each scan."
+              on={fullInventory}
+              onChange={(v) => {
+                setFullInventory(v);
+                saveBool('fullInventory', v);
+              }}
+            />
+          </>,
+        )}
+      </Card>
+
+      <Card className="space-y-4">
+        <h2 className="text-sm font-semibold text-slate-900">Agent Management</h2>
+        <ToggleCard
+          icon="⬆️"
+          title="Auto-update agent on all devices"
+          description="When enabled, devices automatically update to the latest agent version on next check-in."
+          on={autoUpdateAgent}
+          onChange={(v) => saveAgentManagement({ autoUpdateAgent: v })}
+        />
+        <ToggleCard
+          icon="🔔"
+          title="Notify before updating"
+          description="Show a pre-update notice before agent updates begin."
+          on={notifyBeforeAgentUpdate}
+          onChange={(v) => saveAgentManagement({ notifyBeforeAgentUpdate: v })}
+        />
+        <div className="rounded-lg border border-fds-border bg-slate-50 px-3 py-2 text-sm text-slate-700">
+          Current agent version: <strong className="text-slate-900">{currentAgentVersion}</strong>
+        </div>
+        <Button type="button" onClick={forceUpdateAllDevices}>Force update all devices now</Button>
+      </Card>
+
+      <Card>
+        <h2 className="text-sm font-semibold text-slate-900">Integrations</h2>
+        <p className="mt-1 text-sm text-slate-600">Connect Intune, Google Admin, and webhooks from the Integrations hub.</p>
+        <Link to="/integrations" className="mt-3 inline-block text-sm font-semibold text-brand hover:underline">
+          Open integrations →
+        </Link>
+      </Card>
+
+      <Card>
+        <button
+          type="button"
+          onClick={() => {
+            setAdvancedOpen((o) => {
+              const next = !o;
+              if (next) refreshAdvancedJson();
+              return next;
+            });
+          }}
+          className="flex w-full items-center justify-between text-left"
+        >
+          <div>
+            <h2 className="text-sm font-semibold text-slate-900">Advanced</h2>
+            <p className="mt-1 text-sm text-slate-600">Raw JSON mirror of the toggles above — power users only.</p>
+          </div>
+          <span className="text-slate-400">{advancedOpen ? '▼' : '▶'}</span>
+        </button>
+        {advancedOpen && (
+          <div className="mt-4 space-y-3 border-t border-fds-border pt-4">
+            <label className="block text-xs font-bold uppercase tracking-wide text-slate-500">Configuration JSON</label>
+            <textarea
+              value={rawJson}
+              onChange={(e) => setRawJson(e.target.value)}
+              rows={14}
+              className="w-full rounded-lg border border-fds-border bg-slate-50 px-3 py-2 font-mono text-xs text-slate-900 shadow-inner focus:border-brand focus:outline-none focus:ring-1 focus:ring-brand"
+            />
+            {jsonError && <p className="text-sm text-red-600">{jsonError}</p>}
+            <div className="flex flex-wrap gap-2">
+              <Button type="button" variant="outline" onClick={refreshAdvancedJson}>
+                Sync from toggles
+              </Button>
+              <Button type="button" variant="outline" onClick={applyJson}>
+                Apply JSON to toggles
+              </Button>
+            </div>
+          </div>
+        )}
+      </Card>
+        </>
+      ) : null}
+    </div>
+  );
+}

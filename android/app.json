@@ -1,0 +1,25 @@
+{
+  "expo": {
+    "name": "FortDefend",
+    "slug": "fortdefend",
+    "version": "1.0.0",
+    "platforms": [
+      "android"
+    ],
+    "android": {
+      "package": "com.fortdefend.app",
+      "permissions": [
+        "FOREGROUND_SERVICE",
+        "FOREGROUND_SERVICE_DATA_SYNC",
+        "RECEIVE_BOOT_COMPLETED",
+        "REQUEST_IGNORE_BATTERY_OPTIMIZATIONS"
+      ]
+    },
+    "extra": {
+      "eas": {
+        "projectId": "5ae6302c-c074-4963-a0e2-db11eefa0f77"
+      }
+    },
+    "owner": "fortdefend"
+  }
+}

@@ -85,12 +85,24 @@ function isThirdPartyApp(app = {}) {
   const publisher = String(app.publisher || '').toLowerCase();
   const blocked = [
     'microsoft',
+    'windows',
     'security intelligence update',
     'cumulative update',
+    'servicing stack',
+    'security update for',
+    'update for windows',
     '.net framework',
     'kb',
     'defender antivirus',
     'redistributable',
+    'visual c++',
+    'webview2 runtime',
+    'edge webview',
+    'microsoft edge',
+    'windows update',
+    'update health tools',
+    'app installer',
+    'desktop runtime',
   ];
   return !blocked.some((term) => name.includes(term) || publisher.includes(term));
 }
@@ -130,6 +142,8 @@ export default function DeviceDetail() {
   const [serviceSearch, setServiceSearch] = useState('');
   const [serviceRows, setServiceRows] = useState([]);
   const [printerRows, setPrinterRows] = useState([]);
+  const [externalDeviceSearch, setExternalDeviceSearch] = useState('');
+  const [externalDeviceRows, setExternalDeviceRows] = useState([]);
   const [appsFilter, setAppsFilter] = useState('all');
   const [showAdvancedSoftware, setShowAdvancedSoftware] = useState(false);
   const [density, setDensity] = useState('compact');
@@ -202,11 +216,23 @@ export default function DeviceDetail() {
     if (processRows.length === 0) refreshProcesses();
     if (serviceRows.length === 0) refreshServices();
     if (printerRows.length === 0) refreshPrinters();
+    if (externalDeviceRows.length === 0) refreshExternalDevices();
   }, [tab]);
 
   useEffect(() => {
     if (tab === 'live_actions') setTab('overview');
   }, [tab]);
+
+  useEffect(() => {
+    if (tab !== 'overview') return;
+    const timer = setInterval(() => {
+      refreshProcesses();
+      refreshServices();
+      refreshPrinters();
+      refreshExternalDevices();
+    }, 15000);
+    return () => clearInterval(timer);
+  }, [tab, device?.id]);
 
   const filteredApps = useMemo(() => {
     const q = softwareSearch.trim().toLowerCase();
@@ -232,6 +258,16 @@ export default function DeviceDetail() {
     () => filteredAppsDetailed.filter((a) => isThirdPartyApp(a)),
     [filteredAppsDetailed],
   );
+
+  const thirdPartyAppsSorted = useMemo(() => {
+    const usageScore = (app) => {
+      const launches = Number(app?.launch_count || app?.usage_count || 0);
+      const lastUsed = new Date(app?.last_used_at || app?.last_opened_at || 0).getTime() || 0;
+      const installed = new Date(app?.last_scanned_at || app?.updated_at || app?.created_at || 0).getTime() || 0;
+      return launches * 1_000_000 + lastUsed + installed;
+    };
+    return [...thirdPartyApps].sort((a, b) => usageScore(b) - usageScore(a));
+  }, [thirdPartyApps]);
 
   const densityUi = useMemo(() => {
     if (density === 'comfortable') return { text: 'text-base', cardPad: 'p-5' };
@@ -350,6 +386,14 @@ export default function DeviceDetail() {
     const parsed = parseResultOutput(row?.output);
     const list = Array.isArray(parsed) ? parsed : parsed ? [parsed] : [];
     setPrinterRows(list);
+  };
+
+  const refreshExternalDevices = async () => {
+    const script = `Get-PnpDevice -PresentOnly | Select-Object FriendlyName,Class,Status,InstanceId | ConvertTo-Json -Depth 3`;
+    const row = await runQuickPowerShell('Refresh External Devices', script, { silentOutput: true });
+    const parsed = parseResultOutput(row?.output);
+    const list = Array.isArray(parsed) ? parsed : parsed ? [parsed] : [];
+    setExternalDeviceRows(list);
   };
 
   const runDeviceCommand = async (kind) => {
@@ -524,6 +568,62 @@ export default function DeviceDetail() {
       </div>
 
       {tab === 'overview' && (
+        <div className="space-y-4">
+          <Card>
+            <div className="mb-3 flex items-center justify-between gap-3">
+              <h2 className="text-sm font-semibold text-slate-900">Terminal / Quick Commands</h2>
+              {quickPending ? (
+                <span className="rounded-full bg-amber-100 px-2 py-0.5 text-xs font-semibold text-amber-900">
+                  Waiting for device response...
+                </span>
+              ) : null}
+            </div>
+            <div className="flex flex-wrap gap-2">
+              <Input
+                placeholder="Type a PowerShell command..."
+                value={quickCommand}
+                onChange={(e) => setQuickCommand(e.target.value)}
+              />
+              <Button type="button" onClick={() => runTerminalCommand(quickCommand)}>Run</Button>
+            </div>
+            <div className="mt-3 flex flex-wrap gap-2">
+              {[
+                'ipconfig',
+                'whoami',
+                'Get-Process | Sort CPU -desc | Select -first 10',
+                'Get-Service | Where Status -eq Running',
+                'Get-EventLog -LogName System -Newest 20',
+              ].map((cmd) => (
+                <button
+                  key={cmd}
+                  className="rounded-full border border-fds-border bg-slate-50 px-3 py-1 text-xs text-slate-700 hover:bg-slate-100"
+                  onClick={() => runTerminalCommand(cmd)}
+                >
+                  {cmd}
+                </button>
+              ))}
+            </div>
+            {quickHistory.length ? (
+              <div className="mt-3">
+                <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-slate-500">Recent commands</p>
+                <div className="flex flex-wrap gap-2">
+                  {quickHistory.slice(0, 10).map((cmd) => (
+                    <button
+                      key={cmd}
+                      className="rounded-full bg-slate-100 px-3 py-1 text-xs text-slate-700 hover:bg-slate-200"
+                      onClick={() => setQuickCommand(cmd)}
+                    >
+                      {cmd}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            ) : null}
+            <pre className="mt-3 max-h-64 overflow-auto whitespace-pre-wrap rounded bg-slate-950 p-3 text-xs text-slate-100">
+              {quickOutput || 'Run a command to see output.'}
+            </pre>
+          </Card>
+
         <div className="grid gap-4 lg:grid-cols-3">
           <Card className="lg:col-span-2">
             <div className="mb-3 flex items-center justify-between">
@@ -556,6 +656,7 @@ export default function DeviceDetail() {
             </div>
           </Card>
         </div>
+        </div>
       )}
 
       {tab === 'software' && (
@@ -578,7 +679,7 @@ export default function DeviceDetail() {
           </div>
           {!showAdvancedSoftware ? (
             <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
-              {thirdPartyApps.map((a) => (
+              {thirdPartyAppsSorted.map((a) => (
                 <div key={`${a.app_name}-${a.winget_id || ''}-${a.installed_version || ''}`} className="flex items-center gap-3 rounded-lg border border-fds-border bg-white px-3 py-2">
                   <div className="flex h-9 w-9 items-center justify-center rounded-md bg-slate-100 text-xs font-bold text-slate-700">
                     {appLogoText(a)}
@@ -686,60 +787,6 @@ export default function DeviceDetail() {
               <span className="text-xs text-slate-500">Combined into Overview for quicker workflows</span>
             </div>
           </Card>
-          <Card>
-            <div className="mb-3 flex items-center justify-between gap-3">
-              <h2 className="text-sm font-semibold text-slate-900">Terminal / Quick Commands</h2>
-              {quickPending ? (
-                <span className="rounded-full bg-amber-100 px-2 py-0.5 text-xs font-semibold text-amber-900">
-                  Waiting for device response...
-                </span>
-              ) : null}
-            </div>
-            <div className="flex flex-wrap gap-2">
-              <Input
-                placeholder="Type a PowerShell command..."
-                value={quickCommand}
-                onChange={(e) => setQuickCommand(e.target.value)}
-              />
-              <Button type="button" onClick={() => runTerminalCommand(quickCommand)}>Run</Button>
-            </div>
-            <div className="mt-3 flex flex-wrap gap-2">
-              {[
-                'ipconfig',
-                'whoami',
-                'Get-Process | Sort CPU -desc | Select -first 10',
-                'Get-Service | Where Status -eq Running',
-                'Get-EventLog -LogName System -Newest 20',
-              ].map((cmd) => (
-                <button
-                  key={cmd}
-                  className="rounded-full border border-fds-border bg-slate-50 px-3 py-1 text-xs text-slate-700 hover:bg-slate-100"
-                  onClick={() => runTerminalCommand(cmd)}
-                >
-                  {cmd}
-                </button>
-              ))}
-            </div>
-            {quickHistory.length ? (
-              <div className="mt-3">
-                <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-slate-500">Recent commands</p>
-                <div className="flex flex-wrap gap-2">
-                  {quickHistory.slice(0, 10).map((cmd) => (
-                    <button
-                      key={cmd}
-                      className="rounded-full bg-slate-100 px-3 py-1 text-xs text-slate-700 hover:bg-slate-200"
-                      onClick={() => setQuickCommand(cmd)}
-                    >
-                      {cmd}
-                    </button>
-                  ))}
-                </div>
-              </div>
-            ) : null}
-            <pre className="mt-3 max-h-64 overflow-auto whitespace-pre-wrap rounded bg-slate-950 p-3 text-xs text-slate-100">
-              {quickOutput || 'Run a command to see output.'}
-            </pre>
-          </Card>
 
           <Card>
             <div className="mb-3 flex items-center justify-between gap-2">
@@ -772,6 +819,9 @@ export default function DeviceDetail() {
                 </tbody>
               </table>
             </div>
+            {processRows.length === 0 ? (
+              <p className="mt-3 text-xs text-slate-500">No process data yet. Click Refresh Processes or wait for the next live refresh.</p>
+            ) : null}
           </Card>
 
           <Card>
@@ -819,6 +869,9 @@ export default function DeviceDetail() {
                 </tbody>
               </table>
             </div>
+            {serviceRows.length === 0 ? (
+              <p className="mt-3 text-xs text-slate-500">No service data yet. Click Refresh Services or wait for the next live refresh.</p>
+            ) : null}
           </Card>
 
           <Card>
@@ -850,6 +903,50 @@ export default function DeviceDetail() {
                 </tbody>
               </table>
             </div>
+            {printerRows.length === 0 ? (
+              <p className="mt-3 text-xs text-slate-500">No printer data yet. Click Refresh Printers or wait for the next live refresh.</p>
+            ) : null}
+          </Card>
+
+          <Card>
+            <div className="mb-3 flex items-center justify-between gap-2">
+              <h2 className="text-sm font-semibold text-slate-900">External Devices</h2>
+              <div className="flex items-center gap-2">
+                <Input placeholder="Filter external devices..." value={externalDeviceSearch} onChange={(e) => setExternalDeviceSearch(e.target.value)} />
+                <Button type="button" variant="outline" onClick={refreshExternalDevices}>Refresh External Devices</Button>
+              </div>
+            </div>
+            <div className="overflow-x-auto">
+              <table className="min-w-full text-sm">
+                <thead className="bg-slate-50 text-left text-xs uppercase text-slate-500">
+                  <tr><th className="px-3 py-2">Name</th><th className="px-3 py-2">Class</th><th className="px-3 py-2">Status</th><th className="px-3 py-2">Instance ID</th><th className="px-3 py-2" /></tr>
+                </thead>
+                <tbody>
+                  {externalDeviceRows
+                    .filter((d) => `${d.FriendlyName || ''} ${d.Class || ''} ${d.InstanceId || ''}`.toLowerCase().includes(externalDeviceSearch.toLowerCase()))
+                    .map((d) => (
+                      <tr key={d.InstanceId || d.FriendlyName} className="border-t border-fds-border">
+                        <td className="px-3 py-2">{d.FriendlyName || '—'}</td>
+                        <td className="px-3 py-2">{d.Class || '—'}</td>
+                        <td className="px-3 py-2">{d.Status || '—'}</td>
+                        <td className="max-w-[280px] truncate px-3 py-2 text-xs text-slate-500">{d.InstanceId || '—'}</td>
+                        <td className="px-3 py-2 text-right">
+                          <Button
+                            type="button"
+                            variant="outline"
+                            onClick={() => runQuickPowerShell(`Disable External Device ${d.FriendlyName || ''}`, `Disable-PnpDevice -InstanceId "${String(d.InstanceId || '').replace(/"/g, '""')}" -Confirm:$false`).then(refreshExternalDevices)}
+                          >
+                            Stop / Disable
+                          </Button>
+                        </td>
+                      </tr>
+                    ))}
+                </tbody>
+              </table>
+            </div>
+            {externalDeviceRows.length === 0 ? (
+              <p className="mt-3 text-xs text-slate-500">No external device data yet. Click Refresh External Devices or wait for the next live refresh.</p>
+            ) : null}
           </Card>
 
           <Card>
@@ -877,7 +974,7 @@ export default function DeviceDetail() {
                   <tr><th className="px-3 py-2">App Name</th><th className="px-3 py-2">Version</th><th className="px-3 py-2">Publisher</th><th className="px-3 py-2">Installed Date</th><th className="px-3 py-2" /></tr>
                 </thead>
                 <tbody>
-                  {filteredAppsDetailed.map((a) => (
+                  {thirdPartyAppsSorted.map((a) => (
                     <tr key={`${a.app_name}-${a.winget_id || ''}-${a.installed_version || ''}`} className="border-t border-fds-border">
                       <td className="px-3 py-2">{a.app_name || '—'}</td>
                       <td className="px-3 py-2">{a.installed_version || '—'}</td>

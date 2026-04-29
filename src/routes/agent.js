@@ -590,6 +590,10 @@ router.post('/heartbeat', async (req, res) => {
       : null;
     const normalizedOs = normalizeOsName(telemetry.osName || payload.os || existing?.os || 'Microsoft Windows');
     const normalizedOsVersion = telemetry.osVersion || payload.osVersion || payload.os_version || existing?.os_version || null;
+    const normalizedOsBuild = telemetry.osBuild || payload.osBuild || payload.os_build || existing?.os_build || null;
+    const normalizedCpuCores = toNum(telemetry.cpuCores ?? payload.cpuCores ?? payload.cpu_cores, existing?.cpu_cores ?? null);
+    const normalizedSecurityPatchLevel =
+      telemetry.securityPatchLevel || payload.securityPatchLevel || payload.security_patch_level || existing?.security_patch_level || null;
     const now = new Date();
     const cpuUsagePct = toNum(telemetry.cpuUsagePct ?? payload.cpuUsage, existing?.cpu_usage_pct ?? null);
     const ramUsagePct = toNum(telemetry.ramUsagePct, existing?.ram_usage_pct ?? null);
@@ -604,8 +608,10 @@ router.post('/heartbeat', async (req, res) => {
       serial: telemetry.serialNumber || payload.serialNumber || existing?.serial || null,
       os: normalizedOs,
       os_version: normalizedOsVersion,
+      os_build: normalizedOsBuild,
       logged_in_user: telemetry.loggedInUser || existing?.logged_in_user || null,
       cpu_model: telemetry.cpuModel || existing?.cpu_model || null,
+      cpu_cores: normalizedCpuCores,
       cpu_usage_pct: toNum(telemetry.cpuUsagePct ?? payload.cpuUsage ?? payload.cpu_usage_pct, cpuUsagePct),
       mem_used_gb: toNum(payload.memUsed ?? telemetry.memUsedGb, existing?.mem_used_gb ?? null),
       mem_total_gb: toNum(payload.memTotal ?? telemetry.memTotalGb, existing?.mem_total_gb ?? null),
@@ -616,6 +622,11 @@ router.post('/heartbeat', async (req, res) => {
       disk_usage_pct: toNum(telemetry.diskUsagePct, existing?.disk_usage_pct ?? null),
       disk_free_pct: diskFreePct,
       ip_address: telemetry.ipAddress || existing?.ip_address || null,
+      wifi_connected: telemetry.wifiConnected == null ? existing?.wifi_connected ?? null : !!telemetry.wifiConnected,
+      screen_lock_enabled:
+        telemetry.screenLockEnabled == null ? existing?.screen_lock_enabled ?? null : !!telemetry.screenLockEnabled,
+      developer_options_enabled:
+        telemetry.developerOptionsEnabled == null ? existing?.developer_options_enabled ?? null : !!telemetry.developerOptionsEnabled,
       agent_version:
         deviceVersion
         || telemetry.agent_version
@@ -624,6 +635,8 @@ router.post('/heartbeat', async (req, res) => {
         || currentAgentVersion,
       os_outdated: telemetry.osOutdated === true,
       security_agent_running: telemetry.securityAgentRunning == null ? true : !!telemetry.securityAgentRunning,
+      security_patch_level: normalizedSecurityPatchLevel,
+      check_results: Array.isArray(telemetry.checkResults) ? telemetry.checkResults : existing?.check_results ?? null,
       high_cpu_since: nextHighCpuSince,
       high_ram_since: nextHighRamSince,
       last_seen: now,

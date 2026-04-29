@@ -22,7 +22,6 @@ export default function Dashboard() {
   const { user, org, isLoading } = useAuth();
   const [summary, setSummary] = useState(null);
   const [devices, setDevices] = useState([]);
-  const [fleetDevices, setFleetDevices] = useState([]);
   const [openAlerts, setOpenAlerts] = useState(0);
   const [activity, setActivity] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -44,9 +43,7 @@ export default function Dashboard() {
         if (!cancelled) {
           setSummary(s && typeof s === 'object' ? s : null);
           const list = Array.isArray(d?.devices) ? d.devices : [];
-          const clean = list.filter(Boolean);
-          setFleetDevices(clean);
-          setDevices(clean.slice(0, 12));
+          setDevices(list.filter(Boolean).slice(0, 12));
           const alerts = Array.isArray(a?.alerts) ? a.alerts : [];
           setOpenAlerts(alerts.length);
           setActivity(alerts.slice(0, 6));
@@ -55,7 +52,6 @@ export default function Dashboard() {
         if (!cancelled) {
           setSummary(null);
           setDevices([]);
-          setFleetDevices([]);
           setOpenAlerts(0);
           setActivity([]);
         }
@@ -68,44 +64,29 @@ export default function Dashboard() {
     };
   }, []);
 
-  const onlineFleet = fleetDevices.filter((x) => {
+  const online = devices.filter((x) => {
     const last = x?.lastSeen || x?.last_seen;
     if (!last) return false;
     const ts = new Date(last).getTime();
     return Number.isFinite(ts) && Date.now() - ts < 5 * 60 * 1000;
-  });
-  const online = onlineFleet.length;
+  }).length;
 
-  const offline = fleetDevices.filter((x) => {
+  const offline = devices.filter((x) => {
     const last = x?.lastSeen || x?.last_seen;
     if (!last) return true;
     const ts = new Date(last).getTime();
     return !Number.isFinite(ts) || Date.now() - ts >= 60 * 60 * 1000;
   }).length;
 
-  const warning = Math.max(0, fleetDevices.length - online - offline);
+  const warning = Math.max(0, devices.length - online - offline);
 
-  const numericScores = fleetDevices.map((d) => Number(d?.security_score)).filter((n) => Number.isFinite(n));
+  const numericScores = devices.map((d) => Number(d?.security_score)).filter((n) => Number.isFinite(n));
   const compliance = numericScores.length
     ? Math.round(numericScores.reduce((a, b) => a + b, 0) / numericScores.length)
     : null;
 
-  const hasDevices = fleetDevices.length > 0;
-  const devicesEnrolled = Number.isFinite(Number(org?.deviceCount)) ? Number(org.deviceCount) : fleetDevices.length;
-  const avgCpu = onlineFleet
-    .map((d) => Number(d?.cpu_usage_pct ?? d?.cpuUsage))
-    .filter((n) => Number.isFinite(n));
-  const avgRam = onlineFleet
-    .map((d) => {
-      const used = Number(d?.mem_used_gb ?? d?.memUsed);
-      const total = Number(d?.mem_total_gb ?? d?.ram_total_gb ?? d?.memTotal);
-      if (!Number.isFinite(used) || !Number.isFinite(total) || total <= 0) return null;
-      return (used / total) * 100;
-    })
-    .filter((n) => Number.isFinite(n));
-  const avgCpuPct = avgCpu.length ? avgCpu.reduce((a, b) => a + b, 0) / avgCpu.length : null;
-  const avgRamPct = avgRam.length ? avgRam.reduce((a, b) => a + b, 0) / avgRam.length : null;
-  const highCpuAlerts = onlineFleet.filter((d) => Number(d?.cpu_usage_pct ?? d?.cpuUsage) > 80).length;
+  const hasDevices = devices.length > 0;
+  const devicesEnrolled = Number.isFinite(Number(org?.deviceCount)) ? Number(org.deviceCount) : devices.length;
 
   let healthTone = 'good';
   let healthLabel = 'Fleet looks healthy';
@@ -213,18 +194,6 @@ export default function Dashboard() {
                 <span>·</span>
                 <span>
                   <strong className="text-slate-500">{offline}</strong> offline
-                </span>
-                <span>·</span>
-                <span>
-                  <strong className="text-slate-700">{avgCpuPct == null ? '—' : `${avgCpuPct.toFixed(1)}%`}</strong> avg CPU
-                </span>
-                <span>·</span>
-                <span>
-                  <strong className="text-slate-700">{avgRamPct == null ? '—' : `${avgRamPct.toFixed(1)}%`}</strong> avg RAM
-                </span>
-                <span>·</span>
-                <span>
-                  <strong className={highCpuAlerts > 0 ? 'text-red-600' : 'text-emerald-600'}>{highCpuAlerts}</strong> high CPU ({'>'}80%)
                 </span>
               </div>
             </div>

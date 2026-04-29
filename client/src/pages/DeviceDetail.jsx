@@ -132,6 +132,8 @@ export default function DeviceDetail() {
   const [printerRows, setPrinterRows] = useState([]);
   const [appsFilter, setAppsFilter] = useState('all');
   const [showAdvancedSoftware, setShowAdvancedSoftware] = useState(false);
+  const [density, setDensity] = useState('compact');
+  const [uiScale, setUiScale] = useState(90);
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState('');
 
@@ -196,10 +198,14 @@ export default function DeviceDetail() {
   }, [isViewer, tab]);
 
   useEffect(() => {
-    if (tab !== 'live_actions') return;
+    if (tab !== 'overview' && tab !== 'live_actions') return;
     if (processRows.length === 0) refreshProcesses();
     if (serviceRows.length === 0) refreshServices();
     if (printerRows.length === 0) refreshPrinters();
+  }, [tab]);
+
+  useEffect(() => {
+    if (tab === 'live_actions') setTab('overview');
   }, [tab]);
 
   const filteredApps = useMemo(() => {
@@ -226,6 +232,12 @@ export default function DeviceDetail() {
     () => filteredAppsDetailed.filter((a) => isThirdPartyApp(a)),
     [filteredAppsDetailed],
   );
+
+  const densityUi = useMemo(() => {
+    if (density === 'comfortable') return { text: 'text-base', cardPad: 'p-5' };
+    if (density === 'normal') return { text: 'text-sm', cardPad: 'p-4' };
+    return { text: 'text-xs', cardPad: 'p-3' };
+  }, [density]);
 
   const facts = useMemo(() => {
     if (!device) return [];
@@ -408,8 +420,8 @@ export default function DeviceDetail() {
   }
 
   return (
-    <div className="space-y-4">
-      <div className="rounded-xl border border-fds-border bg-white p-4 shadow-sm ring-1 ring-slate-950/5">
+    <div className={`space-y-3 ${densityUi.text}`} style={{ zoom: uiScale / 100 }}>
+      <div className={`rounded-xl border border-fds-border bg-white shadow-sm ring-1 ring-slate-950/5 ${densityUi.cardPad}`}>
         <div className="flex flex-wrap items-start justify-between gap-4">
           <div className="min-w-0">
             <button onClick={() => navigate('/devices')} className="text-sm font-semibold text-brand hover:underline">← Devices</button>
@@ -488,14 +500,27 @@ export default function DeviceDetail() {
         </div>
       </div>
 
-      <div className="flex gap-1 overflow-x-auto border-b border-fds-border">
-        {['overview', 'software', 'alerts', 'scripts', 'live_actions', 'activity']
+      <div className="flex flex-wrap items-center justify-between gap-2 border-b border-fds-border pb-1">
+        <div className="flex gap-1 overflow-x-auto">
+        {['overview', 'software', 'alerts', 'scripts', 'activity']
           .filter((t) => !(isViewer && t === 'scripts'))
           .map((t) => (
           <button key={t} onClick={() => setTab(t)} className={`whitespace-nowrap border-b-2 px-4 py-2.5 text-sm font-semibold ${tab === t ? 'border-brand text-brand' : 'border-transparent text-slate-600 hover:text-slate-900'}`}>
             {t === 'live_actions' ? 'Live Actions' : t.charAt(0).toUpperCase() + t.slice(1)}
           </button>
         ))}
+        </div>
+        <div className="flex items-center gap-2 text-xs">
+          <label className="text-slate-500">Density</label>
+          <select value={density} onChange={(e) => setDensity(e.target.value)} className="rounded border border-slate-300 bg-white px-2 py-1">
+            <option value="compact">Compact</option>
+            <option value="normal">Normal</option>
+            <option value="comfortable">Comfortable</option>
+          </select>
+          <label className="text-slate-500">Size</label>
+          <input type="range" min="80" max="115" step="5" value={uiScale} onChange={(e) => setUiScale(Number(e.target.value))} />
+          <span className="w-10 text-right text-slate-600">{uiScale}%</span>
+        </div>
       </div>
 
       {tab === 'overview' && (
@@ -653,8 +678,14 @@ export default function DeviceDetail() {
         </Card>
       )}
 
-      {tab === 'live_actions' && (
+      {tab === 'overview' && (
         <div className="space-y-4">
+          <Card>
+            <div className="flex items-center justify-between">
+              <h2 className="text-sm font-semibold text-slate-900">Live Actions</h2>
+              <span className="text-xs text-slate-500">Combined into Overview for quicker workflows</span>
+            </div>
+          </Card>
           <Card>
             <div className="mb-3 flex items-center justify-between gap-3">
               <h2 className="text-sm font-semibold text-slate-900">Terminal / Quick Commands</h2>

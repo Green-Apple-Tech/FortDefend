@@ -1,5 +1,10 @@
-import { useState } from 'react';
-import { View, Text, TextInput, TouchableOpacity, StyleSheet, Alert } from 'react-native';
+import { useEffect, useState } from 'react';
+import { View, Text, TextInput, TouchableOpacity, StyleSheet, Alert, ScrollView, RefreshControl } from 'react-native';
+import { useHomeSecurity } from './src/features/home/hooks/useHomeSecurity';
+import SummaryCard from './src/features/home/components/SummaryCard';
+import SecurityChecksCard from './src/features/home/components/SecurityChecksCard';
+import CleanupHealthCard from './src/features/home/components/CleanupHealthCard';
+import AntiPhishingCard from './src/features/home/components/AntiPhishingCard';
 
 const SERVER = 'https://app.fortdefend.com';
 
@@ -7,12 +12,15 @@ export default function App() {
   const [screen, setScreen] = useState('enroll');
   const [orgToken, setOrgToken] = useState('');
   const [status, setStatus] = useState('Connecting...');
+  const [heartbeatTimer, setHeartbeatTimer] = useState(null);
+  const { loading, error, score, status: securityStatus, summary, lastScannedAt, securityChecks, healthChecks, refresh } = useHomeSecurity();
 
   const enroll = () => {
     if (!orgToken.trim()) { Alert.alert('Enter your org token'); return; }
-    setScreen('status');
+    setScreen('home');
     sendHeartbeat(orgToken.trim());
-    setInterval(() => sendHeartbeat(orgToken.trim()), 30000);
+    const intervalId = setInterval(() => sendHeartbeat(orgToken.trim()), 30000);
+    setHeartbeatTimer(intervalId);
   };
 
   const sendHeartbeat = async (token) => {
@@ -28,6 +36,16 @@ export default function App() {
     }
   };
 
+  useEffect(() => {
+    if (screen === 'home') refresh();
+  }, [screen, refresh]);
+
+  useEffect(() => {
+    return () => {
+      if (heartbeatTimer) clearInterval(heartbeatTimer);
+    };
+  }, [heartbeatTimer]);
+
   if (screen === 'enroll') return (
     <View style={styles.container}>
       <Text style={styles.title}>🛡️ FortDefend</Text>
@@ -40,16 +58,32 @@ export default function App() {
   );
 
   return (
-    <View style={styles.container}>
+    <ScrollView
+      style={styles.homeScreen}
+      contentContainerStyle={styles.homeContent}
+      refreshControl={<RefreshControl refreshing={loading} onRefresh={refresh} />}
+    >
       <Text style={styles.title}>🛡️ FortDefend</Text>
       <View style={styles.badge}><Text style={styles.badgeText}>{status}</Text></View>
       <Text style={styles.sub}>Device enrolled and reporting</Text>
-    </View>
+      {error ? <Text style={styles.errorText}>Error: {error}</Text> : null}
+      <SummaryCard
+        score={score}
+        status={securityStatus}
+        bullets={summary?.bullets || []}
+        lastScannedAt={lastScannedAt}
+      />
+      <SecurityChecksCard checks={securityChecks} />
+      <CleanupHealthCard checks={healthChecks} />
+      <AntiPhishingCard />
+    </ScrollView>
   );
 }
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: '#0A1628', justifyContent: 'center', alignItems: 'center', padding: 24 },
+  homeScreen: { flex: 1, backgroundColor: '#0A1628' },
+  homeContent: { padding: 16, paddingBottom: 32 },
   title: { fontSize: 32, fontWeight: 'bold', color: '#fff', marginBottom: 8 },
   sub: { fontSize: 14, color: '#94a3b8', marginBottom: 24, textAlign: 'center' },
   input: { width: '100%', backgroundColor: '#1e2d44', color: '#fff', borderRadius: 10, padding: 16, fontSize: 14, marginBottom: 16, borderWidth: 1, borderColor: '#2563EB' },
@@ -57,4 +91,5 @@ const styles = StyleSheet.create({
   buttonText: { color: '#fff', fontWeight: '700', fontSize: 16 },
   badge: { backgroundColor: '#10B981', borderRadius: 20, paddingHorizontal: 20, paddingVertical: 8, marginBottom: 16 },
   badgeText: { color: '#fff', fontWeight: '600' },
+  errorText: { color: '#fca5a5', marginBottom: 10, fontSize: 12 },
 });

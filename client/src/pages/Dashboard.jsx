@@ -23,6 +23,7 @@ export default function Dashboard() {
   const [summary, setSummary] = useState(null);
   const [devices, setDevices] = useState([]);
   const [openAlerts, setOpenAlerts] = useState(0);
+  const [malwareAlerts, setMalwareAlerts] = useState(0);
   const [activity, setActivity] = useState([]);
   const [loading, setLoading] = useState(true);
   const [apiModalOpen, setApiModalOpen] = useState(false);
@@ -46,6 +47,9 @@ export default function Dashboard() {
           setDevices(list.filter(Boolean).slice(0, 12));
           const alerts = Array.isArray(a?.alerts) ? a.alerts : [];
           setOpenAlerts(alerts.length);
+          setMalwareAlerts(
+            alerts.filter((x) => x?.type === 'malware_app_detected' || String(x?.message || '').toLowerCase().includes('malwarebazaar')).length,
+          );
           setActivity(alerts.slice(0, 6));
         }
       } catch {
@@ -53,6 +57,7 @@ export default function Dashboard() {
           setSummary(null);
           setDevices([]);
           setOpenAlerts(0);
+          setMalwareAlerts(0);
           setActivity([]);
         }
       } finally {
@@ -147,11 +152,11 @@ export default function Dashboard() {
           icon="🔔"
         />
         <StatCard
-          label="Apps outdated"
-          value="—"
-          trend="Software Manager matrix"
-          color="slate"
-          icon="📦"
+          label="Malware matches"
+          value={malwareAlerts}
+          trend={malwareAlerts > 0 ? 'Uninstall flagged apps now' : 'No known malware hash matches'}
+          color={malwareAlerts > 0 ? 'warning' : 'success'}
+          icon="🛡️"
         />
         <StatCard
           label="Compliance score"

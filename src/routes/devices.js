@@ -93,6 +93,11 @@ router.get('/:id/apps', async (req, res, next) => {
       .select(
         'app_name',
         'winget_id',
+        'file_hash_sha256',
+        'malware_detected',
+        'malware_family',
+        'malware_signature',
+        'malware_last_checked_at',
         'installed_version',
         'latest_version',
         'update_available',

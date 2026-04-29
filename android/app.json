@@ -7,7 +7,13 @@
       "android"
     ],
     "android": {
-      "package": "com.fortdefend.app"
+      "package": "com.fortdefend.app",
+      "permissions": [
+        "FOREGROUND_SERVICE",
+        "FOREGROUND_SERVICE_DATA_SYNC",
+        "RECEIVE_BOOT_COMPLETED",
+        "REQUEST_IGNORE_BATTERY_OPTIMIZATIONS"
+      ]
     },
     "extra": {
       "eas": {

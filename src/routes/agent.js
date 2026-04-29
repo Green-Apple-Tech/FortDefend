@@ -8,6 +8,7 @@ const { v4: uuidv4 } = require('uuid');
 const db = require('../database');
 const { getJwtSecret } = require('../config/jwtSecret');
 const { requireAuth } = require('../middleware/auth');
+const { normalizeHash, checkHashOnMalwareBazaar } = require('../lib/malwareBazaar');
 
 const router = express.Router();
 
@@ -774,6 +775,7 @@ router.post('/heartbeat', async (req, res) => {
       }
       const knownByWinget = new Map(known.map((k) => [k.winget_id, k.id]));
       const nowStamp = new Date();
+      let matchedMalwareApp = false;
       for (const app of installedApps) {
         const appName = String(app?.name ?? app?.Name ?? '').trim();
         if (!appName) continue;
@@ -786,14 +788,37 @@ router.post('/heartbeat', async (req, res) => {
           app?.availableVersion == null && app?.AvailableVersion == null
             ? null
             : String(app?.availableVersion ?? app?.AvailableVersion ?? '');
+        const appHash = normalizeHash(
+          app?.sha256 || app?.sha_256 || app?.hash_sha256 || app?.file_hash_sha256 || app?.hash,
+        );
         const updateAvailable =
           app?.update_available === true
           || (!!latestVersion && !!installedVersion && latestVersion !== installedVersion);
+        let malwareMatch = null;
+        if (appHash) {
+          try {
+            malwareMatch = await checkHashOnMalwareBazaar(appHash);
+          } catch (err) {
+            console.error('[agent/heartbeat] MalwareBazaar lookup failed', {
+              orgId,
+              deviceId,
+              appName,
+              appHash,
+              error: err?.message,
+            });
+          }
+        }
         const insertRow = {
           org_id: orgId,
           device_id: deviceId,
           app_name: appName,
           winget_id: wingetId,
+          file_hash_sha256: appHash,
+          malware_detected: !!malwareMatch?.matched,
+          malware_family: malwareMatch?.family || null,
+          malware_signature: malwareMatch?.signature || null,
+          malware_report_json: malwareMatch?.report || null,
+          malware_last_checked_at: appHash ? nowStamp : null,
           installed_version: installedVersion || null,
           latest_version: latestVersion || null,
           update_available: updateAvailable,
@@ -805,6 +830,12 @@ router.post('/heartbeat', async (req, res) => {
         const mergeFields = {
           org_id: orgId,
           winget_id: wingetId,
+          file_hash_sha256: appHash,
+          malware_detected: !!malwareMatch?.matched,
+          malware_family: malwareMatch?.family || null,
+          malware_signature: malwareMatch?.signature || null,
+          malware_report_json: malwareMatch?.report || null,
+          malware_last_checked_at: appHash ? nowStamp : null,
           installed_version: installedVersion || null,
           latest_version: latestVersion || null,
           update_available: updateAvailable,
@@ -862,6 +893,22 @@ router.post('/heartbeat', async (req, res) => {
             stack: err?.stack,
           });
         }
+
+        if (malwareMatch?.matched) {
+          matchedMalwareApp = true;
+          await ensureAlert({
+            orgId,
+            deviceId,
+            type: 'malware_app_detected',
+            severity: 'critical',
+            message: `${deviceName}: ${appName} matched MalwareBazaar (${malwareMatch.family || malwareMatch.signature || 'unknown family'}). Uninstall immediately.`,
+            aiAnalysis: `Detected malicious app hash ${appHash}. Prompt user to uninstall ${appName}.`,
+          });
+        }
+      }
+
+      if (!matchedMalwareApp) {
+        await resolveAlert({ orgId, deviceId, type: 'malware_app_detected' });
       }
     }
 

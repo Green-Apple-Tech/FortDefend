@@ -10,13 +10,17 @@
     "test": "tsx --test src/features/home/utils/*.test.ts"
   },
   "dependencies": {
+    "@react-native-async-storage/async-storage": "2.2.0",
     "@types/react": "~19.1.10",
     "expo": "~54.0.33",
+    "expo-background-fetch": "~14.0.9",
     "expo-battery": "~10.0.7",
     "expo-device": "~8.0.9",
     "expo-file-system": "~19.0.17",
     "expo-network": "~8.0.8",
+    "expo-notifications": "~0.32.17",
     "expo-status-bar": "~3.0.9",
+    "expo-task-manager": "~14.0.9",
     "react": "19.1.0",
     "react-native": "0.81.5",
     "tsx": "^4.20.6",

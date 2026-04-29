@@ -685,9 +685,15 @@ export default function DeviceDetail() {
                     {appLogoText(a)}
                   </div>
                   <div className="min-w-0">
-                    <div className="truncate text-sm font-semibold text-slate-900">{a.app_name || 'Unknown app'}</div>
+                    <div className="truncate text-sm font-semibold text-slate-900">
+                      {a.app_name || 'Unknown app'}
+                      {a.malware_detected ? (
+                        <span className="ml-2 rounded bg-red-100 px-1.5 py-0.5 text-[10px] font-bold text-red-700">MALWARE</span>
+                      ) : null}
+                    </div>
                     <div className="truncate text-xs text-slate-500">
                       {a.publisher || 'Unknown publisher'} · {a.installed_version || '—'}
+                      {a.malware_detected ? ` · ${a.malware_family || a.malware_signature || 'hash matched'}` : ''}
                     </div>
                   </div>
                 </div>
@@ -975,8 +981,13 @@ export default function DeviceDetail() {
                 </thead>
                 <tbody>
                   {thirdPartyAppsSorted.map((a) => (
-                    <tr key={`${a.app_name}-${a.winget_id || ''}-${a.installed_version || ''}`} className="border-t border-fds-border">
-                      <td className="px-3 py-2">{a.app_name || '—'}</td>
+                    <tr key={`${a.app_name}-${a.winget_id || ''}-${a.installed_version || ''}`} className={`border-t border-fds-border ${a.malware_detected ? 'bg-red-50/60' : ''}`}>
+                      <td className="px-3 py-2">
+                        <span>{a.app_name || '—'}</span>
+                        {a.malware_detected ? (
+                          <span className="ml-2 rounded bg-red-100 px-1.5 py-0.5 text-[10px] font-bold text-red-700">Malware match</span>
+                        ) : null}
+                      </td>
                       <td className="px-3 py-2">{a.installed_version || '—'}</td>
                       <td className="px-3 py-2">{a.publisher || '—'}</td>
                       <td className="px-3 py-2">{a.last_scanned_at ? new Date(a.last_scanned_at).toLocaleString() : '—'}</td>
@@ -994,7 +1005,7 @@ export default function DeviceDetail() {
                               )
                             }
                           >
-                            Uninstall
+                            {a.malware_detected ? 'Uninstall (Recommended)' : 'Uninstall'}
                           </Button>
                           <Button
                             type="button"

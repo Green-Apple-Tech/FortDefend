@@ -1,0 +1,222 @@
+[
+  {
+    "label": "googlechrome",
+    "name": "Google Chrome",
+    "type": "exe",
+    "downloadURL": "https://dl.google.com/chrome/install/latest/chrome_installer.exe",
+    "silentArgs": "/silent /install",
+    "expectedPublisher": "Google LLC",
+    "versionKey": "DisplayVersion",
+    "registryPath": "HKLM:\\SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Uninstall\\Google Chrome",
+    "blockingProcesses": ["chrome"]
+  },
+  {
+    "label": "firefox",
+    "name": "Mozilla Firefox",
+    "type": "exe",
+    "downloadURL": "https://download.mozilla.org/?product=firefox-latest-ssl&os=win64&lang=en-US",
+    "silentArgs": "/S",
+    "expectedPublisher": "Mozilla Corporation",
+    "versionKey": "DisplayVersion",
+    "registryPath": "HKLM:\\SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Uninstall\\Mozilla Firefox 141.0 (x64 en-US)",
+    "blockingProcesses": ["firefox"]
+  },
+  {
+    "label": "vscode",
+    "name": "Visual Studio Code",
+    "type": "exe",
+    "downloadURL": "https://code.visualstudio.com/sha/download?build=stable&os=win32-x64-user",
+    "silentArgs": "/VERYSILENT /NORESTART /MERGETASKS=!runcode",
+    "expectedPublisher": "Microsoft Corporation",
+    "versionKey": "DisplayVersion",
+    "registryPath": "HKCU:\\SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Uninstall\\{771FD6B0-FA20-440A-A002-3B3BAC16DC50}_is1",
+    "blockingProcesses": ["Code"]
+  },
+  {
+    "label": "zoom",
+    "name": "Zoom Workplace",
+    "type": "msi",
+    "downloadURL": "https://zoom.us/client/latest/ZoomInstallerFull.msi?archType=x64",
+    "silentArgs": "/qn /norestart",
+    "expectedPublisher": "Zoom Video Communications, Inc.",
+    "versionKey": "DisplayVersion",
+    "registryPath": "HKLM:\\SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Uninstall\\Zoom",
+    "blockingProcesses": ["Zoom", "ZoomWebviewHost"]
+  },
+  {
+    "label": "slack",
+    "name": "Slack",
+    "type": "exe",
+    "downloadURL": "https://downloads.slack-edge.com/desktop-releases/windows/x64/latest/SlackSetup.exe",
+    "silentArgs": "/S",
+    "expectedPublisher": "Slack Technologies, LLC",
+    "versionKey": "DisplayVersion",
+    "registryPath": "HKCU:\\SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Uninstall\\slack",
+    "blockingProcesses": ["slack"]
+  },
+  {
+    "label": "7zip",
+    "name": "7-Zip",
+    "type": "exe",
+    "downloadURL": "https://www.7-zip.org/a/7z2409-x64.exe",
+    "silentArgs": "/S",
+    "expectedPublisher": "Igor Pavlov",
+    "versionKey": "DisplayVersion",
+    "registryPath": "HKLM:\\SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Uninstall\\7-Zip",
+    "blockingProcesses": ["7zFM", "7zG"]
+  },
+  {
+    "label": "vlc",
+    "name": "VLC media player",
+    "type": "exe",
+    "downloadURL": "https://get.videolan.org/vlc/3.0.21/win64/vlc-3.0.21-win64.exe",
+    "silentArgs": "/S",
+    "expectedPublisher": "VideoLAN",
+    "versionKey": "DisplayVersion",
+    "registryPath": "HKLM:\\SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Uninstall\\VLC media player",
+    "blockingProcesses": ["vlc"]
+  },
+  {
+    "label": "notepadplusplus",
+    "name": "Notepad++",
+    "type": "exe",
+    "downloadURL": "https://github.com/notepad-plus-plus/notepad-plus-plus/releases/download/v8.7.7/npp.8.7.7.Installer.x64.exe",
+    "silentArgs": "/S",
+    "expectedPublisher": "Notepad++",
+    "versionKey": "DisplayVersion",
+    "registryPath": "HKLM:\\SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Uninstall\\Notepad++",
+    "blockingProcesses": ["notepad++"]
+  },
+  {
+    "label": "adobereader",
+    "name": "Adobe Acrobat Reader",
+    "type": "exe",
+    "downloadURL": "https://ardownload2.adobe.com/pub/adobe/reader/win/AcrobatDC/2400120438/AcroRdrDC2400120438_en_US.exe",
+    "silentArgs": "/sAll /rs /msi EULA_ACCEPT=YES",
+    "expectedPublisher": "Adobe Inc.",
+    "versionKey": "DisplayVersion",
+    "registryPath": "HKLM:\\SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Uninstall\\{AC76BA86-7AD7-1033-7B44-AC0F074EAA82}",
+    "blockingProcesses": ["AcroRd32", "Acrobat"]
+  },
+  {
+    "label": "teamviewer",
+    "name": "TeamViewer",
+    "type": "exe",
+    "downloadURL": "https://download.teamviewer.com/download/TeamViewer_Setup_x64.exe",
+    "silentArgs": "/S",
+    "expectedPublisher": "TeamViewer Germany GmbH",
+    "versionKey": "DisplayVersion",
+    "registryPath": "HKLM:\\SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Uninstall\\TeamViewer",
+    "blockingProcesses": ["TeamViewer"]
+  },
+  {
+    "label": "git",
+    "name": "Git for Windows",
+    "type": "exe",
+    "downloadURL": "https://github.com/git-for-windows/git/releases/download/v2.47.1.windows.2/Git-2.47.1.2-64-bit.exe",
+    "silentArgs": "/VERYSILENT /NORESTART",
+    "expectedPublisher": "Johannes Schindelin",
+    "versionKey": "DisplayVersion",
+    "registryPath": "HKLM:\\SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Uninstall\\Git_is1",
+    "blockingProcesses": ["git-bash", "git-cmd"]
+  },
+  {
+    "label": "nodejs",
+    "name": "Node.js LTS",
+    "type": "msi",
+    "downloadURL": "https://nodejs.org/dist/v22.14.0/node-v22.14.0-x64.msi",
+    "silentArgs": "/qn /norestart",
+    "expectedPublisher": "OpenJS Foundation",
+    "versionKey": "DisplayVersion",
+    "registryPath": "HKLM:\\SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Uninstall\\{B1B8B8B8-8B8B-8B8B-8B8B-8B8B8B8B8B8B}",
+    "blockingProcesses": ["node"]
+  },
+  {
+    "label": "python",
+    "name": "Python",
+    "type": "exe",
+    "downloadURL": "https://www.python.org/ftp/python/3.13.2/python-3.13.2-amd64.exe",
+    "silentArgs": "/quiet InstallAllUsers=1 PrependPath=1 Include_test=0",
+    "expectedPublisher": "Python Software Foundation",
+    "versionKey": "DisplayVersion",
+    "registryPath": "HKLM:\\SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Uninstall\\{D5745272-0E0E-4E0E-8E0E-0E0E0E0E0E0E}",
+    "blockingProcesses": ["python", "pythonw"]
+  },
+  {
+    "label": "malwarebytes",
+    "name": "Malwarebytes",
+    "type": "exe",
+    "downloadURL": "https://data-cdn.mbamupdates.com/web/mb4-setup-consumer/MBSetup.exe",
+    "silentArgs": "/VERYSILENT /NORESTART",
+    "expectedPublisher": "Malwarebytes Inc",
+    "versionKey": "DisplayVersion",
+    "registryPath": "HKLM:\\SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Uninstall\\Malwarebytes version 4.0.0.0",
+    "blockingProcesses": ["MBAMService", "malwarebytes"]
+  },
+  {
+    "label": "ccleaner",
+    "name": "CCleaner",
+    "type": "exe",
+    "downloadURL": "https://download.ccleaner.com/ccsetup615.exe",
+    "silentArgs": "/S",
+    "expectedPublisher": "Gen Digital Inc",
+    "versionKey": "DisplayVersion",
+    "registryPath": "HKLM:\\SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Uninstall\\CCleaner",
+    "blockingProcesses": ["CCleaner64", "CCleaner"]
+  },
+  {
+    "label": "greenshot",
+    "name": "Greenshot",
+    "type": "exe",
+    "downloadURL": "https://github.com/greenshot/greenshot/releases/download/Greenshot-RELEASE-1.3.274/Greenshot-INSTALLER-1.3.274-RELEASE.exe",
+    "silentArgs": "/VERYSILENT /NORESTART",
+    "expectedPublisher": "Greenshot",
+    "versionKey": "DisplayVersion",
+    "registryPath": "HKLM:\\SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Uninstall\\Greenshot_is1",
+    "blockingProcesses": ["Greenshot"]
+  },
+  {
+    "label": "obsidian",
+    "name": "Obsidian",
+    "type": "exe",
+    "downloadURL": "https://github.com/obsidianmd/obsidian-releases/releases/download/v1.8.4/Obsidian-1.8.4.exe",
+    "silentArgs": "/S",
+    "expectedPublisher": "Obsidian",
+    "versionKey": "DisplayVersion",
+    "registryPath": "HKCU:\\SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Uninstall\\Obsidian",
+    "blockingProcesses": ["Obsidian"]
+  },
+  {
+    "label": "powertoys",
+    "name": "PowerToys",
+    "type": "exe",
+    "downloadURL": "https://github.com/microsoft/PowerToys/releases/download/v0.87.1/PowerToysSetup-0.87.1-x64.exe",
+    "silentArgs": "/silent /norestart",
+    "expectedPublisher": "Microsoft Corporation",
+    "versionKey": "DisplayVersion",
+    "registryPath": "HKLM:\\SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Uninstall\\PowerToys",
+    "blockingProcesses": ["PowerToys"]
+  },
+  {
+    "label": "winrar",
+    "name": "WinRAR",
+    "type": "exe",
+    "downloadURL": "https://www.win-rar.com/fileadmin/winrar-versions/winrar/winrar-x64-710.exe",
+    "silentArgs": "/S",
+    "expectedPublisher": "win.rar GmbH",
+    "versionKey": "DisplayVersion",
+    "registryPath": "HKLM:\\SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Uninstall\\WinRAR archiver",
+    "blockingProcesses": ["WinRAR", "Rar"]
+  },
+  {
+    "label": "dropbox",
+    "name": "Dropbox",
+    "type": "exe",
+    "downloadURL": "https://www.dropbox.com/download?plat=win&full=1",
+    "silentArgs": "/S /silent",
+    "expectedPublisher": "Dropbox, Inc",
+    "versionKey": "DisplayVersion",
+    "registryPath": "HKLM:\\SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Uninstall\\Dropbox",
+    "blockingProcesses": ["Dropbox"]
+  }
+]

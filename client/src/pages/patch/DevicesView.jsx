@@ -7,7 +7,7 @@ export default function DevicesView() {
   const [error, setError] = useState('');
 
   useEffect(() => {
-    api('/api/devices')
+    api('/api/patch/devices')
       .then((res) => setDevices(res.devices))
       .catch((e) => setError(e.message));
   }, []);

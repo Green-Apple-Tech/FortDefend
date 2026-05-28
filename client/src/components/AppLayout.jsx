@@ -10,7 +10,63 @@ const PATH_TITLES = {
   '/settings': 'Settings',
   '/api-docs': 'API Docs',
   '/setup-2fa': 'Two-factor authentication',
+  '/dashboard/patch': 'Patch Manager',
+  '/dashboard/patch/devices': 'Patch Devices',
+  '/dashboard/patch/catalog': 'App Catalog',
+  '/dashboard/patch/history': 'Patch History',
+  '/dashboard/patch/policies': 'Patch Policies',
 };
+
+const patchNavItems = [
+  {
+    to: '/dashboard/patch',
+    label: 'Overview',
+    end: true,
+    icon: (
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75">
+        <path d="M4 6h16M4 12h16M4 18h10" strokeLinecap="round" />
+      </svg>
+    ),
+  },
+  {
+    to: '/dashboard/patch/devices',
+    label: 'Devices',
+    icon: (
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75">
+        <rect x="3" y="4" width="18" height="12" rx="2" />
+        <path d="M8 20h8" strokeLinecap="round" />
+      </svg>
+    ),
+  },
+  {
+    to: '/dashboard/patch/catalog',
+    label: 'Catalog',
+    icon: (
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75">
+        <path d="M4 7h16M4 12h16M4 17h16" strokeLinecap="round" />
+      </svg>
+    ),
+  },
+  {
+    to: '/dashboard/patch/history',
+    label: 'History',
+    icon: (
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75">
+        <circle cx="12" cy="12" r="9" />
+        <path d="M12 7v5l3 2" strokeLinecap="round" />
+      </svg>
+    ),
+  },
+  {
+    to: '/dashboard/patch/policies',
+    label: 'Policies',
+    icon: (
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75">
+        <path d="M12 3 4 7v6c0 5 3.5 8 8 10 4.5-2 8-5 8-10V7l-8-4z" strokeLinejoin="round" />
+      </svg>
+    ),
+  },
+];
 
 function Icon({ children }) {
   return <span className="flex h-4 w-4 shrink-0 items-center justify-center [&>svg]:h-4 [&>svg]:w-4">{children}</span>;
@@ -68,10 +124,20 @@ const navItems = [
 ];
 
 function breadcrumbFromPath(pathname) {
+  if (pathname.startsWith('/dashboard/patch/devices/') && pathname !== '/dashboard/patch/devices') {
+    return ['Home', 'Patch Manager', 'Device Detail'];
+  }
   const title = PATH_TITLES[pathname] || 'FortDefend';
   const parts = pathname.split('/').filter(Boolean);
   if (parts.length <= 1) return ['Home', title];
   return ['Home', ...parts.map((p) => p.charAt(0).toUpperCase() + p.slice(1).replace(/-/g, ' '))];
+}
+
+function pageTitleFromPath(pathname) {
+  if (pathname.startsWith('/dashboard/patch/devices/') && pathname !== '/dashboard/patch/devices') {
+    return 'Patch Device Detail';
+  }
+  return PATH_TITLES[pathname] || 'FortDefend';
 }
 
 export function AppLayout() {
@@ -79,7 +145,8 @@ export function AppLayout() {
   const { pathname } = useLocation();
   const canAccessSettings = user?.role !== 'viewer';
   const visibleNavItems = canAccessSettings ? navItems : navItems.filter((item) => item.to !== '/settings');
-  const pageTitle = PATH_TITLES[pathname] || 'FortDefend';
+  const pageTitle = pageTitleFromPath(pathname);
+  const isPatchSection = pathname.startsWith('/dashboard/patch');
   const crumbs = breadcrumbFromPath(pathname);
 
   return (
@@ -97,6 +164,27 @@ export function AppLayout() {
                 <NavLink
                   key={to}
                   to={to}
+                  className={({ isActive }) =>
+                    `flex items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium transition ${
+                      isActive && !isPatchSection
+                        ? 'border-l-2 border-blue-300 bg-blue-600 text-white'
+                        : 'border-l-2 border-transparent text-white/70 hover:bg-white/5 hover:text-white'
+                    }`
+                  }
+                >
+                  <Icon>{icon}</Icon>
+                  <span className="truncate">{label}</span>
+                </NavLink>
+              ))}
+
+              <div className="mt-4 px-3 pb-1 text-[10px] font-bold uppercase tracking-wider text-white/40">
+                Patch Manager
+              </div>
+              {patchNavItems.map(({ to, label, icon, end }) => (
+                <NavLink
+                  key={to}
+                  to={to}
+                  end={end}
                   className={({ isActive }) =>
                     `flex items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium transition ${
                       isActive
@@ -180,6 +268,21 @@ export function AppLayout() {
                 <NavLink
                   key={to}
                   to={to}
+                  className={({ isActive }) =>
+                    `inline-flex items-center gap-1 rounded-lg border-l-2 px-2 py-1 text-xs font-medium ${
+                      isActive && !isPatchSection ? 'border-blue-300 bg-blue-600 text-white' : 'border-transparent bg-slate-100 text-slate-700'
+                    }`
+                  }
+                >
+                  <Icon>{icon}</Icon>
+                  {label}
+                </NavLink>
+              ))}
+              {patchNavItems.map(({ to, label, icon, end }) => (
+                <NavLink
+                  key={to}
+                  to={to}
+                  end={end}
                   className={({ isActive }) =>
                     `inline-flex items-center gap-1 rounded-lg border-l-2 px-2 py-1 text-xs font-medium ${
                       isActive ? 'border-blue-300 bg-blue-600 text-white' : 'border-transparent bg-slate-100 text-slate-700'

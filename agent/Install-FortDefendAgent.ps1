@@ -7,6 +7,8 @@
 param(
   [Parameter(Mandatory = $true)]
   [string]$ApiUrl,
+  [Parameter(Mandatory = $true)]
+  [string]$OrgToken,
   [string]$DeviceName = $env:COMPUTERNAME,
   [string]$ScheduleTime = '02:00'
 )
@@ -29,11 +31,12 @@ Copy-Item -Path (Join-Path $scriptDir 'manifests.json') -Destination $ManifestPa
 Write-Host "Registering device with FortDefend..."
 $body = @{
   name = $DeviceName
+  orgToken = $OrgToken
   osVersion = [System.Environment]::OSVersion.VersionString
   ipAddress = (Get-NetIPAddress -AddressFamily IPv4 | Where-Object { $_.IPAddress -notlike '169.*' } | Select-Object -First 1).IPAddress
 } | ConvertTo-Json
 
-$registration = Invoke-RestMethod -Method Post -Uri "$ApiUrl/api/agent/register" -ContentType 'application/json' -Body $body
+$registration = Invoke-RestMethod -Method Post -Uri "$ApiUrl/api/patch/agent/register" -ContentType 'application/json' -Body $body
 
 $config = @{
   apiUrl = $ApiUrl

@@ -9,7 +9,7 @@ export default function DeviceDetail() {
   const [error, setError] = useState('');
 
   useEffect(() => {
-    api(`/api/devices/${id}`)
+    api(`/api/patch/devices/${id}`)
       .then(setData)
       .catch((e) => setError(e.message));
   }, [id]);

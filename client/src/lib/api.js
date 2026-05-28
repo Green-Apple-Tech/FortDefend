@@ -75,3 +75,26 @@ export function setStoredOrg(org) {
   if (org) localStorage.setItem('org', JSON.stringify(org));
   else localStorage.removeItem('org');
 }
+
+export function statusColor(status) {
+  if (status === 'current' || status === 'healthy') return 'bg-green-100 text-green-800';
+  if (status === 'outdated') return 'bg-amber-100 text-amber-800';
+  if (status === 'failed') return 'bg-red-100 text-red-800';
+  return 'bg-slate-100 text-slate-700';
+}
+
+export function exportCsv(filename, rows) {
+  if (!rows?.length) return;
+  const headers = Object.keys(rows[0]);
+  const csv = [
+    headers.join(','),
+    ...rows.map((row) => headers.map((h) => JSON.stringify(row[h] ?? '')).join(',')),
+  ].join('\n');
+  const blob = new Blob([csv], { type: 'text/csv' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = filename;
+  a.click();
+  URL.revokeObjectURL(url);
+}

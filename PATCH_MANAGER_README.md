@@ -5,20 +5,17 @@ Windows patching platform: PowerShell agent + Node/Express API + React dashboard
 ## Structure
 
 ```
-agent/          FortDefendAgent.ps1, Install-FortDefendAgent.ps1, manifests.json
-server/         Express + Knex + PostgreSQL
-client/         React + Vite + Tailwind Patch Manager UI
+agent/                    FortDefendAgent.ps1, Install-FortDefendAgent.ps1, manifests.json
+src/routes/patchManager.js  Integrated API at /api/patch/*
+client/src/pages/patch/   Patch Manager dashboard pages
+Migrations/036_*          Patch Manager tables
 ```
+
+The standalone `server/` folder is legacy scaffolding; production uses the main Express app in `src/server.js`.
 
 ## Backend setup
 
-```bash
-cd server
-cp .env.example .env   # create from example below
-npm install
-npm run migrate
-npm start
-```
+Patch Manager runs inside the main FortDefend API (`src/server.js`). Apply migration `036_create_patch_manager.js` with your normal Knex workflow, then start the main server.
 
 `.env.example`:
 
@@ -54,7 +51,7 @@ curl -X POST http://localhost:3001/api/auth/dev-token
 
 ```powershell
 cd agent
-.\Install-FortDefendAgent.ps1 -ApiUrl "https://app.fortdefend.com"
+.\Install-FortDefendAgent.ps1 -ApiUrl "https://app.fortdefend.com" -OrgToken "<your-org-uuid>"
 ```
 
 This creates `C:\ProgramData\FortDefend\`, registers the device, stores `config.json`, and schedules daily 2am runs.
@@ -69,14 +66,16 @@ powershell -ExecutionPolicy Bypass -File C:\ProgramData\FortDefend\FortDefendAge
 
 | Route | Auth | Purpose |
 |-------|------|---------|
-| POST /api/agent/register | none | Register device, get token |
-| POST /api/agent/report | X-Device-Token | Agent patch results |
-| GET /api/agent/manifests | X-Device-Token | Manifest catalog |
-| GET /api/agent/policies/:deviceId | X-Device-Token | Device policies |
-| GET /api/devices | JWT | List devices |
-| GET /api/devices/:id | JWT | Device detail |
-| PATCH /api/devices/:id/policies | JWT | Update policies |
-| GET/POST/PATCH /api/manifests | JWT | Catalog admin |
+| POST /api/patch/agent/register | none | Register Windows device, get patch token |
+| POST /api/patch/agent/report | X-Device-Token | Agent patch results |
+| GET /api/patch/agent/manifests | X-Device-Token | Manifest catalog |
+| GET /api/patch/agent/policies/:deviceId | X-Device-Token | Device policies |
+| GET /api/patch/overview | JWT | Dashboard summary |
+| GET /api/patch/history | JWT | Patch history |
+| GET /api/patch/devices | JWT | Windows devices for patch manager |
+| GET /api/patch/devices/:id | JWT | Device detail |
+| PATCH /api/patch/devices/:id/policies | JWT | Update policies |
+| GET/POST/PATCH /api/patch/manifests | JWT | Catalog admin |
 
 ## Before production
 

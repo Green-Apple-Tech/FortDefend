@@ -9,7 +9,7 @@ export default function PoliciesView() {
   const [error, setError] = useState('');
 
   useEffect(() => {
-    Promise.all([api('/api/devices'), api('/api/manifests')])
+    Promise.all([api('/api/patch/devices'), api('/api/patch/manifests')])
       .then(([d, m]) => {
         setDevices(d.devices);
         setManifests(m.manifests);
@@ -20,7 +20,7 @@ export default function PoliciesView() {
 
   useEffect(() => {
     if (!deviceId || !manifests.length) return;
-    api(`/api/devices/${deviceId}`)
+    api(`/api/patch/devices/${deviceId}`)
       .then((res) => {
         const existing = Object.fromEntries((res.policies || []).map((p) => [p.label, p]));
         setPolicies(
@@ -36,15 +36,15 @@ export default function PoliciesView() {
   }, [deviceId, manifests]);
 
   const save = async () => {
-    await api(`/api/devices/${deviceId}/policies`, {
+    await api(`/api/patch/devices/${deviceId}/policies`, {
       method: 'PATCH',
-      body: JSON.stringify({
+      body: {
         policies: policies.map((p) => ({
           label: p.label,
           policy: p.policy,
           disableBuiltinUpdater: p.disableBuiltinUpdater,
         })),
-      }),
+      },
     });
     alert('Policies saved');
   };

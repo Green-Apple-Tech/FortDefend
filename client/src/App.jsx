@@ -21,6 +21,12 @@ import Settings from './pages/Settings';
 import Integrations from './pages/Integrations';
 import Install from './pages/Install';
 import ApiDocs from './pages/ApiDocs';
+import PatchOverview from './pages/patch/PatchOverview';
+import DeviceList from './pages/patch/DevicesView';
+import PatchDeviceDetail from './pages/patch/DeviceDetail';
+import AppCatalog from './pages/patch/CatalogView';
+import PatchHistory from './pages/patch/PatchHistory';
+import PoliciesView from './pages/patch/PoliciesView';
 
 function ViewerGuard({ children }) {
   const { user } = useAuth();
@@ -64,6 +70,12 @@ export default function App() {
               <Route path="/msp/clients" element={<Navigate to="/settings?tab=msp" replace />} />
               <Route path="/msp/overview" element={<Navigate to="/settings?tab=msp" replace />} />
               <Route path="/setup-2fa" element={<Setup2FA />} />
+              <Route path="/dashboard/patch" element={<PatchOverview />} />
+              <Route path="/dashboard/patch/devices" element={<DeviceList />} />
+              <Route path="/dashboard/patch/devices/:id" element={<PatchDeviceDetail />} />
+              <Route path="/dashboard/patch/catalog" element={<AppCatalog />} />
+              <Route path="/dashboard/patch/history" element={<PatchHistory />} />
+              <Route path="/dashboard/patch/policies" element={<PoliciesView />} />
             </Route>
           </Route>
 

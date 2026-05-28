@@ -109,7 +109,7 @@ function Send-AgentReport {
   if (-not $script:ApiUrl -or -not $script:DeviceToken) { return }
   try {
     $headers = @{ 'Content-Type' = 'application/json'; 'X-Device-Token' = $script:DeviceToken }
-    Invoke-RestMethod -Method Post -Uri "$($script:ApiUrl)/api/agent/report" -Headers $headers -Body ($Payload | ConvertTo-Json)
+    Invoke-RestMethod -Method Post -Uri "$($script:ApiUrl)/api/patch/agent/report" -Headers $headers -Body ($Payload | ConvertTo-Json)
   } catch {
     Write-Log "Report failed: $($_.Exception.Message)"
   }

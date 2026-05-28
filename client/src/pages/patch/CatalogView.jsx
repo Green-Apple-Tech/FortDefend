@@ -6,13 +6,13 @@ export default function CatalogView() {
   const [error, setError] = useState('');
 
   useEffect(() => {
-    api('/api/manifests')
+    api('/api/patch/manifests')
       .then((res) => setManifests(res.manifests))
       .catch((e) => setError(e.message));
   }, []);
 
   const saveField = async (label, field, value) => {
-    await api(`/api/manifests/${label}`, {
+    await api(`/api/patch/manifests/${label}`, {
       method: 'PATCH',
       body: JSON.stringify({ [field]: value }),
     });

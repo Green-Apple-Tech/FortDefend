@@ -484,6 +484,133 @@ router.get('/installer', async (req, res) => {
   }
 });
 
+const agentManifestsFile = path.join(agentResourceDir, 'manifests.json');
+
+async function resolveOrgTokenForBootstrap(token) {
+  const t = String(token || '').trim();
+  if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(t)) {
+    return null;
+  }
+  const org = await db('orgs').where({ id: t }).first();
+  if (!org || org.subscription_status === 'canceled') return null;
+  return org.id;
+}
+
+function buildPatchBootstrapScript({ baseUrl, orgToken }) {
+  const b = baseUrl.replace(/\/$/, '');
+  const esc = (s) => String(s).replace(/'/g, "''");
+  const agentUrl = `${b}/api/agent/download/agent.ps1`;
+  const manifestUrl = `${b}/api/agent/download/manifests.json`;
+  const apiUrl = esc(b);
+  const org = esc(orgToken);
+  const agentDl = esc(agentUrl);
+  const manifestDl = esc(manifestUrl);
+  const bootstrapSelfUrl = esc(`${b}/api/agent/bootstrap.ps1?token=${orgToken}`);
+  return `# FortDefend Patch Agent bootstrap
+$ErrorActionPreference = 'Stop'
+
+function Test-IsAdministrator {
+  $id = [Security.Principal.WindowsIdentity]::GetCurrent()
+  $p = [Security.Principal.WindowsPrincipal]$id
+  return $p.IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)
+}
+
+if (-not (Test-IsAdministrator)) {
+  Write-Host 'FortDefend Patch: elevation required. Re-launching as administrator…' -ForegroundColor Yellow
+  $u = '${bootstrapSelfUrl}'
+  $arg = "-NoProfile -ExecutionPolicy Bypass -Command \`"& { iex (irm -UseBasicParsing '$u') }\`""
+  Start-Process -FilePath powershell.exe -Verb RunAs -ArgumentList $arg
+  exit
+}
+
+$InstallDir = 'C:\\ProgramData\\FortDefend'
+$AgentPath = Join-Path $InstallDir 'FortDefendAgent.ps1'
+$ManifestPath = Join-Path $InstallDir 'manifests.json'
+$ConfigPath = Join-Path $InstallDir 'config.json'
+$LogDir = Join-Path $InstallDir 'logs'
+
+Write-Host 'FortDefend Patch: preparing directories…' -ForegroundColor Cyan
+New-Item -ItemType Directory -Force -Path $InstallDir, $LogDir | Out-Null
+
+Write-Host 'FortDefend Patch: downloading agent script…' -ForegroundColor Cyan
+Invoke-WebRequest -Uri '${agentDl}' -OutFile $AgentPath -UseBasicParsing
+Write-Host 'FortDefend Patch: downloading manifests…' -ForegroundColor Cyan
+Invoke-WebRequest -Uri '${manifestDl}' -OutFile $ManifestPath -UseBasicParsing
+
+$config = @{
+  apiUrl = '${apiUrl}'
+  orgToken = '${org}'
+}
+$config | ConvertTo-Json | Set-Content -Path $ConfigPath -Encoding UTF8
+Write-Host 'FortDefend Patch: wrote config.json' -ForegroundColor Cyan
+
+$TaskName = 'FortDefend Patch Agent'
+Unregister-ScheduledTask -TaskName $TaskName -Confirm:$false -ErrorAction SilentlyContinue
+$action = New-ScheduledTaskAction -Execute 'powershell.exe' -Argument '-NoProfile -ExecutionPolicy Bypass -File "C:\\ProgramData\\FortDefend\\FortDefendAgent.ps1"' -WorkingDirectory $InstallDir
+$trigger = New-ScheduledTaskTrigger -Daily -At 2am
+$settings = New-ScheduledTaskSettingsSet -AllowStartIfOnBatteries -DontStopIfGoingOnBatteries -StartWhenAvailable
+$principal = New-ScheduledTaskPrincipal -UserId 'S-1-5-18' -LogonType ServiceAccount -RunLevel Highest
+Register-ScheduledTask -TaskName $TaskName -Action $action -Trigger $trigger -Settings $settings -Principal $principal -Force | Out-Null
+
+Write-Host 'FortDefend Patch: running initial scan…' -ForegroundColor Cyan
+Start-Process -FilePath 'powershell.exe' -ArgumentList '-NoProfile -ExecutionPolicy Bypass -File', $AgentPath -WorkingDirectory $InstallDir -WindowStyle Hidden
+
+Write-Host 'FortDefend Patch Agent installed successfully!' -ForegroundColor Green
+`;
+}
+
+// GET /api/agent/bootstrap.ps1?token=ORG_ID
+router.get('/bootstrap.ps1', async (req, res) => {
+  try {
+    const orgToken = await resolveOrgTokenForBootstrap(req.query.token);
+    if (!orgToken) {
+      res.setHeader('Content-Type', 'text/plain; charset=utf-8');
+      return res.status(400).send('# Error: add ?token=<organization-id>');
+    }
+    let baseUrl = (process.env.APP_URL || '').trim().replace(/\/$/, '');
+    if (!baseUrl) {
+      baseUrl = `${req.protocol}://${req.get('host')}`;
+    }
+    res.setHeader('Content-Type', 'text/plain; charset=utf-8');
+    res.setHeader('Content-Disposition', 'inline; filename="fortdefend-patch-bootstrap.ps1"');
+    return res.send(buildPatchBootstrapScript({ baseUrl, orgToken }));
+  } catch (err) {
+    console.error('bootstrap.ps1 error:', err);
+    res.setHeader('Content-Type', 'text/plain; charset=utf-8');
+    return res.status(500).send('# Error: failed to generate bootstrap script');
+  }
+});
+
+// GET /api/agent/download/agent.ps1 — PowerShell patch agent script
+router.get('/download/agent.ps1', (req, res) => {
+  try {
+    if (!fs.existsSync(agentPatchScript)) {
+      return res.status(404).json({ error: 'FortDefendAgent.ps1 not found on server.' });
+    }
+    res.setHeader('Content-Type', 'text/plain; charset=utf-8');
+    res.setHeader('Content-Disposition', 'attachment; filename="FortDefendAgent.ps1"');
+    return res.sendFile(agentPatchScript);
+  } catch (err) {
+    console.error('download/agent.ps1 error:', err);
+    return res.status(500).json({ error: 'Failed to download patch agent script.' });
+  }
+});
+
+// GET /api/agent/download/manifests.json — patch catalog for Windows agent
+router.get('/download/manifests.json', (req, res) => {
+  try {
+    if (!fs.existsSync(agentManifestsFile)) {
+      return res.status(404).json({ error: 'manifests.json not found on server.' });
+    }
+    res.setHeader('Content-Type', 'application/json; charset=utf-8');
+    res.setHeader('Content-Disposition', 'attachment; filename="manifests.json"');
+    return res.sendFile(agentManifestsFile);
+  } catch (err) {
+    console.error('download/manifests.json error:', err);
+    return res.status(500).json({ error: 'Failed to download manifests.' });
+  }
+});
+
 // GET /api/agent/uninstall.ps1
 router.get('/uninstall.ps1', (req, res) => {
   try {
@@ -671,6 +798,20 @@ router.post('/heartbeat', async (req, res) => {
       reboot_required_reason: rebootRequiredReason,
       pending_update: existing?.pending_update === true,
     };
+
+    let trackPatchAgent = false;
+    try {
+      trackPatchAgent = await db.schema.hasColumn('devices', 'patch_agent_installed');
+    } catch {
+      trackPatchAgent = false;
+    }
+    if (trackPatchAgent) {
+      if (!existing) {
+        updateFields.patch_agent_installed = false;
+      } else if (existing.patch_agent_installed == null) {
+        updateFields.patch_agent_installed = false;
+      }
+    }
 
     const groupHint = req.headers['x-fortdefend-group'];
     let targetGroupId = auth.groupId || null;
@@ -1037,10 +1178,6 @@ router.post('/heartbeat', async (req, res) => {
     });
     return safe200({ ok: false, commands: [], error: 'Failed to process heartbeat.' });
   }
-});
-
-router.get('/version', (req, res) => {
-  return res.json({ version: process.env.AGENT_VERSION || '1.0.1' });
 });
 
 router.post('/force-update', requireAuth, async (req, res) => {

@@ -28,7 +28,16 @@ orgsMeApiRouter.get('/orgs/me/enrollment', requireAuth, async (req, res) => {
     const gq = groupId ? `&group=${encodeURIComponent(groupId)}` : '';
     const installerUrl = `${base}/api/agent/installer?org=${encodeURIComponent(token)}${gq}`;
     const psCommand = `iex (irm '${installerUrl}')`;
-    res.json({ token, installUrl: installerUrl, psCommand, groupId: groupId || null });
+    const patchBootstrapUrl = `${base}/api/agent/bootstrap.ps1?token=${encodeURIComponent(token)}`;
+    const patchBootstrapCommand = `iex (irm "${patchBootstrapUrl}")`;
+    res.json({
+      token,
+      installUrl: installerUrl,
+      psCommand,
+      patchBootstrapUrl,
+      patchBootstrapCommand,
+      groupId: groupId || null,
+    });
   } catch (err) {
     console.error('GET /api/orgs/me/enrollment', err);
     res.status(500).json({ error: 'Failed to get enrollment info' });

@@ -39,6 +39,30 @@ function Get-Config {
   return Get-Content $ConfigPath -Raw | ConvertFrom-Json
 }
 
+function Save-Config {
+  param($Config)
+  $Config | ConvertTo-Json | Set-Content -Path $ConfigPath -Encoding UTF8
+}
+
+function Ensure-PatchRegistration {
+  if ($script:DeviceToken) { return }
+  $config = Get-Config
+  $orgToken = $config.orgToken
+  if (-not $orgToken) { throw "Missing orgToken in $ConfigPath" }
+  $body = @{
+    name = $env:COMPUTERNAME
+    osVersion = [System.Environment]::OSVersion.VersionString
+    orgToken = $orgToken
+  }
+  Write-Log "Registering patch agent for $($body.name)..."
+  $result = Invoke-RestMethod -Method Post -Uri "$($script:ApiUrl)/api/patch/agent/register" -Body ($body | ConvertTo-Json) -ContentType 'application/json'
+  if (-not $result.deviceToken) { throw 'Patch agent registration did not return a device token.' }
+  $script:DeviceToken = $result.deviceToken
+  $config | Add-Member -NotePropertyName deviceToken -NotePropertyValue $result.deviceToken -Force
+  Save-Config -Config $config
+  Write-Log "Patch agent registered (device $($result.deviceId))."
+}
+
 function Get-AgentRelaunchArgumentString {
   param([hashtable]$Bound)
   if (-not $Bound -or $Bound.Count -eq 0) { return '' }
@@ -74,7 +98,7 @@ function Invoke-AgentSelfUpdate {
 
     Write-Log "Agent update available: $AGENT_VERSION -> $remoteVersion"
     $tempScript = Join-Path $env:TEMP "FortDefendAgent-$remoteVersion.ps1"
-    Invoke-WebRequest -Uri "$base/api/agent/download?format=ps1" -OutFile $tempScript -UseBasicParsing -TimeoutSec 120
+    Invoke-WebRequest -Uri "$base/api/agent/download/agent.ps1" -OutFile $tempScript -UseBasicParsing -TimeoutSec 120
 
     $updaterPath = Join-Path $env:TEMP 'FortDefendAgent-updater.ps1'
     $escapedScript = $scriptPath.Replace("'", "''")
@@ -255,6 +279,8 @@ Add-Type -AssemblyName System.Windows.Forms
 $config = Get-Config
 $script:ApiUrl = if ($ApiUrl) { $ApiUrl } else { $config.apiUrl }
 $script:DeviceToken = if ($DeviceToken) { $DeviceToken } else { $config.deviceToken }
+
+Ensure-PatchRegistration
 
 Invoke-AgentSelfUpdate -RelaunchArgs (Get-AgentRelaunchArgumentString -Bound $PSBoundParameters)
 

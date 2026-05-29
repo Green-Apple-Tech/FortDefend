@@ -87,24 +87,72 @@ router.post('/agent/register', async (req, res, next) => {
       return res.status(400).json({ error: 'Invalid org token' });
     }
 
+    const deviceName = String(name || '').trim() || 'Windows Device';
     const patchToken = randomUUID();
-    const [device] = await db('devices')
-      .insert({
-        org_id: orgId,
-        name: name || 'Windows Device',
-        os: 'windows',
-        os_version: osVersion || null,
-        source: 'agent',
+    const hasPatchInstalledCol = await db.schema.hasColumn('devices', 'patch_agent_installed');
+
+    let existing = await db('devices')
+      .where({ org_id: orgId, source: 'agent' })
+      .whereNull('patch_agent_token')
+      .andWhere((q) => {
+        q.where('name', deviceName).orWhere('hostname', deviceName).orWhere('external_id', deviceName);
+      })
+      .orderBy('last_seen', 'desc')
+      .first();
+
+    if (!existing) {
+      existing = await db('devices')
+        .where({ org_id: orgId })
+        .whereIn('os', ['windows', 'Microsoft Windows', 'microsoft windows'])
+        .whereNull('patch_agent_token')
+        .andWhere((q) => {
+          q.where('name', deviceName).orWhere('hostname', deviceName).orWhere('external_id', deviceName);
+        })
+        .orderBy('last_seen', 'desc')
+        .first();
+    }
+
+    if (existing) {
+      const patchUpdate = {
         patch_agent_token: patchToken,
         last_seen: db.fn.now(),
         status: 'online',
-      })
-      .returning(['id', 'name']);
+        os_version: osVersion || existing.os_version,
+      };
+      if (hasPatchInstalledCol) {
+        patchUpdate.patch_agent_installed = true;
+      }
+      await db('devices').where({ id: existing.id }).update(patchUpdate);
+      return res.status(201).json({
+        deviceToken: patchToken,
+        deviceId: existing.id,
+        name: existing.name || deviceName,
+        linked: true,
+      });
+    }
+
+    const insertRow = {
+      org_id: orgId,
+      name: deviceName,
+      hostname: deviceName,
+      os: 'windows',
+      os_version: osVersion || null,
+      source: 'agent',
+      external_id: deviceName,
+      patch_agent_token: patchToken,
+      last_seen: db.fn.now(),
+      status: 'online',
+    };
+    if (ipAddress) insertRow.ip_address = ipAddress;
+    if (hasPatchInstalledCol) insertRow.patch_agent_installed = true;
+
+    const [device] = await db('devices').insert(insertRow).returning(['id', 'name']);
 
     res.status(201).json({
       deviceToken: patchToken,
       deviceId: device.id,
       name: device.name,
+      linked: false,
     });
   } catch (err) {
     next(err);
@@ -151,9 +199,12 @@ router.post('/agent/report', requirePatchDeviceToken, async (req, res, next) => 
       return res.status(400).json({ error: 'label and action are required' });
     }
 
-    await db('devices')
-      .where({ id: req.patchDevice.id })
-      .update({ last_seen: db.fn.now(), status: 'online' });
+    const patchDeviceUpdate = { last_seen: db.fn.now(), status: 'online' };
+    const hasPatchInstalledCol = await db.schema.hasColumn('devices', 'patch_agent_installed');
+    if (hasPatchInstalledCol) {
+      patchDeviceUpdate.patch_agent_installed = true;
+    }
+    await db('devices').where({ id: req.patchDevice.id }).update(patchDeviceUpdate);
 
     await db('patch_results').insert({
       device_id: req.patchDevice.id,
@@ -328,6 +379,89 @@ router.get('/devices', async (req, res, next) => {
     );
 
     res.json({ devices: enriched });
+  } catch (err) {
+    next(err);
+  }
+});
+
+router.get('/devices/:id/apps', async (req, res, next) => {
+  try {
+    const device = await db('devices')
+      .where({ id: req.params.id, org_id: req.user.orgId })
+      .first();
+
+    if (!device) {
+      return res.status(404).json({ error: 'Device not found' });
+    }
+
+    const apps = await db('patch_device_apps')
+      .where({ device_id: device.id })
+      .orderBy('name');
+
+    res.json({
+      apps,
+      patchAgentInstalled: Boolean(device.patch_agent_installed || device.patch_agent_token),
+      patchAgentToken: device.patch_agent_token || null,
+    });
+  } catch (err) {
+    next(err);
+  }
+});
+
+router.post('/devices/:id/scan', async (req, res, next) => {
+  try {
+    const device = await db('devices')
+      .where({ id: req.params.id, org_id: req.user.orgId })
+      .first();
+
+    if (!device) {
+      return res.status(404).json({ error: 'Device not found' });
+    }
+
+    const hasScanCol = await db.schema.hasColumn('devices', 'patch_scan_requested_at');
+    if (hasScanCol) {
+      await db('devices').where({ id: device.id }).update({ patch_scan_requested_at: new Date() });
+    }
+
+    const patchScript = 'C:\\ProgramData\\FortDefend\\FortDefendAgent.ps1';
+    const scriptContent = [
+      `if (-not (Test-Path '${patchScript}')) { throw 'Patch agent not installed. Run the Install Patch Agent command first.' }`,
+      `& '${patchScript}'`,
+    ].join('\n');
+
+    let queued = null;
+    const hasCommands = await db.schema.hasTable('sm_commands');
+    if (hasCommands) {
+      const now = new Date();
+      const [row] = await db('sm_commands')
+        .insert({
+          org_id: req.user.orgId,
+          device_id: device.id,
+          winget_id: 'patch:scan',
+          command_type: 'run_script',
+          status: 'pending',
+          initiated_by: req.user.id || null,
+          command_payload: {
+            scriptId: null,
+            scriptName: 'FortDefend Patch Scan',
+            scriptType: 'powershell',
+            scriptContent,
+          },
+          created_at: now,
+          updated_at: now,
+        })
+        .returning(['id', 'device_id', 'status', 'created_at']);
+      queued = row;
+    }
+
+    res.json({
+      ok: true,
+      queued: Boolean(queued),
+      commandId: queued?.id || null,
+      message: queued
+        ? 'Patch scan queued. The monitoring agent will run it on the next heartbeat.'
+        : 'Patch scan requested. Run the patch agent locally if the device is offline.',
+    });
   } catch (err) {
     next(err);
   }

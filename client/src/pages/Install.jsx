@@ -221,6 +221,14 @@ export default function Install() {
     return `iex (irm '${absoluteUrl}')`;
   }, [data?.psCommand, windowsInstallerUrl]);
 
+  const patchBootstrapCommand = useMemo(() => {
+    if (data?.patchBootstrapCommand) return data.patchBootstrapCommand;
+    const t = data?.token;
+    if (!t) return '';
+    const url = `${window.location.origin}/api/agent/bootstrap.ps1?token=${encodeURIComponent(t)}`;
+    return `iex (irm "${url}")`;
+  }, [data?.patchBootstrapCommand, data?.token]);
+
   useEffect(() => {
     if (!windowsInstallerUrl) {
       setInstallerSize('');
@@ -363,11 +371,21 @@ export default function Install() {
           </div>
           {windowsPsCommand && (
             <div className="mt-5">
-              <h3 className="text-sm font-semibold text-slate-900">PowerShell one-liner</h3>
+              <h3 className="text-sm font-semibold text-slate-900">Monitoring agent (EXE)</h3>
               <p className="mt-1 text-xs text-slate-600">
                 Uses single quotes so query parameters do not get parsed as operators.
               </p>
               <CodeBlock value={windowsPsCommand} copyLabel="Copy PowerShell" />
+            </div>
+          )}
+          {patchBootstrapCommand && (
+            <div className="mt-5 rounded-xl border border-blue-200 bg-blue-50/60 p-4">
+              <h3 className="text-sm font-semibold text-slate-900">Patch Manager agent</h3>
+              <p className="mt-1 text-xs text-slate-600">
+                Run this in an elevated PowerShell window to install the FortDefend patch agent (third-party app updates).
+                Org token: <code className="rounded bg-white px-1 py-0.5 text-[11px]">{data?.token}</code>
+              </p>
+              <CodeBlock value={patchBootstrapCommand} copyLabel="Copy patch installer" />
             </div>
           )}
           {!windowsInstallerUrl && (

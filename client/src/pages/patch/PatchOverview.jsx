@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { api, statusColor } from '../lib/api';
+import { api, statusColor } from '../../lib/api';
 
 function Card({ title, value }) {
   return (

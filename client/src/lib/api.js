@@ -83,6 +83,28 @@ export function statusColor(status) {
   return 'bg-slate-100 text-slate-700';
 }
 
+export function patchActionLabel(action) {
+  const map = {
+    fresh_install: 'Installed',
+    installed: 'Installed',
+    updated: 'Updated',
+    skipped_current: 'Current',
+    skipped_newer: 'Newer',
+    skipped: 'Skipped',
+    failed: 'Failed',
+  };
+  return map[action] || action || '—';
+}
+
+export function patchActionColor(action) {
+  if (action === 'fresh_install' || action === 'installed') return 'bg-green-100 text-green-800';
+  if (action === 'updated') return 'bg-blue-100 text-blue-800';
+  if (action === 'skipped_current' || action === 'skipped') return 'bg-slate-100 text-slate-700';
+  if (action === 'skipped_newer') return 'bg-amber-100 text-amber-800';
+  if (action === 'failed') return 'bg-red-100 text-red-800';
+  return 'bg-slate-100 text-slate-700';
+}
+
 export function exportCsv(filename, rows) {
   if (!rows?.length) return;
   const headers = Object.keys(rows[0]);

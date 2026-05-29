@@ -1,6 +1,6 @@
 {
   "name": "fortdefend-agent",
-  "version": "1.0.2",
+  "version": "1.0.3",
   "main": "agent.js",
   "scripts": {
     "build": "pkg agent.js --target node18-win-x64 --output dist/FortDefendAgent.exe --compress GZip",

@@ -552,6 +552,21 @@ $settings = New-ScheduledTaskSettingsSet -AllowStartIfOnBatteries -DontStopIfGoi
 $principal = New-ScheduledTaskPrincipal -UserId 'S-1-5-18' -LogonType ServiceAccount -RunLevel Highest
 Register-ScheduledTask -TaskName $TaskName -Action $action -Trigger $trigger -Settings $settings -Principal $principal -Force | Out-Null
 
+Write-Host 'FortDefend Patch: enrolling device…' -ForegroundColor Cyan
+$regBody = @{
+  name = $env:COMPUTERNAME
+  osVersion = [System.Environment]::OSVersion.VersionString
+  orgToken = '${org}'
+} | ConvertTo-Json
+try {
+  $reg = Invoke-RestMethod -Method Post -Uri ('${apiUrl}' + '/api/patch/agent/register') -Body $regBody -ContentType 'application/json'
+  $config.deviceToken = $reg.deviceToken
+  $config | ConvertTo-Json | Set-Content -Path $ConfigPath -Encoding UTF8
+  Write-Host ('FortDefend Patch Agent enrolled. Device ID: ' + $reg.deviceId) -ForegroundColor Green
+} catch {
+  Write-Warning ('Enrollment will complete on first agent run: ' + $_.Exception.Message)
+}
+
 Write-Host 'FortDefend Patch: running initial scan…' -ForegroundColor Cyan
 Start-Process -FilePath 'powershell.exe' -ArgumentList '-NoProfile -ExecutionPolicy Bypass -File', $AgentPath -WorkingDirectory $InstallDir -WindowStyle Hidden
 

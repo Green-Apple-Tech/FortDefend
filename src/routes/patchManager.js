@@ -90,6 +90,7 @@ router.post('/agent/register', async (req, res, next) => {
     const deviceName = String(name || '').trim() || 'Windows Device';
     const patchToken = randomUUID();
     const hasPatchInstalledCol = await db.schema.hasColumn('devices', 'patch_agent_installed');
+    const hasPatchVersionCol = await db.schema.hasColumn('devices', 'patch_agent_version');
 
     let existing = await db('devices')
       .where({ org_id: orgId, source: 'agent' })
@@ -122,6 +123,9 @@ router.post('/agent/register', async (req, res, next) => {
       if (hasPatchInstalledCol) {
         patchUpdate.patch_agent_installed = true;
       }
+      if (hasPatchVersionCol && req.body?.agentVersion) {
+        patchUpdate.patch_agent_version = String(req.body.agentVersion);
+      }
       await db('devices').where({ id: existing.id }).update(patchUpdate);
       return res.status(201).json({
         deviceToken: patchToken,
@@ -145,6 +149,9 @@ router.post('/agent/register', async (req, res, next) => {
     };
     if (ipAddress) insertRow.ip_address = ipAddress;
     if (hasPatchInstalledCol) insertRow.patch_agent_installed = true;
+    if (hasPatchVersionCol && req.body?.agentVersion) {
+      insertRow.patch_agent_version = String(req.body.agentVersion);
+    }
 
     const [device] = await db('devices').insert(insertRow).returning(['id', 'name']);
 
@@ -201,8 +208,12 @@ router.post('/agent/report', requirePatchDeviceToken, async (req, res, next) => 
 
     const patchDeviceUpdate = { last_seen: db.fn.now(), status: 'online' };
     const hasPatchInstalledCol = await db.schema.hasColumn('devices', 'patch_agent_installed');
+    const hasPatchVersionCol = await db.schema.hasColumn('devices', 'patch_agent_version');
     if (hasPatchInstalledCol) {
       patchDeviceUpdate.patch_agent_installed = true;
+    }
+    if (hasPatchVersionCol && req.body?.agentVersion) {
+      patchDeviceUpdate.patch_agent_version = String(req.body.agentVersion);
     }
     await db('devices').where({ id: req.patchDevice.id }).update(patchDeviceUpdate);
 
@@ -217,11 +228,21 @@ router.post('/agent/report', requirePatchDeviceToken, async (req, res, next) => 
     });
 
     const statusMap = {
+      fresh_install: 'current',
       installed: 'current',
       updated: 'current',
+      skipped_current: 'current',
+      skipped_newer: 'current',
       skipped: installedVersion === latestVersion ? 'current' : 'outdated',
       failed: 'failed',
     };
+
+    const ignoredPolicy = await db('patch_policies')
+      .where({ device_id: req.patchDevice.id, label, policy: 'ignore' })
+      .first();
+    if (ignoredPolicy && !['failed', 'skipped_current', 'skipped_newer'].includes(action)) {
+      return res.json({ ok: true, ignored: true });
+    }
 
     await db('patch_device_apps')
       .insert({
@@ -255,14 +276,24 @@ router.use(requireAuth, checkTrialStatus);
 router.get('/overview', async (req, res, next) => {
   try {
     const orgId = req.user.orgId;
-    const deviceRows = await db('devices').where({ org_id: orgId, os: 'windows' });
+    const deviceRows = await db('devices')
+      .where({ org_id: orgId })
+      .where((q) => {
+        q.where('os', 'windows').orWhere('os', 'like', '%Windows%');
+      });
     const deviceIds = deviceRows.map((d) => d.id);
+    const hasPatchInstalledCol = await db.schema.hasColumn('devices', 'patch_agent_installed');
+    const patchManagedDevices = hasPatchInstalledCol
+      ? deviceRows.filter((d) => d.patch_agent_installed || d.patch_agent_token).length
+      : deviceRows.filter((d) => d.patch_agent_token).length;
 
     const today = new Date();
     today.setHours(0, 0, 0, 0);
+    const sevenDaysAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000);
 
     let patchedToday = { count: 0 };
     let failed = { count: 0 };
+    let failedLast7Days = { count: 0 };
     let outdated = { count: 0 };
     let totalApps = { count: 0 };
     let currentApps = { count: 0 };
@@ -271,7 +302,7 @@ router.get('/overview', async (req, res, next) => {
     if (deviceIds.length) {
       patchedToday = await db('patch_results')
         .whereIn('device_id', deviceIds)
-        .whereIn('action', ['installed', 'updated'])
+        .whereIn('action', ['installed', 'updated', 'fresh_install'])
         .andWhere('timestamp', '>=', today)
         .count('id as count')
         .first();
@@ -280,6 +311,13 @@ router.get('/overview', async (req, res, next) => {
         .whereIn('device_id', deviceIds)
         .where({ action: 'failed' })
         .andWhere('timestamp', '>=', today)
+        .count('id as count')
+        .first();
+
+      failedLast7Days = await db('patch_results')
+        .whereIn('device_id', deviceIds)
+        .where({ action: 'failed' })
+        .andWhere('timestamp', '>=', sevenDaysAgo)
         .count('id as count')
         .first();
 
@@ -315,9 +353,11 @@ router.get('/overview', async (req, res, next) => {
 
     res.json({
       totalDevices: deviceRows.length,
+      patchManagedDevices,
       patchedToday: Number(patchedToday?.count || 0),
       appsOutdated: Number(outdated?.count || 0),
       failedToday: Number(failed?.count || 0),
+      failedLast7Days: Number(failedLast7Days?.count || 0),
       compliance,
       recentActivity: recent,
     });
@@ -401,7 +441,77 @@ router.get('/devices/:id/apps', async (req, res, next) => {
     res.json({
       apps,
       patchAgentInstalled: Boolean(device.patch_agent_installed || device.patch_agent_token),
+      patchAgentVersion: device.patch_agent_version || null,
       patchAgentToken: device.patch_agent_token || null,
+    });
+  } catch (err) {
+    next(err);
+  }
+});
+
+function buildPatchRunScript({ label = null, installMode = null } = {}) {
+  const patchScript = 'C:\\ProgramData\\FortDefend\\FortDefendAgent.ps1';
+  const args = [];
+  if (label) args.push(`-Label '${label.replace(/'/g, "''")}'`);
+  if (installMode) args.push(`-InstallMode '${installMode.replace(/'/g, "''")}'`);
+  const argLine = args.length ? ` ${args.join(' ')}` : '';
+  return [
+    `if (-not (Test-Path '${patchScript}')) { throw 'Patch agent not installed. Run the Install Patch Agent command first.' }`,
+    `& '${patchScript}'${argLine}`,
+  ].join('\n');
+}
+
+async function queuePatchAgentRun({ device, orgId, userId, label = null, installMode = null, scriptName = 'FortDefend Patch Scan' }) {
+  const hasCommands = await db.schema.hasTable('sm_commands');
+  if (!hasCommands) return null;
+  const now = new Date();
+  const scriptContent = buildPatchRunScript({ label, installMode });
+  const [row] = await db('sm_commands')
+    .insert({
+      org_id: orgId,
+      device_id: device.id,
+      winget_id: label ? `patch:${label}` : 'patch:scan',
+      command_type: 'run_script',
+      status: 'pending',
+      initiated_by: userId || null,
+      command_payload: {
+        scriptId: null,
+        scriptName,
+        scriptType: 'powershell',
+        scriptContent,
+      },
+      created_at: now,
+      updated_at: now,
+    })
+    .returning(['id', 'device_id', 'status', 'created_at']);
+  return row;
+}
+
+router.post('/scan-all', async (req, res, next) => {
+  try {
+    const devices = await db('devices')
+      .where({ org_id: req.user.orgId })
+      .where((q) => {
+        q.where('os', 'windows').orWhere('os', 'like', '%Windows%');
+      })
+      .select('id', 'name');
+
+    let queued = 0;
+    for (const device of devices) {
+      const row = await queuePatchAgentRun({
+        device,
+        orgId: req.user.orgId,
+        userId: req.user.id,
+        scriptName: 'FortDefend Patch Scan All',
+      });
+      if (row) queued += 1;
+    }
+
+    res.json({
+      ok: true,
+      devices: devices.length,
+      queued,
+      message: `Queued patch scan on ${queued} of ${devices.length} Windows device(s).`,
     });
   } catch (err) {
     next(err);
@@ -423,36 +533,11 @@ router.post('/devices/:id/scan', async (req, res, next) => {
       await db('devices').where({ id: device.id }).update({ patch_scan_requested_at: new Date() });
     }
 
-    const patchScript = 'C:\\ProgramData\\FortDefend\\FortDefendAgent.ps1';
-    const scriptContent = [
-      `if (-not (Test-Path '${patchScript}')) { throw 'Patch agent not installed. Run the Install Patch Agent command first.' }`,
-      `& '${patchScript}'`,
-    ].join('\n');
-
-    let queued = null;
-    const hasCommands = await db.schema.hasTable('sm_commands');
-    if (hasCommands) {
-      const now = new Date();
-      const [row] = await db('sm_commands')
-        .insert({
-          org_id: req.user.orgId,
-          device_id: device.id,
-          winget_id: 'patch:scan',
-          command_type: 'run_script',
-          status: 'pending',
-          initiated_by: req.user.id || null,
-          command_payload: {
-            scriptId: null,
-            scriptName: 'FortDefend Patch Scan',
-            scriptType: 'powershell',
-            scriptContent,
-          },
-          created_at: now,
-          updated_at: now,
-        })
-        .returning(['id', 'device_id', 'status', 'created_at']);
-      queued = row;
-    }
+    const queued = await queuePatchAgentRun({
+      device,
+      orgId: req.user.orgId,
+      userId: req.user.id,
+    });
 
     res.json({
       ok: true,
@@ -462,6 +547,62 @@ router.post('/devices/:id/scan', async (req, res, next) => {
         ? 'Patch scan queued. The monitoring agent will run it on the next heartbeat.'
         : 'Patch scan requested. Run the patch agent locally if the device is offline.',
     });
+  } catch (err) {
+    next(err);
+  }
+});
+
+router.post('/devices/:id/apps/:label/action', async (req, res, next) => {
+  try {
+    const device = await db('devices')
+      .where({ id: req.params.id, org_id: req.user.orgId })
+      .first();
+    if (!device) return res.status(404).json({ error: 'Device not found' });
+
+    const label = String(req.params.label || '').trim();
+    const action = String(req.body?.action || '').trim().toLowerCase();
+    if (!label || !action) {
+      return res.status(400).json({ error: 'label and action are required' });
+    }
+
+    if (action === 'ignore') {
+      await db('patch_policies')
+        .insert({
+          device_id: device.id,
+          label,
+          policy: 'ignore',
+          disable_builtin_updater: false,
+        })
+        .onConflict(['device_id', 'label'])
+        .merge({ policy: 'ignore' });
+      return res.json({ ok: true, action: 'ignore' });
+    }
+
+    if (action === 'update') {
+      const queued = await queuePatchAgentRun({
+        device,
+        orgId: req.user.orgId,
+        userId: req.user.id,
+        label,
+        installMode: 'auto',
+        scriptName: `Patch update ${label}`,
+      });
+      return res.json({ ok: true, queued: Boolean(queued), commandId: queued?.id || null });
+    }
+
+    if (action === 'reinstall') {
+      const queued = await queuePatchAgentRun({
+        device,
+        orgId: req.user.orgId,
+        userId: req.user.id,
+        label,
+        installMode: 'force',
+        scriptName: `Patch reinstall ${label}`,
+      });
+      return res.json({ ok: true, queued: Boolean(queued), commandId: queued?.id || null });
+    }
+
+    return res.status(400).json({ error: 'action must be update, reinstall, or ignore' });
   } catch (err) {
     next(err);
   }

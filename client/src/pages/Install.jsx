@@ -348,7 +348,7 @@ export default function Install() {
 
       {tab === 'windows' && (
         <Card>
-          <h2 className="text-lg font-semibold text-slate-900">Windows agent</h2>
+          <h2 className="text-lg font-semibold text-slate-900">Enroll a Windows PC</h2>
           <p className="mt-1 text-sm text-slate-600">
             Configuration under <code className="rounded bg-slate-100 px-1.5 py-0.5 text-xs">C:\ProgramData\FortDefend</code>{' '}
             and a startup scheduled task. Administrator approval is required when the script runs.
@@ -382,10 +382,35 @@ export default function Install() {
             <div className="mt-5 rounded-xl border border-blue-200 bg-blue-50/60 p-4">
               <h3 className="text-sm font-semibold text-slate-900">Patch Manager agent</h3>
               <p className="mt-1 text-xs text-slate-600">
-                Run this in an elevated PowerShell window to install the FortDefend patch agent (third-party app updates).
-                Org token: <code className="rounded bg-white px-1 py-0.5 text-[11px]">{data?.token}</code>
+                Run this in an elevated PowerShell window:
               </p>
               <CodeBlock value={patchBootstrapCommand} copyLabel="Copy patch installer" />
+              <p className="mt-2 text-xs text-slate-600">
+                Organization token: <code className="rounded bg-white px-1 py-0.5 text-[11px]">{data?.token}</code>
+              </p>
+              <details className="mt-4 rounded-lg border border-slate-200 bg-white p-3">
+                <summary className="cursor-pointer text-sm font-medium text-slate-800">
+                  Manual install (if <code className="text-xs">iex</code> / <code className="text-xs">irm</code> is blocked)
+                </summary>
+                <ol className="mt-3 list-decimal space-y-2 pl-5 text-sm text-slate-700">
+                  <li>Create <code className="text-xs">C:\ProgramData\FortDefend\</code> and <code className="text-xs">logs</code> subfolders.</li>
+                  <li>
+                    Download{' '}
+                    <code className="text-xs">{window.location.origin}/api/agent/download/agent.ps1</code> to{' '}
+                    <code className="text-xs">FortDefendAgent.ps1</code>.
+                  </li>
+                  <li>
+                    Download{' '}
+                    <code className="text-xs">{window.location.origin}/api/agent/download/manifests.json</code> into the same folder.
+                  </li>
+                  <li>
+                    Save <code className="text-xs">config.json</code> with{' '}
+                    <code className="text-xs">{`{"apiUrl":"${window.location.origin}","orgToken":"${data?.token || ''}"}`}</code>.
+                  </li>
+                  <li>Register a daily 2:00 AM SYSTEM scheduled task to run <code className="text-xs">FortDefendAgent.ps1</code>.</li>
+                  <li>Run the script once as Administrator to enroll and start the first scan.</li>
+                </ol>
+              </details>
             </div>
           )}
           {!windowsInstallerUrl && (

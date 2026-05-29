@@ -7,6 +7,8 @@
 param(
   [string[]]$Label,
   [int]$Debug = 0,
+  [ValidateSet('auto', 'update_only', 'install_only', 'force')]
+  [string]$InstallMode = 'auto',
   [ValidateSet('silent_fail', 'prompt_user', 'kill', 'tell_user')]
   [string]$BlockingProcessAction = 'prompt_user',
   [ValidateSet('success', 'silent', 'all')]
@@ -25,7 +27,8 @@ $LogDir = Join-Path $BaseDir 'logs'
 $ConfigPath = Join-Path $BaseDir 'config.json'
 $ManifestPath = Join-Path $BaseDir 'manifests.json'
 $LogPath = Join-Path $LogDir 'patch.log'
-$AGENT_VERSION = '1.0.2'
+$AGENT_VERSION = '1.0.3'
+$script:VersionCheckCache = @{}
 
 function Write-Log {
   param([string]$Message)
@@ -53,6 +56,7 @@ function Ensure-PatchRegistration {
     name = $env:COMPUTERNAME
     osVersion = [System.Environment]::OSVersion.VersionString
     orgToken = $orgToken
+    agentVersion = $AGENT_VERSION
   }
   Write-Log "Registering patch agent for $($body.name)..."
   $result = Invoke-RestMethod -Method Post -Uri "$($script:ApiUrl)/api/patch/agent/register" -Body ($body | ConvertTo-Json) -ContentType 'application/json'
@@ -96,18 +100,21 @@ function Invoke-AgentSelfUpdate {
     if (-not $remoteVersion) { return }
     if ([version]$remoteVersion -le [version]$AGENT_VERSION) { return }
 
-    Write-Log "Agent update available: $AGENT_VERSION -> $remoteVersion"
+    Write-Log "Agent updated from $AGENT_VERSION to $remoteVersion, restarting"
     $tempScript = Join-Path $env:TEMP "FortDefendAgent-$remoteVersion.ps1"
     Invoke-WebRequest -Uri "$base/api/agent/download/agent.ps1" -OutFile $tempScript -UseBasicParsing -TimeoutSec 120
 
+    $targetPath = Join-Path $BaseDir 'FortDefendAgent.ps1'
+    if ($scriptPath -ne $targetPath) { $targetPath = $scriptPath }
+
     $updaterPath = Join-Path $env:TEMP 'FortDefendAgent-updater.ps1'
-    $escapedScript = $scriptPath.Replace("'", "''")
+    $escapedTarget = $targetPath.Replace("'", "''")
     $escapedTemp = $tempScript.Replace("'", "''")
     @"
 `$ErrorActionPreference = 'Stop'
 Start-Sleep -Seconds 2
-Copy-Item -LiteralPath '$escapedTemp' -Destination '$escapedScript' -Force
-Start-Process powershell.exe -ArgumentList "-NoProfile -ExecutionPolicy Bypass -File `"$escapedScript`"$RelaunchArgs" -WindowStyle Hidden
+Copy-Item -LiteralPath '$escapedTemp' -Destination '$escapedTarget' -Force
+Start-Process powershell.exe -ArgumentList "-NoProfile -ExecutionPolicy Bypass -File `"$escapedTarget`"$RelaunchArgs" -WindowStyle Hidden
 "@ | Set-Content -Path $updaterPath -Encoding UTF8
 
     Start-Process powershell.exe -ArgumentList "-NoProfile -ExecutionPolicy Bypass -File `"$updaterPath`"" -WindowStyle Hidden
@@ -117,11 +124,108 @@ Start-Process powershell.exe -ArgumentList "-NoProfile -ExecutionPolicy Bypass -
   }
 }
 
+function Normalize-VersionString {
+  param([string]$Value)
+  if (-not $Value) { return $null }
+  $clean = ($Value -replace '[^\d\.]', '.').Trim('.')
+  if (-not $clean) { return $Value }
+  return $clean
+}
+
+function Compare-AppVersion {
+  param([string]$Installed, [string]$Target)
+  if (-not $Target) { return 'unknown' }
+  if (-not $Installed) { return 'not_installed' }
+  try {
+    $i = [version](Normalize-VersionString $Installed)
+    $t = [version](Normalize-VersionString $Target)
+    if ($i -eq $t) { return 'equal' }
+    if ($i -lt $t) { return 'older' }
+    return 'newer'
+  } catch {
+    if ($Installed -eq $Target) { return 'equal' }
+    return 'unknown'
+  }
+}
+
+function Resolve-VersionFromCheckUrl {
+  param($Manifest)
+  $url = [string]$Manifest.versionCheckURL
+  if (-not $url) { return $Manifest.appNewVersion }
+
+  switch -Regex ($Manifest.label) {
+    '^(googlechrome|googlechromeenterprise)$' {
+      $r = Invoke-RestMethod -Uri $url -UseBasicParsing -TimeoutSec 20
+      return ($r.versions | Select-Object -First 1).version
+    }
+    '^firefox$' {
+      $r = Invoke-RestMethod -Uri $url -UseBasicParsing -TimeoutSec 20
+      return $r.LATEST_FIREFOX_VERSION
+    }
+    '^vscode$' {
+      return (Invoke-WebRequest -Uri $url -UseBasicParsing -TimeoutSec 20).Content.Trim()
+    }
+    '^nodejs$' {
+      $r = Invoke-RestMethod -Uri $url -UseBasicParsing -TimeoutSec 20
+      $lts = $r | Where-Object { $_.lts } | Select-Object -First 1
+      return ($lts.version -replace '^v', '')
+    }
+    '^(python|python3)$' {
+      $r = Invoke-RestMethod -Uri 'https://www.python.org/api/v2/downloads/release/' -UseBasicParsing -TimeoutSec 20
+      $stable = $r | Where-Object { $_.is_latest -and $_.name -match 'Python 3' } | Select-Object -First 1
+      if ($stable?.name -match 'Python (\d+\.\d+\.\d+)') { return $Matches[1] }
+      return $Manifest.appNewVersion
+    }
+    '^spotify$' {
+      $r = Invoke-RestMethod -Uri $url -UseBasicParsing -TimeoutSec 20
+      return $r.version
+    }
+    '^discord$' {
+      $r = Invoke-RestMethod -Uri $url -UseBasicParsing -TimeoutSec 20
+      return $r.version
+    }
+    '^githubdesktop$' {
+      $r = Invoke-RestMethod -Uri $url -UseBasicParsing -TimeoutSec 20
+      return ($r.tag_name -replace '^v', '')
+    }
+    '^(brave|microsoftedge)$' {
+      return $Manifest.appNewVersion
+    }
+    default {
+      try {
+        $r = Invoke-RestMethod -Uri $url -UseBasicParsing -TimeoutSec 20
+        if ($r.version) { return $r.version }
+        if ($r.tag_name) { return ($r.tag_name -replace '^v', '') }
+      } catch { }
+      return $Manifest.appNewVersion
+    }
+  }
+}
+
+function Get-CatalogLatestVersion {
+  param($Manifest)
+  $label = [string]$Manifest.label
+  if ($script:VersionCheckCache.ContainsKey($label)) {
+    return $script:VersionCheckCache[$label]
+  }
+  $latest = $Manifest.appNewVersion
+  if ($Manifest.versionCheckURL) {
+    try {
+      $fetched = Resolve-VersionFromCheckUrl -Manifest $Manifest
+      if ($fetched) { $latest = $fetched }
+    } catch {
+      Write-Log "Version API failed for ${label}: $($_.Exception.Message)"
+    }
+  }
+  if ($latest) { $script:VersionCheckCache[$label] = $latest }
+  return $latest
+}
+
 function Get-InstalledVersion {
   param($Manifest)
   if (-not $Manifest.registryPath) { return $null }
   try {
-    $path = $Manifest.registryPath -replace '^HKLM:', 'HKLM:' -replace '^HKCU:', 'HKCU:'
+    $path = $Manifest.registryPath
     if ($path -match '^HKLM:') {
       $regPath = $path -replace '^HKLM:\\', ''
       $value = Get-ItemProperty -Path "HKLM:\$regPath" -ErrorAction Stop
@@ -129,7 +233,8 @@ function Get-InstalledVersion {
       $regPath = $path -replace '^HKCU:\\', ''
       $value = Get-ItemProperty -Path "HKCU:\$regPath" -ErrorAction Stop
     }
-    return $value.($Manifest.versionKey)
+    $key = if ($Manifest.versionKey) { $Manifest.versionKey } else { 'DisplayVersion' }
+    return $value.$key
   } catch {
     return $null
   }
@@ -185,9 +290,11 @@ function Install-Package {
 }
 
 function Send-AgentReport {
-  param($Payload)
+  param([hashtable]$Payload)
   if (-not $script:ApiUrl -or -not $script:DeviceToken) { return }
   try {
+    if (-not $Payload.timestamp) { $Payload.timestamp = (Get-Date).ToUniversalTime().ToString('o') }
+    if (-not $Payload.agentVersion) { $Payload.agentVersion = $AGENT_VERSION }
     $headers = @{ 'Content-Type' = 'application/json'; 'X-Device-Token' = $script:DeviceToken }
     Invoke-RestMethod -Method Post -Uri "$($script:ApiUrl)/api/patch/agent/report" -Headers $headers -Body ($Payload | ConvertTo-Json)
   } catch {
@@ -195,24 +302,8 @@ function Send-AgentReport {
   }
 }
 
-function Process-Label {
-  param($Manifest)
-  $installed = Get-InstalledVersion -Manifest $Manifest
-  $target = $Manifest.appNewVersion
-
-  if ($target -and $installed -and ($installed -eq $target)) {
-    Write-Log "SKIP $($Manifest.label) already at $installed"
-    Send-AgentReport @{
-      label = $Manifest.label; name = $Manifest.name; action = 'skipped'
-      fromVersion = $installed; toVersion = $target; installedVersion = $installed; latestVersion = $target
-    }
-    return
-  }
-
-  if ($Debug -eq 2) {
-    Write-Log "CHECK $($Manifest.label) installed=$installed target=$target"
-    return
-  }
+function Invoke-InstallOrUpdate {
+  param($Manifest, [string]$Installed, [string]$Target, [string]$ReportAction)
 
   $running = Test-BlockingProcesses -Processes $Manifest.blockingProcesses
   if ($running.Count -gt 0) {
@@ -220,7 +311,7 @@ function Process-Label {
       Write-Log "FAIL $($Manifest.label) blocked by processes"
       Send-AgentReport @{
         label = $Manifest.label; name = $Manifest.name; action = 'failed'
-        errorMessage = "Blocking processes: $($running -join ', ')"
+        fromVersion = $Installed; errorMessage = "Blocking processes: $($running -join ', ')"
       }
       return
     }
@@ -249,27 +340,84 @@ function Process-Label {
     Install-Package -Manifest $Manifest -InstallerPath $dest
 
     $newVersion = Get-InstalledVersion -Manifest $Manifest
-    $action = if ($installed) { 'updated' } else { 'installed' }
-    Write-Log "SUCCESS $($Manifest.label) $action $installed -> $newVersion"
+    if (-not $newVersion) { $newVersion = $Target }
+    Write-Log "SUCCESS $($Manifest.label) $ReportAction $(if ($Installed) { "$Installed -> $newVersion" } else { $newVersion })"
 
     Send-AgentReport @{
-      label = $Manifest.label; name = $Manifest.name; action = $action
-      fromVersion = $installed; toVersion = $newVersion
-      installedVersion = $newVersion; latestVersion = $Manifest.appNewVersion
+      label = $Manifest.label
+      name = $Manifest.name
+      action = $ReportAction
+      fromVersion = $Installed
+      toVersion = $newVersion
+      installedVersion = $newVersion
+      latestVersion = $Target
     }
 
     if ($Notify -in @('success', 'all')) {
-      Write-Host "FortDefend: $($Manifest.name) $action successfully."
+      Write-Host "FortDefend: $($Manifest.name) $ReportAction successfully."
     }
   } catch {
     Write-Log "FAIL $($Manifest.label) $($_.Exception.Message)"
     Send-AgentReport @{
       label = $Manifest.label; name = $Manifest.name; action = 'failed'
-      fromVersion = $installed; errorMessage = $_.Exception.Message
+      fromVersion = $Installed; errorMessage = $_.Exception.Message
     }
   } finally {
     if (Test-Path $dest) { Remove-Item $dest -Force -ErrorAction SilentlyContinue }
   }
+}
+
+function Process-Label {
+  param($Manifest)
+  $installed = Get-InstalledVersion -Manifest $Manifest
+  $target = Get-CatalogLatestVersion -Manifest $Manifest
+  $cmp = Compare-AppVersion -Installed $installed -Target $target
+
+  if ($Debug -eq 2) {
+    Write-Log "CHECK $($Manifest.label) installed=$installed target=$target cmp=$cmp mode=$InstallMode"
+    return
+  }
+
+  if ($cmp -eq 'equal' -and $InstallMode -ne 'force') {
+    Write-Log "Already current: $installed ($($Manifest.label))"
+    Send-AgentReport @{
+      label = $Manifest.label; name = $Manifest.name; action = 'skipped_current'
+      fromVersion = $installed; toVersion = $installed; installedVersion = $installed; latestVersion = $target
+    }
+    return
+  }
+
+  if ($cmp -eq 'newer' -and $InstallMode -ne 'force') {
+    Write-Log "Skipping: device has newer version $installed > $target ($($Manifest.label))"
+    Send-AgentReport @{
+      label = $Manifest.label; name = $Manifest.name; action = 'skipped_newer'
+      fromVersion = $installed; toVersion = $installed; installedVersion = $installed; latestVersion = $target
+    }
+    return
+  }
+
+  if ($cmp -eq 'not_installed') {
+    if ($InstallMode -eq 'update_only') {
+      Write-Log "SKIP $($Manifest.label) not installed (update_only mode)"
+      return
+    }
+    Write-Log "Fresh install: $($Manifest.name)"
+    Invoke-InstallOrUpdate -Manifest $Manifest -Installed $null -Target $target -ReportAction 'fresh_install'
+    return
+  }
+
+  if ($InstallMode -eq 'install_only' -and $cmp -ne 'force') {
+    Write-Log "SKIP $($Manifest.label) already installed (install_only mode)"
+    return
+  }
+
+  if ($cmp -eq 'older' -or $InstallMode -eq 'force') {
+    Write-Log "Updating $($Manifest.name): $installed -> $target"
+    Invoke-InstallOrUpdate -Manifest $Manifest -Installed $installed -Target $target -ReportAction 'updated'
+    return
+  }
+
+  Write-Log "SKIP $($Manifest.label) unhandled state cmp=$cmp"
 }
 
 # Bootstrap
@@ -291,7 +439,7 @@ if ($Label) {
   $manifests = $manifests | Where-Object { $Label -contains $_.label }
 }
 
-Write-Log "FortDefend agent started. Labels: $($manifests.Count)"
+Write-Log "FortDefend agent v$AGENT_VERSION started. Labels: $($manifests.Count) mode=$InstallMode"
 foreach ($entry in $manifests) {
   Process-Label -Manifest $entry
 }

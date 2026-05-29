@@ -267,6 +267,17 @@ const agentResourceDir = path.join(__dirname, '..', '..', 'agent');
 const agentDistExe = path.join(__dirname, '../../agent/dist/FortDefendAgent.exe');
 const agentInstallTemplate = path.join(agentResourceDir, 'install.ps1');
 const agentUninstallScript = path.join(agentResourceDir, 'uninstall.ps1');
+const agentPatchScript = path.join(agentResourceDir, 'FortDefendAgent.ps1');
+const agentPackageJson = path.join(agentResourceDir, 'package.json');
+
+function getAgentPackageVersion() {
+  try {
+    const pkg = JSON.parse(fs.readFileSync(agentPackageJson, 'utf8'));
+    return String(pkg.version || '1.0.0');
+  } catch {
+    return '1.0.0';
+  }
+}
 
 async function resolveOrgAndGroupForInstall(orgId, groupId) {
   const org = await db('orgs').where({ id: orgId }).first();
@@ -1114,9 +1125,23 @@ router.post('/command-result', async (req, res) => {
   }
 });
 
-// GET /api/agent/download — FortDefendAgent.exe; ?org= / ?token= for tracked downloads (see below)
+// GET /api/agent/version — PowerShell patch agent semver (agent/package.json)
+router.get('/version', (req, res) => {
+  res.json({ version: getAgentPackageVersion() });
+});
+
+// GET /api/agent/download — FortDefendAgent.exe; ?format=ps1 for FortDefendAgent.ps1
 router.get('/download', async (req, res) => {
   try {
+    if (req.query.format === 'ps1') {
+      if (!fs.existsSync(agentPatchScript)) {
+        return res.status(404).json({ error: 'FortDefendAgent.ps1 not found on server.' });
+      }
+      res.setHeader('Content-Type', 'text/plain; charset=utf-8');
+      res.setHeader('Content-Disposition', 'attachment; filename="FortDefendAgent.ps1"');
+      return res.sendFile(agentPatchScript);
+    }
+
     const { token, org, group } = req.query;
     const hasOrg = org != null && String(org).trim() !== '';
     const hasToken = token != null && String(token).trim() !== '';

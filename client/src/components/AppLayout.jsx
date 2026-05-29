@@ -17,16 +17,18 @@ const PATH_TITLES = {
   '/dashboard/patch/policies': 'Patch Policies',
 };
 
+const shieldIcon = (
+  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75">
+    <path d="M12 3 4 7v6c0 5 3.5 8 8 10 4.5-2 8-5 8-10V7l-8-4z" strokeLinejoin="round" />
+  </svg>
+);
+
 const patchNavItems = [
   {
     to: '/dashboard/patch',
     label: 'Overview',
     end: true,
-    icon: (
-      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75">
-        <path d="M4 6h16M4 12h16M4 18h10" strokeLinecap="round" />
-      </svg>
-    ),
+    icon: shieldIcon,
   },
   {
     to: '/dashboard/patch/devices',
@@ -177,7 +179,8 @@ export function AppLayout() {
                 </NavLink>
               ))}
 
-              <div className="mt-4 px-3 pb-1 text-[10px] font-bold uppercase tracking-wider text-white/40">
+              <div className="mt-4 flex items-center gap-2 px-3 pb-1 text-[10px] font-bold uppercase tracking-wider text-white/40">
+                <Icon>{shieldIcon}</Icon>
                 Patch Manager
               </div>
               {patchNavItems.map(({ to, label, icon, end }) => (

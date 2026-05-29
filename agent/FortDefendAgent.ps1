@@ -18,12 +18,14 @@ param(
 )
 
 $ErrorActionPreference = 'Stop'
+$Script:AgentScriptPath = $PSCommandPath
 $BaseDir = 'C:\ProgramData\FortDefend'
 $DownloadDir = Join-Path $BaseDir 'Downloads'
 $LogDir = Join-Path $BaseDir 'logs'
 $ConfigPath = Join-Path $BaseDir 'config.json'
 $ManifestPath = Join-Path $BaseDir 'manifests.json'
 $LogPath = Join-Path $LogDir 'patch.log'
+$AGENT_VERSION = '1.0.2'
 
 function Write-Log {
   param([string]$Message)
@@ -35,6 +37,60 @@ function Write-Log {
 function Get-Config {
   if (-not (Test-Path $ConfigPath)) { throw "Missing config at $ConfigPath" }
   return Get-Content $ConfigPath -Raw | ConvertFrom-Json
+}
+
+function Get-AgentRelaunchArgumentString {
+  param([hashtable]$Bound)
+  if (-not $Bound -or $Bound.Count -eq 0) { return '' }
+  $parts = @()
+  foreach ($key in $Bound.Keys) {
+    $val = $Bound[$key]
+    if ($val -is [System.Management.Automation.SwitchParameter]) {
+      if ($val.IsPresent) { $parts += "-$key" }
+      continue
+    }
+    if ($val -is [array]) {
+      foreach ($item in $val) { $parts += "-$key `"$item`"" }
+    } else {
+      $parts += "-$key `"$val`""
+    }
+  }
+  if ($parts.Count -eq 0) { return '' }
+  return ' ' + ($parts -join ' ')
+}
+
+function Invoke-AgentSelfUpdate {
+  param([string]$RelaunchArgs = '')
+  if (-not $script:ApiUrl) { return }
+  $scriptPath = $Script:AgentScriptPath
+  if (-not $scriptPath -or -not (Test-Path -LiteralPath $scriptPath)) { return }
+
+  try {
+    $base = $script:ApiUrl.TrimEnd('/')
+    $remote = Invoke-RestMethod -Uri "$base/api/agent/version" -UseBasicParsing -TimeoutSec 15
+    $remoteVersion = [string]$remote.version
+    if (-not $remoteVersion) { return }
+    if ([version]$remoteVersion -le [version]$AGENT_VERSION) { return }
+
+    Write-Log "Agent update available: $AGENT_VERSION -> $remoteVersion"
+    $tempScript = Join-Path $env:TEMP "FortDefendAgent-$remoteVersion.ps1"
+    Invoke-WebRequest -Uri "$base/api/agent/download?format=ps1" -OutFile $tempScript -UseBasicParsing -TimeoutSec 120
+
+    $updaterPath = Join-Path $env:TEMP 'FortDefendAgent-updater.ps1'
+    $escapedScript = $scriptPath.Replace("'", "''")
+    $escapedTemp = $tempScript.Replace("'", "''")
+    @"
+`$ErrorActionPreference = 'Stop'
+Start-Sleep -Seconds 2
+Copy-Item -LiteralPath '$escapedTemp' -Destination '$escapedScript' -Force
+Start-Process powershell.exe -ArgumentList "-NoProfile -ExecutionPolicy Bypass -File `"$escapedScript`"$RelaunchArgs" -WindowStyle Hidden
+"@ | Set-Content -Path $updaterPath -Encoding UTF8
+
+    Start-Process powershell.exe -ArgumentList "-NoProfile -ExecutionPolicy Bypass -File `"$updaterPath`"" -WindowStyle Hidden
+    exit 0
+  } catch {
+    Write-Log "Self-update check failed: $($_.Exception.Message)"
+  }
 }
 
 function Get-InstalledVersion {
@@ -199,6 +255,8 @@ Add-Type -AssemblyName System.Windows.Forms
 $config = Get-Config
 $script:ApiUrl = if ($ApiUrl) { $ApiUrl } else { $config.apiUrl }
 $script:DeviceToken = if ($DeviceToken) { $DeviceToken } else { $config.deviceToken }
+
+Invoke-AgentSelfUpdate -RelaunchArgs (Get-AgentRelaunchArgumentString -Bound $PSBoundParameters)
 
 if (-not (Test-Path $ManifestPath)) { throw "Missing manifests at $ManifestPath" }
 $manifests = Get-Content $ManifestPath -Raw | ConvertFrom-Json

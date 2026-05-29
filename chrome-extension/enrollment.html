@@ -1,0 +1,80 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>FortDefend — Connect your Chromebook</title>
+  <style>
+    * { box-sizing: border-box; }
+    body {
+      font-family: system-ui, -apple-system, sans-serif;
+      margin: 0;
+      min-height: 100vh;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      background: #f5f5f7;
+      color: #1d1d1f;
+    }
+    .card {
+      max-width: 400px;
+      width: 100%;
+      background: #fff;
+      border-radius: 12px;
+      padding: 28px 24px 24px;
+      box-shadow: 0 4px 24px rgba(0,0,0,.08);
+    }
+    h1 { font-size: 1.25rem; font-weight: 600; margin: 0 0 8px; }
+    p.sub { font-size: 0.85rem; color: #6e6e73; margin: 0 0 20px; line-height: 1.4; }
+    label { display: block; font-size: 0.8rem; font-weight: 500; margin-bottom: 6px; }
+    input {
+      width: 100%;
+      padding: 10px 12px;
+      font-size: 0.9rem;
+      border: 1px solid #d2d2d7;
+      border-radius: 8px;
+    }
+    input:focus { outline: none; border-color: #185FA5; }
+    .actions { display: flex; gap: 10px; margin-top: 16px; }
+    button {
+      flex: 1;
+      padding: 10px 16px;
+      font-size: 0.9rem;
+      font-weight: 500;
+      border-radius: 8px;
+      cursor: pointer;
+      border: 1px solid #d2d2d7;
+      background: #fff;
+    }
+    button.primary {
+      background: #185FA5;
+      color: #fff;
+      border-color: #185FA5;
+    }
+    button:disabled { opacity: 0.5; cursor: not-allowed; }
+    .err { color: #a32d2d; font-size: 0.8rem; margin-top: 8px; }
+    .ok { color: #3b6d11; font-size: 0.85rem; margin-top: 8px; }
+  </style>
+</head>
+<body>
+  <div class="card">
+    <h1>Connect to FortDefend</h1>
+    <p class="sub">
+      Enter your <strong>organization token</strong> from the FortDefend dashboard
+      (Install devices → your org token, or a deployment link). We validate it
+      before saving on this device.
+    </p>
+    <form id="form" autocomplete="on">
+      <label for="token">Organisation token</label>
+      <input id="token" name="token" type="text" spellcheck="false" placeholder="e.g. org UUID or enrollment token" required />
+      <div id="msg" class="err" style="display:none" role="alert"></div>
+      <div id="ok" class="ok" style="display:none">Connected. You can close this tab.</div>
+      <div class="actions">
+        <button type="button" id="cancel">Cancel</button>
+        <button type="submit" class="primary" id="submit">Connect</button>
+      </div>
+    </form>
+  </div>
+  <script src="enrollment.js"></script>
+</body>
+</html>

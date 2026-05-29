@@ -1,0 +1,65 @@
+# Build FortDefendAgent.exe with pkg and (optionally) sign with Authenticode.
+# Set repository secrets: CODE_SIGN_PFX (Base64 of .pfx) and CODE_SIGN_PFX_PASSWORD.
+# For EV on a smart card / HSM, use a self-hosted Windows runner and CODE_SIGN_THUMBPRINT instead
+# of PFX; import or attach the cert on that machine and set optional CODE_SIGN_STORE (default: My).
+name: Build and sign agent (Windows)
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch: {}
+
+concurrency:
+  group: build-agent-${{ github.ref }}
+  cancel-in-progress: true
+
+defaults:
+  run:
+    shell: powershell
+    working-directory: agent
+
+jobs:
+  build-and-sign:
+    runs-on: windows-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: npm
+          cache-dependency-path: agent/package-lock.json
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Build EXE (pkg)
+        run: npm run build
+
+      - name: Sign EXE (PFX in secrets)
+        if: ${{ secrets.CODE_SIGN_PFX != '' }}
+        env:
+          CODE_SIGN_PFX: ${{ secrets.CODE_SIGN_PFX }}
+          CODE_SIGN_PFX_PASSWORD: ${{ secrets.CODE_SIGN_PFX_PASSWORD }}
+        run: .\\sign.ps1 -ExePath dist\\FortDefendAgent.exe
+
+      - name: Sign EXE (thumbprint, e.g. self-hosted EV on runner)
+        if: ${{ secrets.CODE_SIGN_PFX == '' && secrets.CODE_SIGN_THUMBPRINT != '' }}
+        env:
+          CODE_SIGN_THUMBPRINT: ${{ secrets.CODE_SIGN_THUMBPRINT }}
+          CODE_SIGN_STORE: ${{ secrets.CODE_SIGN_STORE }}
+        run: .\\sign.ps1 -ExePath dist\\FortDefendAgent.exe
+
+      - name: No signing (configure secrets to enable)
+        if: ${{ secrets.CODE_SIGN_PFX == '' && secrets.CODE_SIGN_THUMBPRINT == '' }}
+        run: |
+          Write-Warning "Build is unsigned. Add repository secrets: CODE_SIGN_PFX + CODE_SIGN_PFX_PASSWORD, or CODE_SIGN_THUMBPRINT (EV on runner with cert in store)."
+
+      - name: Upload FortDefendAgent.exe
+        uses: actions/upload-artifact@v4
+        with:
+          name: FortDefendAgent
+          path: agent/dist/FortDefendAgent.exe
+          if-no-files-found: error

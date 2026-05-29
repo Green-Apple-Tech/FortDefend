@@ -1,0 +1,707 @@
+[
+  {
+    "label": "googlechrome",
+    "name": "Google Chrome",
+    "type": "exe",
+    "downloadURL": "https://dl.google.com/chrome/install/latest/chrome_installer.exe",
+    "silentArgs": "/silent /install",
+    "expectedPublisher": "Google LLC",
+    "versionKey": "DisplayVersion",
+    "registryPath": "HKLM:\\SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Uninstall\\Google Chrome",
+    "blockingProcesses": [
+      "chrome"
+    ],
+    "versionCheckURL": "https://versionhistory.googleapis.com/v1/chrome/platforms/win/channels/stable/versions",
+    "appNewVersion": "131.0.6778.205"
+  },
+  {
+    "label": "firefox",
+    "name": "Mozilla Firefox",
+    "type": "exe",
+    "downloadURL": "https://download.mozilla.org/?product=firefox-latest-ssl&os=win64&lang=en-US",
+    "silentArgs": "/S",
+    "expectedPublisher": "Mozilla Corporation",
+    "versionKey": "DisplayVersion",
+    "registryPath": "HKLM:\\SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Uninstall\\Mozilla Firefox 141.0 (x64 en-US)",
+    "blockingProcesses": [
+      "firefox"
+    ],
+    "versionCheckURL": "https://product-details.mozilla.org/1.0/firefox_versions.json",
+    "appNewVersion": "134.0"
+  },
+  {
+    "label": "vscode",
+    "name": "Visual Studio Code",
+    "type": "exe",
+    "downloadURL": "https://code.visualstudio.com/sha/download?build=stable&os=win32-x64-user",
+    "silentArgs": "/VERYSILENT /NORESTART /MERGETASKS=!runcode",
+    "expectedPublisher": "Microsoft Corporation",
+    "versionKey": "DisplayVersion",
+    "registryPath": "HKCU:\\SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Uninstall\\{771FD6B0-FA20-440A-A002-3B3BAC16DC50}_is1",
+    "blockingProcesses": [
+      "Code"
+    ],
+    "versionCheckURL": "https://update.code.visualstudio.com/api/update/win32-x64/stable/version",
+    "appNewVersion": "1.96.4"
+  },
+  {
+    "label": "zoom",
+    "name": "Zoom Workplace",
+    "type": "msi",
+    "downloadURL": "https://zoom.us/client/latest/ZoomInstallerFull.msi?archType=x64",
+    "silentArgs": "/qn /norestart",
+    "expectedPublisher": "Zoom Video Communications, Inc.",
+    "versionKey": "DisplayVersion",
+    "registryPath": "HKLM:\\SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Uninstall\\Zoom",
+    "blockingProcesses": [
+      "Zoom",
+      "ZoomWebviewHost"
+    ],
+    "appNewVersion": "6.3.6"
+  },
+  {
+    "label": "slack",
+    "name": "Slack",
+    "type": "exe",
+    "downloadURL": "https://downloads.slack-edge.com/desktop-releases/windows/x64/latest/SlackSetup.exe",
+    "silentArgs": "/S",
+    "expectedPublisher": "Slack Technologies, LLC",
+    "versionKey": "DisplayVersion",
+    "registryPath": "HKCU:\\SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Uninstall\\slack",
+    "blockingProcesses": [
+      "slack"
+    ],
+    "appNewVersion": "4.41.105"
+  },
+  {
+    "label": "7zip",
+    "name": "7-Zip",
+    "type": "exe",
+    "downloadURL": "https://www.7-zip.org/a/7z2409-x64.exe",
+    "silentArgs": "/S",
+    "expectedPublisher": "Igor Pavlov",
+    "versionKey": "DisplayVersion",
+    "registryPath": "HKLM:\\SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Uninstall\\7-Zip",
+    "blockingProcesses": [
+      "7zFM",
+      "7zG"
+    ]
+  },
+  {
+    "label": "vlc",
+    "name": "VLC media player",
+    "type": "exe",
+    "downloadURL": "https://get.videolan.org/vlc/3.0.21/win64/vlc-3.0.21-win64.exe",
+    "silentArgs": "/S",
+    "expectedPublisher": "VideoLAN",
+    "versionKey": "DisplayVersion",
+    "registryPath": "HKLM:\\SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Uninstall\\VLC media player",
+    "blockingProcesses": [
+      "vlc"
+    ]
+  },
+  {
+    "label": "notepadplusplus",
+    "name": "Notepad++",
+    "type": "exe",
+    "downloadURL": "https://github.com/notepad-plus-plus/notepad-plus-plus/releases/download/v8.7.7/npp.8.7.7.Installer.x64.exe",
+    "silentArgs": "/S",
+    "expectedPublisher": "Notepad++",
+    "versionKey": "DisplayVersion",
+    "registryPath": "HKLM:\\SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Uninstall\\Notepad++",
+    "blockingProcesses": [
+      "notepad++"
+    ]
+  },
+  {
+    "label": "adobereader",
+    "name": "Adobe Acrobat Reader",
+    "type": "exe",
+    "downloadURL": "https://ardownload2.adobe.com/pub/adobe/reader/win/AcrobatDC/2400120438/AcroRdrDC2400120438_en_US.exe",
+    "silentArgs": "/sAll /rs /msi EULA_ACCEPT=YES",
+    "expectedPublisher": "Adobe Inc.",
+    "versionKey": "DisplayVersion",
+    "registryPath": "HKLM:\\SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Uninstall\\{AC76BA86-7AD7-1033-7B44-AC0F074EAA82}",
+    "blockingProcesses": [
+      "AcroRd32",
+      "Acrobat"
+    ]
+  },
+  {
+    "label": "teamviewer",
+    "name": "TeamViewer",
+    "type": "exe",
+    "downloadURL": "https://download.teamviewer.com/download/TeamViewer_Setup_x64.exe",
+    "silentArgs": "/S",
+    "expectedPublisher": "TeamViewer Germany GmbH",
+    "versionKey": "DisplayVersion",
+    "registryPath": "HKLM:\\SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Uninstall\\TeamViewer",
+    "blockingProcesses": [
+      "TeamViewer"
+    ]
+  },
+  {
+    "label": "git",
+    "name": "Git for Windows",
+    "type": "exe",
+    "downloadURL": "https://github.com/git-for-windows/git/releases/download/v2.47.1.windows.2/Git-2.47.1.2-64-bit.exe",
+    "silentArgs": "/VERYSILENT /NORESTART",
+    "expectedPublisher": "Johannes Schindelin",
+    "versionKey": "DisplayVersion",
+    "registryPath": "HKLM:\\SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Uninstall\\Git_is1",
+    "blockingProcesses": [
+      "git-bash",
+      "git-cmd"
+    ]
+  },
+  {
+    "label": "nodejs",
+    "name": "Node.js LTS",
+    "type": "msi",
+    "downloadURL": "https://nodejs.org/dist/v22.14.0/node-v22.14.0-x64.msi",
+    "silentArgs": "/qn /norestart",
+    "expectedPublisher": "OpenJS Foundation",
+    "versionKey": "DisplayVersion",
+    "registryPath": "HKLM:\\SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Uninstall\\{B1B8B8B8-8B8B-8B8B-8B8B-8B8B8B8B8B8B}",
+    "blockingProcesses": [
+      "node"
+    ],
+    "versionCheckURL": "https://nodejs.org/dist/index.json",
+    "appNewVersion": "22.14.0"
+  },
+  {
+    "label": "python",
+    "name": "Python",
+    "type": "exe",
+    "downloadURL": "https://www.python.org/ftp/python/3.13.2/python-3.13.2-amd64.exe",
+    "silentArgs": "/quiet InstallAllUsers=1 PrependPath=1 Include_test=0",
+    "expectedPublisher": "Python Software Foundation",
+    "versionKey": "DisplayVersion",
+    "registryPath": "HKLM:\\SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Uninstall\\{D5745272-0E0E-4E0E-8E0E-0E0E0E0E0E0E}",
+    "blockingProcesses": [
+      "python",
+      "pythonw"
+    ],
+    "versionCheckURL": "https://www.python.org/api/v2/downloads/release/",
+    "appNewVersion": "3.13.2"
+  },
+  {
+    "label": "malwarebytes",
+    "name": "Malwarebytes",
+    "type": "exe",
+    "downloadURL": "https://data-cdn.mbamupdates.com/web/mb4-setup-consumer/MBSetup.exe",
+    "silentArgs": "/VERYSILENT /NORESTART",
+    "expectedPublisher": "Malwarebytes Inc",
+    "versionKey": "DisplayVersion",
+    "registryPath": "HKLM:\\SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Uninstall\\Malwarebytes version 4.0.0.0",
+    "blockingProcesses": [
+      "MBAMService",
+      "malwarebytes"
+    ]
+  },
+  {
+    "label": "ccleaner",
+    "name": "CCleaner",
+    "type": "exe",
+    "downloadURL": "https://download.ccleaner.com/ccsetup615.exe",
+    "silentArgs": "/S",
+    "expectedPublisher": "Gen Digital Inc",
+    "versionKey": "DisplayVersion",
+    "registryPath": "HKLM:\\SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Uninstall\\CCleaner",
+    "blockingProcesses": [
+      "CCleaner64",
+      "CCleaner"
+    ]
+  },
+  {
+    "label": "greenshot",
+    "name": "Greenshot",
+    "type": "exe",
+    "downloadURL": "https://github.com/greenshot/greenshot/releases/download/Greenshot-RELEASE-1.3.274/Greenshot-INSTALLER-1.3.274-RELEASE.exe",
+    "silentArgs": "/VERYSILENT /NORESTART",
+    "expectedPublisher": "Greenshot",
+    "versionKey": "DisplayVersion",
+    "registryPath": "HKLM:\\SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Uninstall\\Greenshot_is1",
+    "blockingProcesses": [
+      "Greenshot"
+    ]
+  },
+  {
+    "label": "obsidian",
+    "name": "Obsidian",
+    "type": "exe",
+    "downloadURL": "https://github.com/obsidianmd/obsidian-releases/releases/download/v1.8.4/Obsidian-1.8.4.exe",
+    "silentArgs": "/S",
+    "expectedPublisher": "Obsidian",
+    "versionKey": "DisplayVersion",
+    "registryPath": "HKCU:\\SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Uninstall\\Obsidian",
+    "blockingProcesses": [
+      "Obsidian"
+    ]
+  },
+  {
+    "label": "powertoys",
+    "name": "PowerToys",
+    "type": "exe",
+    "downloadURL": "https://github.com/microsoft/PowerToys/releases/download/v0.87.1/PowerToysSetup-0.87.1-x64.exe",
+    "silentArgs": "/silent /norestart",
+    "expectedPublisher": "Microsoft Corporation",
+    "versionKey": "DisplayVersion",
+    "registryPath": "HKLM:\\SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Uninstall\\PowerToys",
+    "blockingProcesses": [
+      "PowerToys"
+    ]
+  },
+  {
+    "label": "winrar",
+    "name": "WinRAR",
+    "type": "exe",
+    "downloadURL": "https://www.win-rar.com/fileadmin/winrar-versions/winrar/winrar-x64-710.exe",
+    "silentArgs": "/S",
+    "expectedPublisher": "win.rar GmbH",
+    "versionKey": "DisplayVersion",
+    "registryPath": "HKLM:\\SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Uninstall\\WinRAR archiver",
+    "blockingProcesses": [
+      "WinRAR",
+      "Rar"
+    ]
+  },
+  {
+    "label": "dropbox",
+    "name": "Dropbox",
+    "type": "exe",
+    "downloadURL": "https://www.dropbox.com/download?plat=win&full=1",
+    "silentArgs": "/S /silent",
+    "expectedPublisher": "Dropbox, Inc",
+    "versionKey": "DisplayVersion",
+    "registryPath": "HKLM:\\SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Uninstall\\Dropbox",
+    "blockingProcesses": [
+      "Dropbox"
+    ]
+  },
+  {
+    "label": "brave",
+    "name": "Brave",
+    "type": "exe",
+    "downloadURL": "https://laptop-updates.brave.com/latest/winx64",
+    "silentArgs": "/silent /install",
+    "expectedPublisher": "Brave Software, Inc.",
+    "versionKey": "DisplayVersion",
+    "registryPath": "HKLM:\\SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Uninstall\\BraveSoftware Brave-Browser",
+    "blockingProcesses": [
+      "brave"
+    ],
+    "appNewVersion": "1.73.89"
+  },
+  {
+    "label": "microsoftedge",
+    "name": "Microsoft Edge",
+    "type": "exe",
+    "downloadURL": "https://go.microsoft.com/fwlink/?linkid=2093437",
+    "silentArgs": "/silent /install",
+    "expectedPublisher": "Microsoft Corporation",
+    "versionKey": "DisplayVersion",
+    "registryPath": "HKLM:\\SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Uninstall\\Microsoft Edge",
+    "blockingProcesses": [
+      "msedge",
+      "msedgewebview2"
+    ],
+    "appNewVersion": "131.0.2903.112"
+  },
+  {
+    "label": "thunderbird",
+    "name": "Mozilla Thunderbird",
+    "type": "exe",
+    "downloadURL": "https://download.mozilla.org/?product=thunderbird-latest&os=win64&lang=en-US",
+    "silentArgs": "/S",
+    "expectedPublisher": "Mozilla Corporation",
+    "versionKey": "DisplayVersion",
+    "registryPath": "HKLM:\\SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Uninstall\\Mozilla Thunderbird",
+    "blockingProcesses": [
+      "thunderbird"
+    ],
+    "appNewVersion": "128.6.0"
+  },
+  {
+    "label": "discord",
+    "name": "Discord",
+    "type": "exe",
+    "downloadURL": "https://discord.com/api/downloads/distributions/app/installers/latest?channel=stable&platform=win&arch=x64",
+    "silentArgs": "/S",
+    "expectedPublisher": "Discord Inc.",
+    "versionKey": "DisplayVersion",
+    "registryPath": "HKCU:\\SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Uninstall\\Discord",
+    "blockingProcesses": [
+      "Discord"
+    ],
+    "appNewVersion": "1.0.9028"
+  },
+  {
+    "label": "signal",
+    "name": "Signal",
+    "type": "exe",
+    "downloadURL": "https://updates.signal.org/desktop/win/x64/SignalSetup.exe",
+    "silentArgs": "/S",
+    "expectedPublisher": "Signal Messenger, LLC",
+    "versionKey": "DisplayVersion",
+    "registryPath": "HKLM:\\SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Uninstall\\Signal",
+    "blockingProcesses": [
+      "Signal"
+    ],
+    "appNewVersion": "7.36.0"
+  },
+  {
+    "label": "telegram",
+    "name": "Telegram Desktop",
+    "type": "exe",
+    "downloadURL": "https://telegram.org/dl/desktop/win64",
+    "silentArgs": "/S",
+    "expectedPublisher": "Telegram FZ-LLC",
+    "versionKey": "DisplayVersion",
+    "registryPath": "HKLM:\\SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Uninstall\\{A26B552C-FD61-4BDF-B1A1-0E49A1A9E8F5}",
+    "blockingProcesses": [
+      "Telegram"
+    ],
+    "appNewVersion": "5.8.1"
+  },
+  {
+    "label": "skype",
+    "name": "Skype",
+    "type": "exe",
+    "downloadURL": "https://go.skype.com/skype-for-windows.exe",
+    "silentArgs": "/silent /install",
+    "expectedPublisher": "Microsoft Corporation",
+    "versionKey": "DisplayVersion",
+    "registryPath": "HKLM:\\SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Uninstall\\Skype",
+    "blockingProcesses": [
+      "Skype"
+    ],
+    "appNewVersion": "8.134.0.56"
+  },
+  {
+    "label": "webex",
+    "name": "Webex",
+    "type": "msi",
+    "downloadURL": "https://binaries.webex.com/WebexTeamsDesktop-Windows-GUI/Webex.msi",
+    "silentArgs": "/qn /norestart",
+    "expectedPublisher": "Cisco Systems, Inc.",
+    "versionKey": "DisplayVersion",
+    "registryPath": "HKLM:\\SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Uninstall\\{5A7D0A0C-9E2F-4B0E-8B0E-000000000001}",
+    "blockingProcesses": [
+      "Webex"
+    ],
+    "appNewVersion": "45.2.0"
+  },
+  {
+    "label": "googlechromeenterprise",
+    "name": "Google Chrome Enterprise",
+    "type": "msi",
+    "downloadURL": "https://dl.google.com/dl/chrome/install/googlechromestandaloneenterprise64.msi",
+    "silentArgs": "/qn /norestart",
+    "expectedPublisher": "Google LLC",
+    "versionKey": "DisplayVersion",
+    "registryPath": "HKLM:\\SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Uninstall\\Google Chrome",
+    "blockingProcesses": [
+      "chrome"
+    ],
+    "appNewVersion": "131.0.6778.205"
+  },
+  {
+    "label": "libreoffice",
+    "name": "LibreOffice",
+    "type": "msi",
+    "downloadURL": "https://download.documentfoundation.org/libreoffice/stable/24.8.4/win/x86_64/LibreOffice_24.8.4_Win_x86-64.msi",
+    "silentArgs": "/qn /norestart",
+    "expectedPublisher": "The Document Foundation",
+    "versionKey": "DisplayVersion",
+    "registryPath": "HKLM:\\SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Uninstall\\{E8A8B8B8-8B8B-8B8B-8B8B-8B8B8B8B8B8B}",
+    "blockingProcesses": [
+      "soffice",
+      "soffice.bin"
+    ],
+    "appNewVersion": "24.8.4"
+  },
+  {
+    "label": "notion",
+    "name": "Notion",
+    "type": "exe",
+    "downloadURL": "https://www.notion.so/desktop/windows/download",
+    "silentArgs": "/S",
+    "expectedPublisher": "Notion Labs, Inc",
+    "versionKey": "DisplayVersion",
+    "registryPath": "HKCU:\\SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Uninstall\\Notion",
+    "blockingProcesses": [
+      "Notion"
+    ],
+    "appNewVersion": "3.15.0"
+  },
+  {
+    "label": "evernote",
+    "name": "Evernote",
+    "type": "exe",
+    "downloadURL": "https://win-installer.evernote.com/builds/Evernote-latest.exe",
+    "silentArgs": "/S",
+    "expectedPublisher": "Evernote Corporation",
+    "versionKey": "DisplayVersion",
+    "registryPath": "HKLM:\\SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Uninstall\\Evernote",
+    "blockingProcesses": [
+      "Evernote"
+    ],
+    "appNewVersion": "10.99.2"
+  },
+  {
+    "label": "foxitpdfreader",
+    "name": "Foxit PDF Reader",
+    "type": "exe",
+    "downloadURL": "https://www.foxit.com/downloads/latest.html?product=Foxit-Reader&platform=Windows&version=&package_type=exe&language=English",
+    "silentArgs": "/quiet /norestart",
+    "expectedPublisher": "Foxit Software Incorporated",
+    "versionKey": "DisplayVersion",
+    "registryPath": "HKLM:\\SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Uninstall\\Foxit Reader",
+    "blockingProcesses": [
+      "FoxitReader"
+    ],
+    "appNewVersion": "2024.3.0"
+  },
+  {
+    "label": "drawio",
+    "name": "draw.io Desktop",
+    "type": "exe",
+    "downloadURL": "https://github.com/jgraph/drawio-desktop/releases/download/v26.0.9/draw.io-26.0.9-windows-installer.exe",
+    "silentArgs": "/S",
+    "expectedPublisher": "JGraph Ltd",
+    "versionKey": "DisplayVersion",
+    "registryPath": "HKLM:\\SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Uninstall\\draw.io",
+    "blockingProcesses": [
+      "draw.io"
+    ],
+    "appNewVersion": "26.0.9"
+  },
+  {
+    "label": "grammarly",
+    "name": "Grammarly for Windows",
+    "type": "exe",
+    "downloadURL": "https://download-windows.grammarly.com/GrammarlyInstaller.exe",
+    "silentArgs": "/S",
+    "expectedPublisher": "Grammarly Inc.",
+    "versionKey": "DisplayVersion",
+    "registryPath": "HKLM:\\SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Uninstall\\Grammarly",
+    "blockingProcesses": [
+      "Grammarly"
+    ],
+    "appNewVersion": "1.2.150"
+  },
+  {
+    "label": "adobeacrobatreader",
+    "name": "Adobe Acrobat Reader DC",
+    "type": "exe",
+    "downloadURL": "https://ardownload2.adobe.com/pub/adobe/reader/win/AcrobatDC/2400120438/AcroRdrDC2400120438_en_US.exe",
+    "silentArgs": "/sAll /rs /msi EULA_ACCEPT=YES",
+    "expectedPublisher": "Adobe Inc.",
+    "versionKey": "DisplayVersion",
+    "registryPath": "HKLM:\\SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Uninstall\\{AC76BA86-7AD7-1033-7B44-AC0F074EAA82}",
+    "blockingProcesses": [
+      "AcroRd32",
+      "Acrobat"
+    ],
+    "appNewVersion": "24.001.20438"
+  },
+  {
+    "label": "bitwarden",
+    "name": "Bitwarden",
+    "type": "exe",
+    "downloadURL": "https://vault.bitwarden.com/download/?app=desktop&platform=windows&variant=exe",
+    "silentArgs": "/S",
+    "expectedPublisher": "Bitwarden Inc",
+    "versionKey": "DisplayVersion",
+    "registryPath": "HKLM:\\SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Uninstall\\Bitwarden",
+    "blockingProcesses": [
+      "Bitwarden"
+    ],
+    "appNewVersion": "2025.1.0"
+  },
+  {
+    "label": "keepass",
+    "name": "KeePass",
+    "type": "exe",
+    "downloadURL": "https://sourceforge.net/projects/keepass/files/KeePass%202.x/2.57/KeePass-2.57-Setup.exe/download",
+    "silentArgs": "/VERYSILENT /NORESTART",
+    "expectedPublisher": "Dominik Reichl",
+    "versionKey": "DisplayVersion",
+    "registryPath": "HKLM:\\SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Uninstall\\KeePass 2.57",
+    "blockingProcesses": [
+      "KeePass"
+    ],
+    "appNewVersion": "2.57"
+  },
+  {
+    "label": "veracrypt",
+    "name": "VeraCrypt",
+    "type": "exe",
+    "downloadURL": "https://launchpad.net/veracrypt/trunk/1.26.15/+download/VeraCrypt%20Setup%201.26.15.exe",
+    "silentArgs": "/S",
+    "expectedPublisher": "IDRIX",
+    "versionKey": "DisplayVersion",
+    "registryPath": "HKLM:\\SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Uninstall\\VeraCrypt",
+    "blockingProcesses": [
+      "VeraCrypt"
+    ],
+    "appNewVersion": "1.26.15"
+  },
+  {
+    "label": "glasswire",
+    "name": "GlassWire",
+    "type": "exe",
+    "downloadURL": "https://download.glasswire.com/GlassWireSetup.exe",
+    "silentArgs": "/S",
+    "expectedPublisher": "GlassWire",
+    "versionKey": "DisplayVersion",
+    "registryPath": "HKLM:\\SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Uninstall\\GlassWire",
+    "blockingProcesses": [
+      "GlassWire"
+    ],
+    "appNewVersion": "3.6.790"
+  },
+  {
+    "label": "wireshark",
+    "name": "Wireshark",
+    "type": "exe",
+    "downloadURL": "https://www.wireshark.org/download/win64/Wireshark-win64-4.4.3.exe",
+    "silentArgs": "/S",
+    "expectedPublisher": "Wireshark Foundation",
+    "versionKey": "DisplayVersion",
+    "registryPath": "HKLM:\\SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Uninstall\\Wireshark",
+    "blockingProcesses": [
+      "Wireshark"
+    ],
+    "appNewVersion": "4.4.3"
+  },
+  {
+    "label": "putty",
+    "name": "PuTTY",
+    "type": "msi",
+    "downloadURL": "https://the.earth.li/~sgtatham/putty/latest/w64/putty-64bit-0.83-installer.msi",
+    "silentArgs": "/qn /norestart",
+    "expectedPublisher": "Simon Tatham",
+    "versionKey": "DisplayVersion",
+    "registryPath": "HKLM:\\SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Uninstall\\PuTTY",
+    "blockingProcesses": [
+      "putty"
+    ],
+    "appNewVersion": "0.83"
+  },
+  {
+    "label": "winscp",
+    "name": "WinSCP",
+    "type": "exe",
+    "downloadURL": "https://winscp.net/download/WinSCP-6.3.6-Setup.exe/download",
+    "silentArgs": "/VERYSILENT /NORESTART",
+    "expectedPublisher": "Martin Prikryl",
+    "versionKey": "DisplayVersion",
+    "registryPath": "HKLM:\\SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Uninstall\\winscp",
+    "blockingProcesses": [
+      "WinSCP"
+    ],
+    "appNewVersion": "6.3.6"
+  },
+  {
+    "label": "githubdesktop",
+    "name": "GitHub Desktop",
+    "type": "exe",
+    "downloadURL": "https://central.github.com/deployments/desktop/desktop/latest/win32",
+    "silentArgs": "/S",
+    "expectedPublisher": "GitHub, Inc.",
+    "versionKey": "DisplayVersion",
+    "registryPath": "HKLM:\\SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Uninstall\\GitHub Desktop",
+    "blockingProcesses": [
+      "GitHubDesktop"
+    ],
+    "appNewVersion": "3.4.12"
+  },
+  {
+    "label": "postman",
+    "name": "Postman",
+    "type": "exe",
+    "downloadURL": "https://dl.pstmn.io/download/latest/win64",
+    "silentArgs": "/S",
+    "expectedPublisher": "Postman",
+    "versionKey": "DisplayVersion",
+    "registryPath": "HKLM:\\SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Uninstall\\Postman",
+    "blockingProcesses": [
+      "Postman"
+    ],
+    "appNewVersion": "11.27.0"
+  },
+  {
+    "label": "dockerdesktop",
+    "name": "Docker Desktop",
+    "type": "exe",
+    "downloadURL": "https://desktop.docker.com/win/main/amd64/Docker%20Desktop%20Installer.exe",
+    "silentArgs": "install --quiet",
+    "expectedPublisher": "Docker Inc",
+    "versionKey": "DisplayVersion",
+    "registryPath": "HKLM:\\SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Uninstall\\Docker Desktop",
+    "blockingProcesses": [
+      "Docker Desktop"
+    ],
+    "appNewVersion": "4.37.1"
+  },
+  {
+    "label": "python3",
+    "name": "Python 3",
+    "type": "exe",
+    "downloadURL": "https://www.python.org/ftp/python/3.13.2/python-3.13.2-amd64.exe",
+    "silentArgs": "/quiet InstallAllUsers=1 PrependPath=1 Include_test=0",
+    "expectedPublisher": "Python Software Foundation",
+    "versionKey": "DisplayVersion",
+    "registryPath": "HKLM:\\SOFTWARE\\Python\\PythonCore\\3.13\\InstallPath",
+    "blockingProcesses": [
+      "python",
+      "pythonw"
+    ],
+    "appNewVersion": "3.13.2",
+    "versionCheckURL": "https://www.python.org/api/v2/downloads/release/"
+  },
+  {
+    "label": "javatemurin17",
+    "name": "Eclipse Temurin JDK 17",
+    "type": "msi",
+    "downloadURL": "https://github.com/adoptium/temurin17-binaries/releases/download/jdk-17.0.14%2B7/OpenJDK17U-jdk_x64_windows_hotspot_17.0.14_7.msi",
+    "silentArgs": "/qn /norestart",
+    "expectedPublisher": "Eclipse Adoptium",
+    "versionKey": "DisplayVersion",
+    "registryPath": "HKLM:\\SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Uninstall\\{Eclipse Temurin}",
+    "blockingProcesses": [
+      "java"
+    ],
+    "appNewVersion": "17.0.14"
+  },
+  {
+    "label": "spotify",
+    "name": "Spotify",
+    "type": "exe",
+    "downloadURL": "https://download.scdn.co/SpotifySetup.exe",
+    "silentArgs": "/silent",
+    "expectedPublisher": "Spotify AB",
+    "versionKey": "DisplayVersion",
+    "registryPath": "HKLM:\\SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Uninstall\\Spotify",
+    "blockingProcesses": [
+      "Spotify"
+    ],
+    "appNewVersion": "1.2.56.502"
+  },
+  {
+    "label": "bulkrenameutility",
+    "name": "Bulk Rename Utility",
+    "type": "exe",
+    "downloadURL": "https://www.bulkrenameutility.co.uk/Downloads/BRU_setup.exe",
+    "silentArgs": "/S",
+    "expectedPublisher": "TGRMN Software",
+    "versionKey": "DisplayVersion",
+    "registryPath": "HKLM:\\SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Uninstall\\Bulk Rename Utility",
+    "blockingProcesses": [
+      "Bulk Rename Utility"
+    ],
+    "appNewVersion": "3.4.4"
+  }
+]

@@ -1,0 +1,20 @@
+{
+  "type": "object",
+  "properties": {
+    "orgToken": {
+      "title": "Organization token",
+      "description": "Your FortDefend org ID or enrollment token from the Install devices page. Required for automatic enrollment on managed Chromebooks.",
+      "type": "string"
+    },
+    "groupId": {
+      "title": "Device group (optional)",
+      "description": "If set, devices enroll into this group UUID. Leave empty for default group.",
+      "type": "string"
+    },
+    "autoEnroll": {
+      "title": "Auto-enroll",
+      "description": "When true, the extension registers with the org as soon as it starts using orgToken from policy.",
+      "type": "boolean"
+    }
+  }
+}

@@ -1,41 +1,78 @@
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { useParams } from 'react-router-dom';
-import { api, statusColor } from '../../lib/api';
+import { statusColor } from '../../lib/api';
+import { fetchPatch, patchErrorMessage, PatchLoadError } from './patchApi';
 
 export default function DeviceDetail() {
   const { id } = useParams();
   const [data, setData] = useState(null);
   const [selected, setSelected] = useState([]);
   const [error, setError] = useState('');
+  const [loading, setLoading] = useState(true);
+
+  const load = useCallback(async () => {
+    if (!id) return;
+    setLoading(true);
+    setError('');
+    try {
+      const res = await fetchPatch(`/api/patch/devices/${encodeURIComponent(id)}`, {
+        label: 'GET /api/patch/devices/:id',
+        fallback: {
+          device: { id, name: 'Device', osVersion: null, lastSeen: null },
+          apps: [],
+          history: [],
+          policies: [],
+        },
+      });
+      setData({
+        device: res.device || { id, name: 'Device' },
+        apps: Array.isArray(res.apps) ? res.apps : [],
+        history: Array.isArray(res.history) ? res.history : [],
+        policies: Array.isArray(res.policies) ? res.policies : [],
+      });
+    } catch (err) {
+      setData({ device: { id, name: 'Device' }, apps: [], history: [], policies: [] });
+      setError(patchErrorMessage(err, 'Failed to load patch device.'));
+    } finally {
+      setLoading(false);
+    }
+  }, [id]);
 
   useEffect(() => {
-    api(`/api/patch/devices/${id}`)
-      .then(setData)
-      .catch((e) => setError(e.message));
-  }, [id]);
+    load();
+  }, [load]);
 
   const toggle = (label) => {
     setSelected((prev) => (prev.includes(label) ? prev.filter((l) => l !== label) : [...prev, label]));
   };
 
-  if (error) return <div className="text-red-600">{error}</div>;
-  if (!data) return <div>Loading device...</div>;
+  if (loading && !data) return <div>Loading device...</div>;
+
+  const device = data?.device || { name: 'Device' };
+  const apps = data?.apps || [];
 
   return (
     <div>
-      <h1 className="text-2xl font-bold">{data.device.name}</h1>
-      <p className="text-slate-500 mb-6">OS: {data.device.osVersion || 'Windows'} · Last seen: {data.device.lastSeen ? new Date(data.device.lastSeen).toLocaleString() : 'Never'}</p>
+      <h1 className="text-2xl font-bold">{device.name}</h1>
+      <p className="mb-6 text-slate-500">
+        OS: {device.osVersion || 'Windows'} · Last seen:{' '}
+        {device.lastSeen ? new Date(device.lastSeen).toLocaleString() : 'Never'}
+      </p>
 
-      <div className="flex gap-2 mb-4">
-        <button className="px-3 py-2 rounded bg-blue-600 text-white text-sm">Update All</button>
-        <button className="px-3 py-2 rounded bg-slate-200 text-sm" disabled={!selected.length}>
+      {error ? <PatchLoadError message={error} onRetry={load} /> : null}
+
+      <div className="mb-4 flex gap-2">
+        <button type="button" className="rounded bg-blue-600 px-3 py-2 text-sm text-white">
+          Update All
+        </button>
+        <button type="button" className="rounded bg-slate-200 px-3 py-2 text-sm" disabled={!selected.length}>
           Update Selected ({selected.length})
         </button>
       </div>
 
-      <div className="rounded-xl border bg-white shadow-sm overflow-auto">
+      <div className="overflow-auto rounded-xl border bg-white shadow-sm">
         <table className="w-full text-sm">
-          <thead className="bg-slate-50 border-b">
+          <thead className="border-b bg-slate-50">
             <tr>
               <th className="px-4 py-3 text-left">Select</th>
               <th className="px-4 py-3 text-left">App</th>
@@ -46,8 +83,8 @@ export default function DeviceDetail() {
             </tr>
           </thead>
           <tbody>
-            {data.apps.map((app) => (
-              <tr key={app.id} className="border-b">
+            {apps.map((app) => (
+              <tr key={app.id || app.label} className="border-b">
                 <td className="px-4 py-3">
                   <input type="checkbox" checked={selected.includes(app.label)} onChange={() => toggle(app.label)} />
                 </td>
@@ -55,18 +92,24 @@ export default function DeviceDetail() {
                 <td className="px-4 py-3">{app.installed_version || '—'}</td>
                 <td className="px-4 py-3">{app.latest_version || '—'}</td>
                 <td className="px-4 py-3">
-                  <span className={`px-2 py-1 rounded text-xs ${statusColor(app.status)}`}>{app.status}</span>
+                  <span className={`rounded px-2 py-1 text-xs ${statusColor(app.status)}`}>{app.status || 'unknown'}</span>
                 </td>
-                <td className="px-4 py-3 space-x-2">
+                <td className="space-x-2 px-4 py-3">
                   {['Update', 'Reinstall', 'Uninstall', 'Ignore'].map((action) => (
-                    <button key={action} className="text-blue-600 hover:underline text-xs">{action}</button>
+                    <button key={action} type="button" className="text-xs text-blue-600 hover:underline">
+                      {action}
+                    </button>
                   ))}
                 </td>
               </tr>
             ))}
-            {!data.apps.length && (
-              <tr><td colSpan={6} className="px-4 py-8 text-center text-slate-500">No apps reported yet.</td></tr>
-            )}
+            {!apps.length ? (
+              <tr>
+                <td colSpan={6} className="px-4 py-8 text-center text-slate-500">
+                  No apps reported yet. Run a patch scan from the main device page.
+                </td>
+              </tr>
+            ) : null}
           </tbody>
         </table>
       </div>

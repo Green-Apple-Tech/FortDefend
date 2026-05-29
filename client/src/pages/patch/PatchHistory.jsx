@@ -1,5 +1,6 @@
-import { useEffect, useState } from 'react';
-import { api, exportCsv, patchActionColor, patchActionLabel } from '../../lib/api';
+import { useCallback, useEffect, useState } from 'react';
+import { exportCsv, patchActionColor, patchActionLabel } from '../../lib/api';
+import { fetchPatch, patchErrorMessage, PatchLoadError } from './patchApi';
 
 const ACTION_OPTIONS = [
   '',
@@ -18,20 +19,27 @@ export default function PatchHistory() {
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
 
-  const load = () => {
+  const load = useCallback(async () => {
     setLoading(true);
+    setError('');
     const params = new URLSearchParams(Object.entries(filters).filter(([, v]) => v));
-    api(`/api/patch/history?${params}`)
-      .then((res) => setHistory(res.history || []))
-      .catch((e) => setError(e.message))
-      .finally(() => setLoading(false));
-  };
+    try {
+      const res = await fetchPatch(`/api/patch/history?${params}`, {
+        label: 'GET /api/patch/history',
+        fallback: { history: [] },
+      });
+      setHistory(Array.isArray(res?.history) ? res.history : []);
+    } catch (err) {
+      setHistory([]);
+      setError(patchErrorMessage(err, 'Failed to load patch history.'));
+    } finally {
+      setLoading(false);
+    }
+  }, [filters]);
 
   useEffect(() => {
     load();
   }, []);
-
-  if (error) return <div className="text-red-600">{error}</div>;
 
   return (
     <div>
@@ -39,13 +47,15 @@ export default function PatchHistory() {
         <h1 className="text-2xl font-bold">Patch History</h1>
         <button
           type="button"
-          className="rounded bg-slate-900 px-3 py-2 text-sm text-white"
+          className="rounded bg-slate-900 px-3 py-2 text-sm text-white disabled:opacity-50"
           onClick={() => exportCsv('patch-history.csv', history)}
           disabled={!history.length}
         >
           Export CSV
         </button>
       </div>
+
+      {error ? <PatchLoadError message={error} onRetry={load} /> : null}
 
       <div className="mb-4 grid grid-cols-2 gap-3 md:grid-cols-6">
         <input
@@ -102,9 +112,9 @@ export default function PatchHistory() {
           <tbody>
             {history.map((row) => (
               <tr key={row.id} className="border-b">
-                <td className="px-4 py-3">{new Date(row.timestamp).toLocaleString()}</td>
-                <td className="px-4 py-3">{row.device_name}</td>
-                <td className="px-4 py-3">{row.name}</td>
+                <td className="px-4 py-3">{row.timestamp ? new Date(row.timestamp).toLocaleString() : '—'}</td>
+                <td className="px-4 py-3">{row.device_name || '—'}</td>
+                <td className="px-4 py-3">{row.name || row.label}</td>
                 <td className="px-4 py-3">
                   <span className={`rounded px-2 py-1 text-xs font-medium ${patchActionColor(row.action)}`}>
                     {patchActionLabel(row.action)}
@@ -115,13 +125,13 @@ export default function PatchHistory() {
                 <td className="px-4 py-3 text-red-600">{row.error_message || ''}</td>
               </tr>
             ))}
-            {!history.length && (
+            {!loading && !history.length ? (
               <tr>
                 <td colSpan={7} className="px-4 py-8 text-center text-slate-500">
                   No patch history found.
                 </td>
               </tr>
-            )}
+            ) : null}
           </tbody>
         </table>
       </div>

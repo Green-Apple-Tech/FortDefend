@@ -1,5 +1,6 @@
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { api, patchActionColor, patchActionLabel } from '../../lib/api';
+import { fetchPatch, patchErrorMessage, PatchLoadError } from './patchApi';
 
 function Card({ title, value, hint }) {
   return (
@@ -11,21 +12,39 @@ function Card({ title, value, hint }) {
   );
 }
 
+const EMPTY_OVERVIEW = {
+  totalDevices: 0,
+  patchManagedDevices: 0,
+  patchedToday: 0,
+  appsOutdated: 0,
+  failedLast7Days: 0,
+  compliance: 100,
+  recentActivity: [],
+};
+
 export default function PatchOverview() {
   const [data, setData] = useState(null);
   const [error, setError] = useState('');
   const [scanning, setScanning] = useState(false);
   const [scanMsg, setScanMsg] = useState('');
 
-  const load = () => {
-    api('/api/patch/overview')
-      .then(setData)
-      .catch((e) => setError(e.message));
-  };
+  const load = useCallback(async () => {
+    setError('');
+    try {
+      const res = await fetchPatch('/api/patch/overview', {
+        label: 'GET /api/patch/overview',
+        fallback: EMPTY_OVERVIEW,
+      });
+      setData({ ...EMPTY_OVERVIEW, ...res });
+    } catch (err) {
+      setData(EMPTY_OVERVIEW);
+      setError(patchErrorMessage(err, 'Failed to load patch overview.'));
+    }
+  }, []);
 
   useEffect(() => {
     load();
-  }, []);
+  }, [load]);
 
   const scanAll = async () => {
     setScanning(true);
@@ -33,15 +52,17 @@ export default function PatchOverview() {
     try {
       const r = await api('/api/patch/scan-all', { method: 'POST' });
       setScanMsg(r?.message || 'Scan queued for all devices.');
-    } catch (e) {
-      setScanMsg(e.message || 'Failed to queue scan.');
+    } catch (err) {
+      console.error('[Patch Manager] POST /api/patch/scan-all failed', err);
+      setScanMsg(patchErrorMessage(err, 'Failed to queue scan.'));
     } finally {
       setScanning(false);
     }
   };
 
-  if (error) return <div className="text-red-600">{error}</div>;
-  if (!data) return <div>Loading overview...</div>;
+  if (!data && !error) return <div>Loading overview...</div>;
+
+  const overview = data || EMPTY_OVERVIEW;
 
   return (
     <div>
@@ -56,14 +77,15 @@ export default function PatchOverview() {
           {scanning ? 'Queueing…' : 'Scan All Devices'}
         </button>
       </div>
+      {error ? <PatchLoadError message={error} onRetry={load} /> : null}
       {scanMsg ? <p className="mb-4 text-sm text-slate-600">{scanMsg}</p> : null}
 
       <div className="mb-8 grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-5">
-        <Card title="Patch-Managed Devices" value={data.patchManagedDevices ?? 0} hint={`of ${data.totalDevices} Windows`} />
-        <Card title="Apps Patched Today" value={data.patchedToday ?? 0} />
-        <Card title="Apps Outdated" value={data.appsOutdated ?? 0} />
-        <Card title="Failed (7 days)" value={data.failedLast7Days ?? 0} />
-        <Card title="Patch Compliance" value={`${data.compliance ?? 0}%`} />
+        <Card title="Patch-Managed Devices" value={overview.patchManagedDevices ?? 0} hint={`of ${overview.totalDevices} Windows`} />
+        <Card title="Apps Patched Today" value={overview.patchedToday ?? 0} />
+        <Card title="Apps Outdated" value={overview.appsOutdated ?? 0} />
+        <Card title="Failed (7 days)" value={overview.failedLast7Days ?? 0} />
+        <Card title="Patch Compliance" value={`${overview.compliance ?? 0}%`} />
       </div>
 
       <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
@@ -73,11 +95,11 @@ export default function PatchOverview() {
             <div
               className="flex h-28 w-28 items-center justify-center rounded-full text-xl font-bold"
               style={{
-                background: `conic-gradient(#16a34a ${(data.compliance || 0) * 3.6}deg, #e2e8f0 0)`,
+                background: `conic-gradient(#16a34a ${(overview.compliance || 0) * 3.6}deg, #e2e8f0 0)`,
               }}
             >
               <div className="flex h-20 w-20 items-center justify-center rounded-full bg-white">
-                {data.compliance}%
+                {overview.compliance}%
               </div>
             </div>
             <p className="text-sm text-slate-600">
@@ -89,8 +111,8 @@ export default function PatchOverview() {
         <div className="rounded-xl border bg-white p-5 shadow-sm">
           <h2 className="mb-3 font-semibold">Recent Activity</h2>
           <div className="max-h-72 space-y-2 overflow-auto">
-            {data.recentActivity?.length ? (
-              data.recentActivity.map((item) => (
+            {overview.recentActivity?.length ? (
+              overview.recentActivity.map((item) => (
                 <div key={item.id} className="border-b pb-2 text-sm">
                   <div className="font-medium">
                     {item.device_name} — {item.name}

@@ -1,5 +1,6 @@
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { api } from '../../lib/api';
+import { fetchPatch, patchErrorMessage, PatchLoadError } from './patchApi';
 
 export default function PoliciesView() {
   const [devices, setDevices] = useState([]);
@@ -7,20 +8,43 @@ export default function PoliciesView() {
   const [policies, setPolicies] = useState([]);
   const [manifests, setManifests] = useState([]);
   const [error, setError] = useState('');
+  const [loading, setLoading] = useState(true);
 
-  useEffect(() => {
-    Promise.all([api('/api/patch/devices'), api('/api/patch/manifests')])
-      .then(([d, m]) => {
-        setDevices(d.devices);
-        setManifests(m.manifests);
-        if (d.devices[0]) setDeviceId(d.devices[0].id);
-      })
-      .catch((e) => setError(e.message));
+  const loadInitial = useCallback(async () => {
+    setLoading(true);
+    setError('');
+    try {
+      const [d, m] = await Promise.all([
+        fetchPatch('/api/patch/devices', { label: 'GET /api/patch/devices', fallback: { devices: [] } }),
+        fetchPatch('/api/patch/manifests', { label: 'GET /api/patch/manifests', fallback: { manifests: [] } }),
+      ]);
+      const deviceList = Array.isArray(d?.devices) ? d.devices : [];
+      const manifestList = Array.isArray(m?.manifests) ? m.manifests : [];
+      setDevices(deviceList);
+      setManifests(manifestList);
+      if (deviceList[0]?.id) setDeviceId(deviceList[0].id);
+    } catch (err) {
+      setDevices([]);
+      setManifests([]);
+      setError(patchErrorMessage(err, 'Failed to load policies.'));
+    } finally {
+      setLoading(false);
+    }
   }, []);
 
   useEffect(() => {
-    if (!deviceId || !manifests.length) return;
-    api(`/api/patch/devices/${deviceId}`)
+    loadInitial();
+  }, [loadInitial]);
+
+  useEffect(() => {
+    if (!deviceId || !manifests.length) {
+      setPolicies([]);
+      return;
+    }
+    fetchPatch(`/api/patch/devices/${encodeURIComponent(deviceId)}`, {
+      label: 'GET /api/patch/devices/:id',
+      fallback: { policies: [], apps: [] },
+    })
       .then((res) => {
         const existing = Object.fromEntries((res.policies || []).map((p) => [p.label, p]));
         setPolicies(
@@ -29,87 +53,112 @@ export default function PoliciesView() {
             name: m.name,
             policy: existing[m.label]?.policy || 'automatic',
             disableBuiltinUpdater: existing[m.label]?.disable_builtin_updater || false,
-          }))
+          })),
         );
       })
-      .catch((e) => setError(e.message));
+      .catch((err) => {
+        console.error('[Patch Manager] load device policies failed', err);
+        setError(patchErrorMessage(err, 'Failed to load device policies.'));
+      });
   }, [deviceId, manifests]);
 
   const save = async () => {
-    await api(`/api/patch/devices/${deviceId}/policies`, {
-      method: 'PATCH',
-      body: {
-        policies: policies.map((p) => ({
-          label: p.label,
-          policy: p.policy,
-          disableBuiltinUpdater: p.disableBuiltinUpdater,
-        })),
-      },
-    });
-    alert('Policies saved');
+    if (!deviceId) return;
+    try {
+      await api(`/api/patch/devices/${encodeURIComponent(deviceId)}/policies`, {
+        method: 'PATCH',
+        body: {
+          policies: policies.map((p) => ({
+            label: p.label,
+            policy: p.policy,
+            disableBuiltinUpdater: p.disableBuiltinUpdater,
+          })),
+        },
+      });
+      setError('');
+      alert('Policies saved');
+    } catch (err) {
+      console.error('[Patch Manager] save policies failed', err);
+      setError(patchErrorMessage(err, 'Failed to save policies.'));
+    }
   };
-
-  if (error) return <div className="text-red-600">{error}</div>;
 
   return (
     <div>
-      <h1 className="text-2xl font-bold mb-6">Patch Policies</h1>
+      <h1 className="mb-6 text-2xl font-bold">Patch Policies</h1>
+      {error ? <PatchLoadError message={error} onRetry={loadInitial} /> : null}
+      {loading ? <p className="mb-4 text-sm text-slate-500">Loading…</p> : null}
       <div className="mb-4">
-        <select className="border rounded px-3 py-2" value={deviceId} onChange={(e) => setDeviceId(e.target.value)}>
+        <select
+          className="rounded border px-3 py-2"
+          value={deviceId}
+          onChange={(e) => setDeviceId(e.target.value)}
+          disabled={!devices.length}
+        >
           {devices.map((d) => (
-            <option key={d.id} value={d.id}>{d.name}</option>
+            <option key={d.id} value={d.id}>
+              {d.name}
+            </option>
           ))}
         </select>
       </div>
 
-      <div className="rounded-xl border bg-white shadow-sm overflow-auto">
-        <table className="w-full text-sm">
-          <thead className="bg-slate-50 border-b">
-            <tr>
-              {['App', 'Policy', 'Disable Built-in Updater'].map((h) => (
-                <th key={h} className="text-left px-4 py-3 font-semibold text-slate-600">{h}</th>
-              ))}
-            </tr>
-          </thead>
-          <tbody>
-            {policies.map((p, idx) => (
-              <tr key={p.label} className="border-b">
-                <td className="px-4 py-3">{p.name}</td>
-                <td className="px-4 py-3">
-                  <select
-                    className="border rounded px-2 py-1"
-                    value={p.policy}
-                    onChange={(e) => {
-                      const next = [...policies];
-                      next[idx] = { ...p, policy: e.target.value };
-                      setPolicies(next);
-                    }}
-                  >
-                    <option value="automatic">Automatic</option>
-                    <option value="locked">Locked</option>
-                    <option value="ignored">Ignored</option>
-                  </select>
-                </td>
-                <td className="px-4 py-3">
-                  <input
-                    type="checkbox"
-                    checked={p.disableBuiltinUpdater}
-                    onChange={(e) => {
-                      const next = [...policies];
-                      next[idx] = { ...p, disableBuiltinUpdater: e.target.checked };
-                      setPolicies(next);
-                    }}
-                  />
-                </td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      </div>
+      {!devices.length && !loading ? (
+        <p className="text-sm text-slate-500">No Windows devices available for policy assignment.</p>
+      ) : (
+        <>
+          <div className="overflow-auto rounded-xl border bg-white shadow-sm">
+            <table className="w-full text-sm">
+              <thead className="border-b bg-slate-50">
+                <tr>
+                  {['App', 'Policy', 'Disable Built-in Updater'].map((h) => (
+                    <th key={h} className="px-4 py-3 text-left font-semibold text-slate-600">
+                      {h}
+                    </th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody>
+                {policies.map((p, idx) => (
+                  <tr key={p.label} className="border-b">
+                    <td className="px-4 py-3">{p.name}</td>
+                    <td className="px-4 py-3">
+                      <select
+                        className="rounded border px-2 py-1"
+                        value={p.policy}
+                        onChange={(e) => {
+                          const next = [...policies];
+                          next[idx] = { ...p, policy: e.target.value };
+                          setPolicies(next);
+                        }}
+                      >
+                        <option value="automatic">Automatic</option>
+                        <option value="locked">Locked</option>
+                        <option value="ignored">Ignored</option>
+                      </select>
+                    </td>
+                    <td className="px-4 py-3">
+                      <input
+                        type="checkbox"
+                        checked={p.disableBuiltinUpdater}
+                        onChange={(e) => {
+                          const next = [...policies];
+                          next[idx] = { ...p, disableBuiltinUpdater: e.target.checked };
+                          setPolicies(next);
+                        }}
+                      />
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
 
-      <button className="mt-4 px-4 py-2 rounded bg-blue-600 text-white" onClick={save}>
-        Save Policies
-      </button>
+          <button type="button" className="mt-4 rounded bg-blue-600 px-4 py-2 text-white" onClick={save} disabled={!deviceId}>
+            Save Policies
+          </button>
+        </>
+      )}
     </div>
   );
 }

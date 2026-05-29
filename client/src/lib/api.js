@@ -80,6 +80,7 @@ export function statusColor(status) {
   if (status === 'current' || status === 'healthy') return 'bg-green-100 text-green-800';
   if (status === 'outdated') return 'bg-amber-100 text-amber-800';
   if (status === 'failed') return 'bg-red-100 text-red-800';
+  if (status === 'unknown') return 'bg-slate-100 text-slate-700';
   return 'bg-slate-100 text-slate-700';
 }
 

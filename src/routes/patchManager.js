@@ -8,6 +8,57 @@ const { checkTrialStatus } = require('../middleware/trial');
 
 const router = express.Router();
 
+let patchSchemaReadyCache = null;
+
+async function isPatchSchemaReady() {
+  if (patchSchemaReadyCache !== null) return patchSchemaReadyCache;
+  try {
+    patchSchemaReadyCache =
+      (await db.schema.hasTable('patch_device_apps')) &&
+      (await db.schema.hasTable('patch_results')) &&
+      (await db.schema.hasTable('patch_policies')) &&
+      (await db.schema.hasTable('manifest_catalog'));
+  } catch (err) {
+    console.error('[patch] schema check failed:', err.message);
+    patchSchemaReadyCache = false;
+  }
+  return patchSchemaReadyCache;
+}
+
+function windowsDevicesQuery(orgId) {
+  return db('devices')
+    .where({ org_id: orgId })
+    .where((q) => {
+      q.where('os', 'windows').orWhere('os', 'like', '%Windows%');
+    });
+}
+
+function emptyOverviewPayload() {
+  return {
+    totalDevices: 0,
+    patchManagedDevices: 0,
+    patchedToday: 0,
+    appsOutdated: 0,
+    failedToday: 0,
+    failedLast7Days: 0,
+    compliance: 100,
+    recentActivity: [],
+  };
+}
+
+function parseBlockingProcesses(value) {
+  if (Array.isArray(value)) return value;
+  if (typeof value === 'string' && value.trim()) {
+    try {
+      const parsed = JSON.parse(value);
+      return Array.isArray(parsed) ? parsed : [];
+    } catch {
+      return [];
+    }
+  }
+  return [];
+}
+
 function rowToManifest(row) {
   return {
     label: row.label,
@@ -18,9 +69,19 @@ function rowToManifest(row) {
     expectedPublisher: row.expected_publisher,
     versionKey: row.version_key,
     registryPath: row.registry_path,
-    blockingProcesses: row.blocking_processes || [],
+    blockingProcesses: parseBlockingProcesses(row.blocking_processes),
     appNewVersion: row.app_new_version,
   };
+}
+
+async function safePatchAppsForDevice(deviceId) {
+  if (!(await isPatchSchemaReady())) return [];
+  try {
+    return await db('patch_device_apps').where({ device_id: deviceId });
+  } catch (err) {
+    console.error('[patch] patch_device_apps query failed:', err.message);
+    return [];
+  }
 }
 
 async function requirePatchDeviceToken(req, res, next) {
@@ -50,6 +111,9 @@ async function resolveOrgIdFromToken(token) {
 }
 
 async function seedManifestCatalogIfEmpty() {
+  const hasCatalog = await db.schema.hasTable('manifest_catalog');
+  if (!hasCatalog) return;
+
   const count = await db('manifest_catalog').count('label as count').first();
   if (Number(count?.count || 0) > 0) return;
 
@@ -273,19 +337,29 @@ router.post('/agent/report', requirePatchDeviceToken, async (req, res, next) => 
 
 router.use(requireAuth, checkTrialStatus);
 
-router.get('/overview', async (req, res, next) => {
+router.get('/overview', async (req, res) => {
   try {
+    if (!(await isPatchSchemaReady())) {
+      console.warn('[patch] overview: patch tables missing, returning empty payload');
+      return res.json(emptyOverviewPayload());
+    }
+
     const orgId = req.user.orgId;
-    const deviceRows = await db('devices')
-      .where({ org_id: orgId })
-      .where((q) => {
-        q.where('os', 'windows').orWhere('os', 'like', '%Windows%');
-      });
+    const deviceRows = await windowsDevicesQuery(orgId);
     const deviceIds = deviceRows.map((d) => d.id);
-    const hasPatchInstalledCol = await db.schema.hasColumn('devices', 'patch_agent_installed');
-    const patchManagedDevices = hasPatchInstalledCol
-      ? deviceRows.filter((d) => d.patch_agent_installed || d.patch_agent_token).length
-      : deviceRows.filter((d) => d.patch_agent_token).length;
+    let hasPatchInstalledCol = false;
+    let hasPatchTokenCol = false;
+    try {
+      hasPatchInstalledCol = await db.schema.hasColumn('devices', 'patch_agent_installed');
+      hasPatchTokenCol = await db.schema.hasColumn('devices', 'patch_agent_token');
+    } catch {
+      /* ignore */
+    }
+    const patchManagedDevices = deviceRows.filter((d) => {
+      if (hasPatchInstalledCol && d.patch_agent_installed) return true;
+      if (hasPatchTokenCol && d.patch_agent_token) return true;
+      return false;
+    }).length;
 
     const today = new Date();
     today.setHours(0, 0, 0, 0);
@@ -362,12 +436,17 @@ router.get('/overview', async (req, res, next) => {
       recentActivity: recent,
     });
   } catch (err) {
-    next(err);
+    console.error('[patch] GET /overview error:', err.message);
+    return res.json(emptyOverviewPayload());
   }
 });
 
-router.get('/history', async (req, res, next) => {
+router.get('/history', async (req, res) => {
   try {
+    if (!(await isPatchSchemaReady())) {
+      return res.json({ history: [] });
+    }
+
     const orgId = req.user.orgId;
     let query = db('patch_results as pr')
       .join('devices as d', 'pr.device_id', 'd.id')
@@ -384,19 +463,19 @@ router.get('/history', async (req, res, next) => {
     const history = await query.limit(500);
     res.json({ history });
   } catch (err) {
-    next(err);
+    console.error('[patch] GET /history error:', err.message);
+    return res.json({ history: [] });
   }
 });
 
-router.get('/devices', async (req, res, next) => {
+router.get('/devices', async (req, res) => {
   try {
-    const devices = await db('devices')
-      .where({ org_id: req.user.orgId, os: 'windows' })
-      .orderBy('name');
+    const devices = await windowsDevicesQuery(req.user.orgId).orderBy('name');
+    const schemaReady = await isPatchSchemaReady();
 
     const enriched = await Promise.all(
       devices.map(async (device) => {
-        const apps = await db('patch_device_apps').where({ device_id: device.id });
+        const apps = schemaReady ? await safePatchAppsForDevice(device.id) : [];
         const patched = apps.filter((a) => a.status === 'current').length;
         const outdated = apps.filter((a) => a.status === 'outdated').length;
         const failed = apps.filter((a) => a.status === 'failed').length;
@@ -410,21 +489,49 @@ router.get('/devices', async (req, res, next) => {
           name: device.name,
           osVersion: device.os_version,
           lastSeen: device.last_seen,
-          ipAddress: null,
+          ipAddress: device.ip_address || null,
           appsPatched: patched,
           appsOutdated: outdated,
           status,
         };
-      })
+      }),
     );
 
     res.json({ devices: enriched });
   } catch (err) {
-    next(err);
+    console.error('[patch] GET /devices error:', err.message);
+    return res.json({ devices: [] });
   }
 });
 
-router.get('/devices/:id/apps', async (req, res, next) => {
+router.get('/policies', async (_req, res) => {
+  try {
+    if (!(await isPatchSchemaReady())) {
+      return res.json({ policies: [] });
+    }
+    const policies = await db('patch_policies').select('*').limit(500);
+    return res.json({ policies });
+  } catch (err) {
+    console.error('[patch] GET /policies error:', err.message);
+    return res.json({ policies: [] });
+  }
+});
+
+router.get('/catalog', async (_req, res) => {
+  try {
+    if (!(await isPatchSchemaReady())) {
+      return res.json({ apps: [], manifests: [] });
+    }
+    const rows = await db('manifest_catalog').select('*').orderBy('name');
+    const manifests = rows.map(rowToManifest);
+    return res.json({ apps: manifests, manifests });
+  } catch (err) {
+    console.error('[patch] GET /catalog error:', err.message);
+    return res.json({ apps: [], manifests: [] });
+  }
+});
+
+router.get('/devices/:id/apps', async (req, res) => {
   try {
     const device = await db('devices')
       .where({ id: req.params.id, org_id: req.user.orgId })
@@ -434,9 +541,8 @@ router.get('/devices/:id/apps', async (req, res, next) => {
       return res.status(404).json({ error: 'Device not found' });
     }
 
-    const apps = await db('patch_device_apps')
-      .where({ device_id: device.id })
-      .orderBy('name');
+    const apps = await safePatchAppsForDevice(device.id);
+    apps.sort((a, b) => String(a.name || '').localeCompare(String(b.name || '')));
 
     res.json({
       apps,
@@ -445,7 +551,8 @@ router.get('/devices/:id/apps', async (req, res, next) => {
       patchAgentToken: device.patch_agent_token || null,
     });
   } catch (err) {
-    next(err);
+    console.error('[patch] GET /devices/:id/apps error:', err.message);
+    return res.json({ apps: [], patchAgentInstalled: false, patchAgentVersion: null, patchAgentToken: null });
   }
 });
 
@@ -608,7 +715,7 @@ router.post('/devices/:id/apps/:label/action', async (req, res, next) => {
   }
 });
 
-router.get('/devices/:id', async (req, res, next) => {
+router.get('/devices/:id', async (req, res) => {
   try {
     const device = await db('devices')
       .where({ id: req.params.id, org_id: req.user.orgId })
@@ -618,18 +725,24 @@ router.get('/devices/:id', async (req, res, next) => {
       return res.status(404).json({ error: 'Device not found' });
     }
 
-    const apps = await db('patch_device_apps')
-      .where({ device_id: device.id })
-      .orderBy('name');
+    const schemaReady = await isPatchSchemaReady();
+    let apps = [];
+    let history = [];
+    let policies = [];
 
-    const history = await db('patch_results')
-      .where({ device_id: device.id })
-      .orderBy('timestamp', 'desc')
-      .limit(100);
-
-    const policies = await db('patch_policies')
-      .where({ device_id: device.id })
-      .orderBy('label');
+    if (schemaReady) {
+      apps = await safePatchAppsForDevice(device.id);
+      apps.sort((a, b) => String(a.name || '').localeCompare(String(b.name || '')));
+      try {
+        history = await db('patch_results')
+          .where({ device_id: device.id })
+          .orderBy('timestamp', 'desc')
+          .limit(100);
+        policies = await db('patch_policies').where({ device_id: device.id }).orderBy('label');
+      } catch (innerErr) {
+        console.error('[patch] GET /devices/:id partial error:', innerErr.message);
+      }
+    }
 
     res.json({
       device: {
@@ -643,7 +756,13 @@ router.get('/devices/:id', async (req, res, next) => {
       policies,
     });
   } catch (err) {
-    next(err);
+    console.error('[patch] GET /devices/:id error:', err.message);
+    return res.json({
+      device: { id: req.params.id, name: 'Device', osVersion: null, lastSeen: null },
+      apps: [],
+      history: [],
+      policies: [],
+    });
   }
 });
 
@@ -685,21 +804,31 @@ router.patch('/devices/:id/policies', async (req, res, next) => {
   }
 });
 
-router.get('/manifests', async (_req, res, next) => {
+router.get('/manifests', async (_req, res) => {
   try {
+    if (!(await isPatchSchemaReady())) {
+      return res.json({ manifests: [], apps: [] });
+    }
     const rows = await db('manifest_catalog').select('*').orderBy('name');
     const manifests = await Promise.all(
       rows.map(async (row) => {
-        const count = await db('patch_device_apps')
-          .where({ label: row.label })
-          .count('id as count')
-          .first();
-        return { ...rowToManifest(row), deviceCount: Number(count?.count || 0) };
-      })
+        let deviceCount = 0;
+        try {
+          const count = await db('patch_device_apps')
+            .where({ label: row.label })
+            .count('id as count')
+            .first();
+          deviceCount = Number(count?.count || 0);
+        } catch {
+          deviceCount = 0;
+        }
+        return { ...rowToManifest(row), deviceCount };
+      }),
     );
-    res.json({ manifests });
+    res.json({ manifests, apps: manifests });
   } catch (err) {
-    next(err);
+    console.error('[patch] GET /manifests error:', err.message);
+    return res.json({ manifests: [], apps: [] });
   }
 });
 

@@ -229,12 +229,16 @@ router.get('/devices/:id/apps', requireAuth, async (req, res) => {
       .first();
     if (!device) return res.status(404).json({ error: 'Device not found' });
 
+    const hasTable = await db.schema.hasTable('sm_device_apps');
+    if (!hasTable) return res.json([]);
+
     const apps = await db('sm_device_apps')
       .where({ device_id: req.params.id })
       .orderBy('app_name');
     return res.json(apps);
   } catch (err) {
-    return res.status(500).json({ error: err.message });
+    console.error('[integrations] device apps failed:', err?.message);
+    return res.json([]);
   }
 });
 

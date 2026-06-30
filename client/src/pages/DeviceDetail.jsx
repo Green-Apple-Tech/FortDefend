@@ -174,20 +174,39 @@ export default function DeviceDetail() {
   const [maintenanceState, setMaintenanceState] = useState(null);
 
   const loadBase = async () => {
-    const timeoutMs = 5000;
+    const timeoutMs = 8000;
     const withTimeout = (promise) =>
       Promise.race([
         promise,
         new Promise((_, reject) => setTimeout(() => reject(new Error('Request timed out')), timeoutMs)),
       ]);
-    console.log('Fetching device:', deviceId);
+
+    async function fetchDeviceDetail() {
+      try {
+        return await withTimeout(api(`/api/devices/${encodeURIComponent(deviceId)}`));
+      } catch (primaryErr) {
+        const fallback = await withTimeout(
+          api(`/api/integrations/devices/${encodeURIComponent(deviceId)}`),
+        ).catch(() => null);
+        if (fallback) {
+          return {
+            device: fallback.device || fallback,
+            scanResults: [],
+            alerts: [],
+          };
+        }
+        throw primaryErr;
+      }
+    }
+
     const [detail, appsRes, histRes, cmdRes] = await Promise.all([
-      withTimeout(api(`/api/devices/${encodeURIComponent(deviceId)}`)),
+      fetchDeviceDetail(),
       withTimeout(api(`/api/integrations/devices/${encodeURIComponent(deviceId)}/apps`)).catch(() => []),
       withTimeout(api(`/api/devices/${encodeURIComponent(deviceId)}/script-history`)).catch(() => ({ history: [] })),
       withTimeout(api(`/api/devices/${encodeURIComponent(deviceId)}/command-results?limit=30`)).catch(() => ({ results: [] })),
     ]);
     const resolvedDevice = detail?.device || detail || null;
+    if (!resolvedDevice) throw new Error('Device not found.');
     setDevice(resolvedDevice);
     setAlerts(Array.isArray(detail?.alerts) ? detail.alerts : []);
     setScanResults(Array.isArray(detail?.scanResults) ? detail.scanResults : []);

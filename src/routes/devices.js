@@ -5,6 +5,19 @@ const { requireAuth } = require('../middleware/auth');
 const { checkTrialStatus } = require('../middleware/trial');
 const { getCapacityWarning } = require('../middleware/planEnforcement');
 
+function sanitizeForJson(value) {
+  try {
+    return JSON.parse(JSON.stringify(value));
+  } catch {
+    if (!value || typeof value !== 'object') return value;
+    return {
+      ...value,
+      check_results: null,
+      maintenance_state: null,
+    };
+  }
+}
+
 router.use(requireAuth, checkTrialStatus);
 
 // GET /api/devices — list all devices for org
@@ -119,7 +132,22 @@ router.get('/:id/script-history', async (req, res, next) => {
       .first();
     if (!device) return res.status(404).json({ error: 'Device not found.' });
 
+    const hasCommands = await db.schema.hasTable('sm_commands');
+    if (!hasCommands) return res.json({ history: [] });
+
     const { decodeCommandPayload, formatCommandOutput, LEGACY_SCRIPT_WINGET_PREFIX } = require('../utils/commandPayload');
+    const hasPayload = await db.schema.hasColumn('sm_commands', 'command_payload');
+    const cols = [
+      'id',
+      'status',
+      'output',
+      'error_message',
+      'created_at',
+      'updated_at',
+      'completed_at',
+      'winget_id',
+    ];
+    if (hasPayload) cols.push('command_payload');
 
     const history = await db('sm_commands')
       .where({ org_id: req.user.orgId, device_id: device.id })
@@ -130,7 +158,7 @@ router.get('/:id/script-history', async (req, res, next) => {
       })
       .orderBy('created_at', 'desc')
       .limit(100)
-      .select('id', 'status', 'command_payload', 'output', 'error_message', 'created_at', 'updated_at', 'completed_at', 'winget_id');
+      .select(cols);
 
     res.json({
       history: history.map((row) => {
@@ -143,7 +171,8 @@ router.get('/:id/script-history', async (req, res, next) => {
       }),
     });
   } catch (err) {
-    next(err);
+    console.error('[devices] script-history failed:', err?.message);
+    res.json({ history: [] });
   }
 });
 
@@ -204,8 +233,15 @@ router.get('/:id', async (req, res, next) => {
       console.error('[devices] failed loading alerts:', err?.message);
     }
 
-    res.json({ device, scanResults, alerts });
-  } catch (err) { next(err); }
+    res.json({
+      device: sanitizeForJson(device),
+      scanResults: sanitizeForJson(scanResults),
+      alerts: sanitizeForJson(alerts),
+    });
+  } catch (err) {
+    console.error('[devices] GET /:id failed:', err?.message);
+    next(err);
+  }
 });
 
 // PATCH /api/devices/:id — update device display name

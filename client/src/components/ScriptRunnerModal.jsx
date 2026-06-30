@@ -24,7 +24,10 @@ export default function ScriptRunnerModal({ open, onClose, selectedDevices = [],
     setError('');
     setResults([]);
     try {
-      const endpoint = isQuick ? '/api/scripts/quick/run' : `/api/scripts/${encodeURIComponent(scriptId)}/run`;
+      // Always queue via quick/run for library selections so built-in script IDs
+      // (e.g. builtin:update-agent) never have to travel in the URL path.
+      const useQuickRun = isQuick || Boolean(selectedScript);
+      const endpoint = useQuickRun ? '/api/scripts/quick/run' : `/api/scripts/${encodeURIComponent(scriptId)}/run`;
       const body = {
         deviceIds: selectedDevices.map((d) => d.id),
       };
@@ -32,6 +35,11 @@ export default function ScriptRunnerModal({ open, onClose, selectedDevices = [],
         body.scriptName = quickName;
         body.scriptType = quickType;
         body.scriptContent = quickContent;
+      } else if (selectedScript) {
+        body.scriptName = selectedScript.name;
+        body.scriptType = selectedScript.script_type;
+        body.scriptContent = selectedScript.content;
+        body.scriptId = selectedScript.id;
       }
       const res = await api(endpoint, { method: 'POST', body });
       const commandIds = (res.commands || []).map((c) => c.id);
@@ -40,7 +48,7 @@ export default function ScriptRunnerModal({ open, onClose, selectedDevices = [],
         return;
       }
       const poll = async () => {
-        const runId = isQuick ? 'quick' : scriptId;
+        const runId = useQuickRun ? 'quick' : scriptId;
         const hist = await api(`/api/scripts/${encodeURIComponent(runId)}/history?commandIds=${encodeURIComponent(commandIds.join(','))}`);
         const next = Array.isArray(hist.history) ? hist.history : [];
         setResults(next);

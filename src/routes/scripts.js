@@ -169,9 +169,11 @@ async function queueScriptRun(req, res, next, scriptIdParam) {
 
     const quickContent = req.body?.scriptContent == null ? null : String(req.body.scriptContent);
     const quickType = req.body?.scriptType == null ? null : String(req.body.scriptType).toLowerCase();
+    const quickScriptId = req.body?.scriptId == null ? null : String(req.body.scriptId).trim();
     const content = quickContent != null ? quickContent : script?.content;
     const scriptType = quickType || script?.script_type;
     const scriptName = (req.body?.scriptName && String(req.body.scriptName).trim()) || script?.name || 'Quick script';
+    const resolvedScriptId = quickScriptId || script?.id || null;
     if (!String(content || '').trim()) return res.status(400).json({ error: 'script content is required.' });
     if (!String(scriptType || '').trim()) return res.status(400).json({ error: 'script type is required.' });
 
@@ -187,16 +189,25 @@ async function queueScriptRun(req, res, next, scriptIdParam) {
       return res.status(400).json({ error: 'Scripts can only be queued to Windows PCs.' });
     }
 
+    const hasCommands = await db.schema.hasTable('sm_commands');
+    if (!hasCommands) {
+      return res.status(500).json({ error: 'Command queue is not available on this server yet.' });
+    }
+
+    const wingetKey = resolvedScriptId
+      ? `script:${String(resolvedScriptId).replace(/:/g, '-')}`
+      : 'script:quick';
+
     const now = new Date();
     const rows = orgDevices.map((device) => ({
       org_id: req.user.orgId,
       device_id: device.id,
-      winget_id: script ? `script:${script.id}` : 'script:quick',
+      winget_id: wingetKey,
       command_type: 'run_script',
       status: 'pending',
       initiated_by: req.user.id || null,
       command_payload: {
-        scriptId: script?.id || null,
+        scriptId: resolvedScriptId,
         scriptName,
         scriptType,
         scriptContent: content,
@@ -212,13 +223,19 @@ async function queueScriptRun(req, res, next, scriptIdParam) {
         .returning(['id', 'device_id', 'status', 'created_at']);
     } catch (err) {
       const msg = String(err?.message || '');
+      console.error('[scripts] queue run failed:', msg);
       if (msg.includes('sm_commands_command_type_enum') || msg.includes('run_script')) {
         return res.status(500).json({
           error:
             'Script commands are not enabled in this database yet. Run migrations to add run_script support.',
         });
       }
-      throw err;
+      if (msg.includes('command_payload')) {
+        return res.status(500).json({
+          error: 'Script command payload storage is not available yet. Run database migrations.',
+        });
+      }
+      return res.status(500).json({ error: 'Failed to queue script command. Please try again.' });
     }
 
     if (script && !isBuiltin) {

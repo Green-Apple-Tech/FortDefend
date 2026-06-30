@@ -10,9 +10,12 @@ const db = knex({
     connectionString: process.env.DATABASE_URL,
     ssl: process.env.NODE_ENV === 'production' ? { rejectUnauthorized: false } : false,
     keepAlive: true,
+    connectionTimeoutMillis: 10000,
+    query_timeout: 15000,
+    statement_timeout: 15000,
   },
   pool: {
-    min: 2,
+    min: 0,
     max: 10,
     // Fail fast instead of hanging ~30s when the DB is unreachable.
     acquireTimeoutMillis: 10000,

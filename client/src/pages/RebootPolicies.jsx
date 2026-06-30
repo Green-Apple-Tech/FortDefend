@@ -159,7 +159,6 @@ export default function RebootPolicies() {
                   <option value="all">All devices</option>
                   <option value="specific">Specific devices (multi-select)</option>
                   <option value="windows">By OS: Windows only</option>
-                  <option value="chromeos">By OS: ChromeOS only</option>
                 </select>
               </div>
             )}

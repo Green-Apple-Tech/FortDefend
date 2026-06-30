@@ -49,35 +49,12 @@ function parseNmapXml(xml) {
         mac: macMatch?.[1] || null,
         vendor: vendorMatch?.[1] || null,
         hostname: hostnameMatch?.[1] || null,
-        isAndroidLikely: isLikelyAndroid(vendorMatch?.[1], hostnameMatch?.[1]),
-        isChromebookLikely: isLikelyChromebook(vendorMatch?.[1], hostnameMatch?.[1]),
         discoveredAt: new Date().toISOString(),
       });
     }
   }
 
   return { hosts, nmapAvailable: true };
-}
-
-// Vendor fingerprinting for Android and Chromebook detection
-function isLikelyAndroid(vendor, hostname) {
-  if (!vendor && !hostname) return false;
-  const combined = `${vendor || ''} ${hostname || ''}`.toLowerCase();
-  return combined.includes('samsung') ||
-    combined.includes('google') ||
-    combined.includes('xiaomi') ||
-    combined.includes('oneplus') ||
-    combined.includes('motorola') ||
-    combined.includes('lg mobile') ||
-    combined.includes('android');
-}
-
-function isLikelyChromebook(vendor, hostname) {
-  if (!vendor && !hostname) return false;
-  const combined = `${vendor || ''} ${hostname || ''}`.toLowerCase();
-  return combined.includes('chromebook') ||
-    combined.includes('chrome') ||
-    (combined.includes('google') && !combined.includes('pixel'));
 }
 
 // ── Shadow device detection ───────────────────────────────────────────────────
@@ -110,8 +87,6 @@ async function detectShadowDevices(orgId, scannedHosts, enrolledDevices) {
         mac_address: shadow.mac,
         vendor: shadow.vendor,
         hostname: shadow.hostname,
-        is_android_likely: shadow.isAndroidLikely,
-        is_chromebook_likely: shadow.isChromebookLikely,
         first_seen: new Date(),
         last_seen: new Date(),
         resolved: false,
@@ -127,9 +102,6 @@ async function detectShadowDevices(orgId, scannedHosts, enrolledDevices) {
 
 function analyzeEnrollmentGaps(scannedHosts, enrolledDevices) {
   const totalDiscovered = scannedHosts.length;
-  const likelyManaged = scannedHosts.filter(h =>
-    h.isAndroidLikely || h.isChromebookLikely
-  ).length;
   const enrolledCount = enrolledDevices.length;
   const shadowCount = scannedHosts.filter(h => {
     const enrolled = enrolledDevices.find(
@@ -140,7 +112,7 @@ function analyzeEnrollmentGaps(scannedHosts, enrolledDevices) {
 
   return {
     totalDiscovered,
-    likelyManaged,
+    likelyManaged: 0,
     enrolledCount,
     shadowCount,
     enrollmentRate: totalDiscovered > 0

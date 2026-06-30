@@ -39,7 +39,7 @@ class OsUpdateMonitor extends BaseAgent {
   async think(data) {
     return askDecisions(this, {
       instruction:
-        'You are OS Update Monitor. Assess Windows Update / ChromeOS version / AUE risk. Decisions: deviceId, risk (low|medium|high), action (alert|schedule_update_suggestion|ignore), message, rationale, aueDate if known.',
+        'You are OS Update Monitor. Assess Windows Update and reboot risk for Windows PCs. Decisions: deviceId, risk (low|medium|high), action (alert|schedule_update_suggestion|ignore), message, rationale.',
       data,
     });
   }

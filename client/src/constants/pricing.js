@@ -5,8 +5,8 @@ export const PLANS = [
     price: 4,
     period: 'mo',
     devices: 5,
-    description: 'Individuals and small families securing a handful of devices.',
-    features: ['Up to 5 devices', 'Patch intelligence', 'Email alerts', 'Community support'],
+    description: 'Individuals and small teams patching a handful of Windows PCs.',
+    features: ['Up to 5 Windows PCs', 'Patch intelligence', 'Email alerts', 'Community support'],
   },
   {
     id: 'starter',
@@ -14,8 +14,8 @@ export const PLANS = [
     price: 12,
     period: 'mo',
     devices: 50,
-    description: 'Growing teams that need visibility across laptops and Chromebooks.',
-    features: ['Up to 50 devices', 'Priority patch queue', 'Slack / Teams hooks', 'Standard support'],
+    description: 'Growing teams that need Windows patching and endpoint visibility.',
+    features: ['Up to 50 Windows PCs', 'Priority patch queue', 'Slack / Teams hooks', 'Standard support'],
   },
   {
     id: 'growth',
@@ -23,8 +23,8 @@ export const PLANS = [
     price: 20,
     period: 'mo',
     devices: 100,
-    description: 'Mid-size orgs with compliance goals and automation.',
-    features: ['Up to 100 devices', 'AI security agents', 'Compliance packs', 'Chat support'],
+    description: 'Mid-size orgs with patch compliance goals and automation.',
+    features: ['Up to 100 Windows PCs', 'Smart maintenance agents', 'Compliance packs', 'Chat support'],
   },
   {
     id: 'scale',
@@ -32,8 +32,8 @@ export const PLANS = [
     price: 50,
     period: 'mo',
     devices: 1000,
-    description: 'Districts and enterprises operating at large scale.',
-    features: ['Up to 1,000 devices', 'Dedicated success', 'SSO-ready', '99.9% SLA target'],
+    description: 'MSPs and enterprises operating Windows fleets at scale.',
+    features: ['Up to 1,000 Windows PCs', 'Dedicated success', 'SSO-ready', '99.9% SLA target'],
   },
 ];
 

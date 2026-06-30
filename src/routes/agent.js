@@ -119,9 +119,6 @@ function normalizeOsName(value, fallback = 'Microsoft Windows') {
   if (!raw) return fallback;
   const lower = raw.toLowerCase();
   if (lower === 'windows') return 'Microsoft Windows';
-  if (lower === 'android') return 'Android';
-  if (lower === 'ios') return 'iOS';
-  if (lower === 'chromeos' || lower === 'chrome os') return 'ChromeOS';
   return raw;
 }
 
@@ -314,13 +311,17 @@ function buildOneClickInstallerScript({ baseUrl, orgId, groupId, groupName }) {
   if (groupId) qs.set('group', groupId);
   const selfUrl = `${b}/api/agent/installer?${qs.toString()}`;
   const downloadUrl = `${b}/api/agent/download`;
+  const patchScriptUrl = `${b}/api/agent/download/agent.ps1`;
+  const manifestUrl = `${b}/api/agent/download/manifests.json`;
   const cfg = {
     orgToken: orgId,
     groupId: groupId || '',
     groupName: groupName || 'General',
     serverUrl: b,
+    apiUrl: b,
     heartbeatInterval: 30,
-    version: '1.0.2',
+    patchIntervalHours: 24,
+    version: getAgentPackageVersion(),
   };
   const configJson = JSON.stringify(cfg, null, 2);
   const escSingle = (s) => String(s).replace(/'/g, "''");
@@ -342,8 +343,12 @@ if (-not (Test-IsAdministrator)) {
 }
 
 $DownloadUrl = '${escSingle(downloadUrl)}'
+$PatchScriptUrl = '${escSingle(patchScriptUrl)}'
+$ManifestUrl = '${escSingle(manifestUrl)}'
 $InstallDir = 'C:\\ProgramData\\FortDefend'
 $AgentPath = Join-Path $InstallDir 'FortDefendAgent.exe'
+$PatchScriptPath = Join-Path $InstallDir 'FortDefendAgent.ps1'
+$ManifestPath = Join-Path $InstallDir 'manifests.json'
 $ConfigPath = Join-Path $InstallDir 'config.json'
 $LogDir = Join-Path $InstallDir 'logs'
 
@@ -354,6 +359,12 @@ Write-Host 'FortDefend: downloading FortDefendAgent.exe…' -ForegroundColor Cya
 Invoke-WebRequest -Uri $DownloadUrl -OutFile $AgentPath -UseBasicParsing
 if (-not (Test-Path $AgentPath)) { throw 'Download failed: FortDefendAgent.exe not found' }
 
+Write-Host 'FortDefend: downloading patch engine…' -ForegroundColor Cyan
+Invoke-WebRequest -Uri $PatchScriptUrl -OutFile $PatchScriptPath -UseBasicParsing
+Invoke-WebRequest -Uri $ManifestUrl -OutFile $ManifestPath -UseBasicParsing
+if (-not (Test-Path $PatchScriptPath)) { throw 'Download failed: FortDefendAgent.ps1 not found' }
+if (-not (Test-Path $ManifestPath)) { throw 'Download failed: manifests.json not found' }
+
 $ConfigJson = @'
 ${configJson}
 '@
@@ -361,7 +372,9 @@ ${configJson}
 Write-Host 'FortDefend: wrote config.json' -ForegroundColor Cyan
 
 $TaskName = 'FortDefend Agent'
+$LegacyPatchTaskName = 'FortDefend Patch Agent'
 Unregister-ScheduledTask -TaskName $TaskName -Confirm:$false -ErrorAction SilentlyContinue
+Unregister-ScheduledTask -TaskName $LegacyPatchTaskName -Confirm:$false -ErrorAction SilentlyContinue
 $action = New-ScheduledTaskAction -Execute $AgentPath -WorkingDirectory $InstallDir
 $trBoot = New-ScheduledTaskTrigger -AtStartup
 $trRep = New-ScheduledTaskTrigger -Once -At (Get-Date) -RepetitionInterval (New-TimeSpan -Minutes 15) -RepetitionDuration (New-TimeSpan -Days 3650)
@@ -587,8 +600,15 @@ router.get('/bootstrap.ps1', async (req, res) => {
       baseUrl = `${req.protocol}://${req.get('host')}`;
     }
     res.setHeader('Content-Type', 'text/plain; charset=utf-8');
-    res.setHeader('Content-Disposition', 'inline; filename="fortdefend-patch-bootstrap.ps1"');
-    return res.send(buildPatchBootstrapScript({ baseUrl, orgToken }));
+    res.setHeader('Content-Disposition', 'inline; filename="fortdefend-windows-bootstrap.ps1"');
+    return res.send(
+      buildOneClickInstallerScript({
+        baseUrl,
+        orgId: orgToken,
+        groupId: '',
+        groupName: 'General',
+      }),
+    );
   } catch (err) {
     console.error('bootstrap.ps1 error:', err);
     res.setHeader('Content-Type', 'text/plain; charset=utf-8');
@@ -821,10 +841,44 @@ router.post('/heartbeat', async (req, res) => {
       trackPatchAgent = false;
     }
     if (trackPatchAgent) {
-      if (!existing) {
+      if (payload.patchAgentInstalled === true || telemetry.patchAgentInstalled === true) {
+        updateFields.patch_agent_installed = true;
+      } else if (!existing) {
         updateFields.patch_agent_installed = false;
       } else if (existing.patch_agent_installed == null) {
         updateFields.patch_agent_installed = false;
+      }
+    }
+    try {
+      if (
+        (payload.patchAgentVersion || telemetry.patchAgentVersion)
+        && (await db.schema.hasColumn('devices', 'patch_agent_version'))
+      ) {
+        updateFields.patch_agent_version = String(payload.patchAgentVersion || telemetry.patchAgentVersion);
+      }
+    } catch {
+      /* patch_agent_version is optional on older schemas */
+    }
+    const optionalStatusFields = {
+      patch_status: payload.patchStatus,
+      patch_last_scan_at: payload.patchLastScanAt ? new Date(payload.patchLastScanAt) : null,
+      patch_last_error: payload.patchLastError,
+      patch_last_action: payload.patchLastAction,
+      patch_blocked_reason: payload.patchBlockedReason,
+      os_update_status: payload.osUpdateStatus,
+      os_update_last_scan_at: payload.osUpdateLastScanAt ? new Date(payload.osUpdateLastScanAt) : null,
+      os_update_available_count:
+        payload.osUpdateAvailableCount == null ? null : toNum(payload.osUpdateAvailableCount, null),
+      os_update_last_error: payload.osUpdateLastError,
+      maintenance_state: payload.maintenanceState || null,
+    };
+    for (const [column, value] of Object.entries(optionalStatusFields)) {
+      try {
+        if (value !== undefined && (await db.schema.hasColumn('devices', column))) {
+          updateFields[column] = value;
+        }
+      } catch {
+        /* optional status columns may not exist until migration 040 */
       }
     }
 
@@ -1136,7 +1190,7 @@ router.post('/heartbeat', async (req, res) => {
           device_id: deviceId,
           status: 'pending',
         })
-        .whereIn('command_type', ['run_script'])
+        .whereIn('command_type', ['run_script', 'patch_scan', 'os_update'])
         .orderBy('created_at', 'asc')
         .select('id', 'command_type', 'command_payload', 'created_at');
     } catch (err) {

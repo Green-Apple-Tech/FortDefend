@@ -425,7 +425,7 @@ New-Item -ItemType Directory -Force -Path $DownloadDir, $LogDir | Out-Null
 Add-Type -AssemblyName System.Windows.Forms
 
 $config = Get-Config
-$script:ApiUrl = if ($ApiUrl) { $ApiUrl } else { $config.apiUrl }
+$script:ApiUrl = if ($ApiUrl) { $ApiUrl } elseif ($config.apiUrl) { $config.apiUrl } else { $config.serverUrl }
 $script:DeviceToken = if ($DeviceToken) { $DeviceToken } else { $config.deviceToken }
 
 Ensure-PatchRegistration

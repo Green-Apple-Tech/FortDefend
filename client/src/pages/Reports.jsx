@@ -12,7 +12,7 @@ const severity = [{ k: 'Critical', c: 'bg-red-100 text-red-700' }, { k: 'Warning
 const devices = [
   { name: 'Front Desk PC', health: 90, status: 'Healthy', last: '2 hours ago' },
   { name: 'Warehouse Laptop', health: 62, status: 'Needs Attention', last: '5 hours ago' },
-  { name: 'Owner Chromebook', health: 38, status: 'Critical', last: '1 day ago' },
+  { name: 'Owner Laptop', health: 38, status: 'Critical', last: '1 day ago' },
 ];
 
 export default function Reports() {

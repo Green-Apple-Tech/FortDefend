@@ -20,8 +20,13 @@ const AGENT_EXE_PATH = `${AGENT_INSTALL_DIR}\\FortDefendAgent.exe`;
 const AGENT_NEW_EXE_PATH = `${AGENT_INSTALL_DIR}\\FortDefendAgent_new.exe`;
 const AGENT_UPDATER_PS1_PATH = `${AGENT_INSTALL_DIR}\\updater.ps1`;
 const AGENT_TASK_NAME = 'FortDefend Agent';
-const AGENT_VERSION = '1.0.2';
+const AGENT_VERSION = '1.0.3';
 const AGENT_UPDATE_BASE_URL = 'https://app.fortdefend.com';
+const PATCH_AGENT_PS1_PATH = `${AGENT_INSTALL_DIR}\\FortDefendAgent.ps1`;
+const PATCH_MANIFEST_PATH = `${AGENT_INSTALL_DIR}\\manifests.json`;
+const PATCH_SCAN_STATE_PATH = `${AGENT_INSTALL_DIR}\\patch-scan-state.json`;
+const OS_UPDATE_STATE_PATH = `${AGENT_INSTALL_DIR}\\os-update-state.json`;
+const PATCH_SCAN_INTERVAL_MS = 24 * 60 * 60 * 1000;
 const REG_TOKEN_PATH = 'HKLM\\SOFTWARE\\FortDefend';
 const REG_ORG_KEY = 'OrgToken';
 const REG_TOKEN_KEY_LEGACY = 'Token';
@@ -34,6 +39,7 @@ const DEFER_FILE = 'C:\\ProgramData\\FortDefend\\defer-state.json';
 let warnedNoToken = false;
 let scheduleTimer = null;
 let lastFullInventoryAt = 0;
+let patchRunInProgress = false;
 const MIN_HEARTBEAT_MS = 30 * 1000;
 const FULL_INVENTORY_MS = 15 * 60 * 1000;
 
@@ -79,7 +85,10 @@ function getExeConfigPath() {
 function normalizeFileConfig(obj) {
   if (!obj || !obj.orgToken) return null;
   const su =
-    (obj.serverUrl && String(obj.serverUrl).trim()) || process.env.APP_URL || 'http://localhost:3000';
+    (obj.serverUrl && String(obj.serverUrl).trim()) ||
+    (obj.apiUrl && String(obj.apiUrl).trim()) ||
+    process.env.APP_URL ||
+    'http://localhost:3000';
   const hi = obj.heartbeatInterval;
   const intervalSec = Number.isFinite(Number(hi)) && Number(hi) > 0 ? Number(hi) : 900;
   return {
@@ -89,6 +98,10 @@ function normalizeFileConfig(obj) {
     heartbeatInterval: intervalSec,
     groupName: obj.groupName != null ? String(obj.groupName) : '',
     version: obj.version != null ? String(obj.version) : '1.0.0',
+    patchIntervalHours:
+      Number.isFinite(Number(obj.patchIntervalHours)) && Number(obj.patchIntervalHours) > 0
+        ? Number(obj.patchIntervalHours)
+        : 24,
   };
 }
 
@@ -305,6 +318,327 @@ function runScriptByType(scriptType, scriptContent) {
     });
   }
   throw new Error(`Unsupported scriptType for Windows agent: ${type}`);
+}
+
+async function downloadTextFile(url, targetPath) {
+  const res = await fetchImpl(url, { method: 'GET' });
+  if (!res.ok) {
+    throw new Error(`download failed ${url} (${res.status})`);
+  }
+  const text = await res.text();
+  if (!text.trim()) {
+    throw new Error(`download returned empty file: ${url}`);
+  }
+  fs.mkdirSync(path.dirname(targetPath), { recursive: true });
+  fs.writeFileSync(targetPath, text, 'utf8');
+}
+
+async function ensurePatchEngineAssets(creds) {
+  const base = String(creds?.appUrl || '').replace(/\/$/, '');
+  if (!base) throw new Error('missing app URL for patch engine');
+  const needsScript = !fs.existsSync(PATCH_AGENT_PS1_PATH);
+  const needsManifest = !fs.existsSync(PATCH_MANIFEST_PATH);
+  if (needsScript) {
+    safeLog('patch: downloading FortDefendAgent.ps1');
+    await downloadTextFile(`${base}/api/agent/download/agent.ps1`, PATCH_AGENT_PS1_PATH);
+  }
+  if (needsManifest) {
+    safeLog('patch: downloading manifests.json');
+    await downloadTextFile(`${base}/api/agent/download/manifests.json`, PATCH_MANIFEST_PATH);
+  }
+}
+
+function readPatchScanState() {
+  try {
+    if (!fs.existsSync(PATCH_SCAN_STATE_PATH)) return {};
+    return JSON.parse(fs.readFileSync(PATCH_SCAN_STATE_PATH, 'utf8')) || {};
+  } catch {
+    return {};
+  }
+}
+
+function writePatchScanState(state) {
+  try {
+    fs.mkdirSync(path.dirname(PATCH_SCAN_STATE_PATH), { recursive: true });
+    fs.writeFileSync(PATCH_SCAN_STATE_PATH, JSON.stringify(state || {}), 'utf8');
+  } catch {}
+}
+
+function readJsonState(filePath) {
+  try {
+    if (!fs.existsSync(filePath)) return {};
+    return JSON.parse(fs.readFileSync(filePath, 'utf8')) || {};
+  } catch {
+    return {};
+  }
+}
+
+function writeJsonState(filePath, state) {
+  try {
+    fs.mkdirSync(path.dirname(filePath), { recursive: true });
+    fs.writeFileSync(filePath, JSON.stringify(state || {}), 'utf8');
+  } catch {}
+}
+
+function getMaintenanceSnapshot() {
+  const openApps = runJson("(Get-Process | Where-Object {$_.MainWindowTitle -ne ''} | Select-Object ProcessName,MainWindowTitle | ConvertTo-Json -Depth 4 -Compress)");
+  const unsaved = runJson("(Get-Process | Where-Object {$_.MainWindowTitle -match '\\*'} | Select-Object ProcessName,MainWindowTitle | ConvertTo-Json -Depth 4 -Compress)");
+  const session = runJson("$u = query user 2>$null; $lines=@(); if($u){$lines = $u | Select-Object -Skip 1}; $active = $false; $idle = 999; foreach($l in $lines){ if($l -match 'Active'){ $active=$true }; if($l -match '\\s(\\d+|none|\\.)\\s+\\d{1,2}/'){ $v=$matches[1]; if($v -eq 'none' -or $v -eq '.'){ $idle=0 } elseif([int]$v -lt $idle){ $idle=[int]$v } } }; [pscustomobject]@{activeUserSession=$active;idleTimeMinutes=$idle} | ConvertTo-Json -Compress");
+  const unsavedArr = Array.isArray(unsaved) ? unsaved : (unsaved ? [unsaved] : []);
+  const openArr = Array.isArray(openApps) ? openApps : (openApps ? [openApps] : []);
+  return {
+    activeUserSession: !!session?.activeUserSession,
+    idleTimeMinutes: Number.isFinite(Number(session?.idleTimeMinutes)) ? Number(session.idleTimeMinutes) : null,
+    anyUnsavedChanges: unsavedArr.length > 0,
+    unsavedWindows: unsavedArr.slice(0, 20),
+    openApplications: openArr.slice(0, 50),
+  };
+}
+
+function closeProcesses(processNames = []) {
+  const names = processNames.map((p) => String(p || '').trim()).filter(Boolean);
+  if (!names.length) return;
+  const quoted = names.map((n) => `'${n.replace(/'/g, "''")}'`).join(',');
+  run(`$names=@(${quoted}); foreach($n in $names){ Get-Process -Name $n -ErrorAction SilentlyContinue | Stop-Process -Force -ErrorAction SilentlyContinue }`);
+}
+
+function prepareForMaintenance(payload = {}) {
+  const policy = payload.prePatchPolicy || payload.maintenancePolicy || {};
+  const snapshot = getMaintenanceSnapshot();
+  const action = String(policy.action || payload.blockingProcessAction || 'prompt_user').toLowerCase();
+  const allowWhenUnsaved = policy.allowWhenUnsaved === true;
+  const closeApps = Array.isArray(policy.closeProcesses) ? policy.closeProcesses : [];
+
+  if (snapshot.anyUnsavedChanges && !allowWhenUnsaved) {
+    const reason = `Unsaved changes detected in ${snapshot.unsavedWindows.length} window(s).`;
+    safeLog(`maintenance: deferred - ${reason}`);
+    if (action === 'kill') {
+      closeProcesses(closeApps);
+      return { proceed: true, snapshot, reason: 'Closed configured blocking processes.' };
+    }
+    showToast('FortDefend needs to patch this PC, but unsaved work was detected. Please save your work and retry.');
+    return { proceed: false, snapshot, reason };
+  }
+
+  if (closeApps.length > 0) {
+    closeProcesses(closeApps);
+  }
+  return { proceed: true, snapshot, reason: closeApps.length ? 'Closed configured blocking processes.' : null };
+}
+
+function shouldRunScheduledPatchScan(creds) {
+  const state = readPatchScanState();
+  const last = state.lastScanAt ? new Date(state.lastScanAt).getTime() : 0;
+  const intervalHours =
+    Number.isFinite(Number(creds?.patchIntervalHours)) && Number(creds.patchIntervalHours) > 0
+      ? Number(creds.patchIntervalHours)
+      : 24;
+  const intervalMs = Math.max(1, intervalHours) * 60 * 60 * 1000;
+  return !last || Date.now() - last >= Math.max(intervalMs, PATCH_SCAN_INTERVAL_MS);
+}
+
+function patchArgsFromPayload(payload = {}) {
+  const args = ['-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', PATCH_AGENT_PS1_PATH];
+  const labels = Array.isArray(payload.labels)
+    ? payload.labels
+    : payload.label
+      ? [payload.label]
+      : [];
+  for (const label of labels) {
+    const value = String(label || '').trim();
+    if (value) args.push('-Label', value);
+  }
+  const installMode = String(payload.installMode || '').trim();
+  if (installMode) args.push('-InstallMode', installMode);
+  const blockingAction = String(payload.blockingProcessAction || 'prompt_user').trim();
+  if (blockingAction) args.push('-BlockingProcessAction', blockingAction);
+  const apiUrl = String(payload.apiUrl || '').trim();
+  if (apiUrl) args.push('-ApiUrl', apiUrl);
+  return args;
+}
+
+async function runPatchEngine(creds, payload = {}) {
+  if (patchRunInProgress) {
+    safeLog('patch: run skipped because another run is active');
+    return { status: 'success', stdout: 'Patch run already in progress.', stderr: '' };
+  }
+  patchRunInProgress = true;
+  try {
+    const maintenance = prepareForMaintenance(payload);
+    if (!maintenance.proceed) {
+      const state = {
+        status: 'deferred',
+        lastAction: payload.label ? `patch:${payload.label}` : 'patch:scan',
+        lastError: maintenance.reason,
+        blockedReason: maintenance.reason,
+        lastScanAt: new Date().toISOString(),
+        maintenance: maintenance.snapshot,
+      };
+      writePatchScanState(state);
+      return {
+        status: 'failed',
+        stdout: '',
+        stderr: maintenance.reason,
+        errorMessage: maintenance.reason,
+      };
+    }
+    writePatchScanState({
+      ...readPatchScanState(),
+      status: 'running',
+      lastAction: payload.label ? `patch:${payload.label}` : 'patch:scan',
+      lastError: null,
+      blockedReason: null,
+      startedAt: new Date().toISOString(),
+      maintenance: maintenance.snapshot,
+    });
+    await ensurePatchEngineAssets(creds);
+    const mergedPayload = { ...payload, apiUrl: creds.appUrl };
+    const args = patchArgsFromPayload(mergedPayload);
+    safeLog(`patch: starting ${args.join(' ')}`);
+    const stdout = execFileSync('powershell.exe', args, {
+      encoding: 'utf8',
+      windowsHide: true,
+      timeout: 60 * 60 * 1000,
+      maxBuffer: 20 * 1024 * 1024,
+    });
+    writePatchScanState({
+      status: 'success',
+      lastAction: payload.label ? `patch:${payload.label}` : 'patch:scan',
+      lastError: null,
+      blockedReason: null,
+      lastScanAt: new Date().toISOString(),
+      maintenance: maintenance.snapshot,
+    });
+    safeLog('patch: run completed');
+    return { status: 'success', stdout: stdout || '', stderr: '' };
+  } catch (err) {
+    safeLog(`patch: run failed: ${err.message}`);
+    writePatchScanState({
+      ...readPatchScanState(),
+      status: 'failed',
+      lastAction: payload.label ? `patch:${payload.label}` : 'patch:scan',
+      lastError: err.message,
+      lastScanAt: new Date().toISOString(),
+    });
+    return {
+      status: 'failed',
+      stdout: err.stdout ? String(err.stdout) : '',
+      stderr: err.stderr ? String(err.stderr) : '',
+      errorMessage: err.message,
+    };
+  } finally {
+    patchRunInProgress = false;
+  }
+}
+
+function scanWindowsUpdates() {
+  const script = `
+$ErrorActionPreference = 'Stop'
+$session = New-Object -ComObject Microsoft.Update.Session
+$searcher = $session.CreateUpdateSearcher()
+$result = $searcher.Search("IsInstalled=0 and Type='Software'")
+$updates = @()
+foreach ($u in $result.Updates) {
+  $updates += [pscustomobject]@{
+    title = $u.Title
+    kb = @($u.KBArticleIDs) -join ','
+    severity = $u.MsrcSeverity
+    rebootRequired = [bool]$u.RebootRequired
+  }
+}
+[pscustomobject]@{
+  count = $updates.Count
+  updates = $updates
+  scannedAt = (Get-Date).ToUniversalTime().ToString('o')
+} | ConvertTo-Json -Depth 5 -Compress
+`;
+  return runJson(script) || { count: 0, updates: [], scannedAt: new Date().toISOString() };
+}
+
+async function runWindowsUpdateAction(payload = {}) {
+  const action = String(payload.action || 'scan').toLowerCase();
+  try {
+    writeJsonState(OS_UPDATE_STATE_PATH, {
+      ...readJsonState(OS_UPDATE_STATE_PATH),
+      status: action === 'install' ? 'installing' : 'scanning',
+      lastError: null,
+      startedAt: new Date().toISOString(),
+    });
+
+    if (action === 'scan') {
+      const scan = scanWindowsUpdates();
+      writeJsonState(OS_UPDATE_STATE_PATH, {
+        status: 'success',
+        lastScanAt: scan.scannedAt || new Date().toISOString(),
+        availableCount: Number(scan.count || 0),
+        updates: Array.isArray(scan.updates) ? scan.updates.slice(0, 50) : [],
+        lastError: null,
+      });
+      return { status: 'success', stdout: JSON.stringify(scan, null, 2), stderr: '' };
+    }
+
+    if (action === 'install') {
+      const maintenance = prepareForMaintenance(payload);
+      if (!maintenance.proceed) {
+        writeJsonState(OS_UPDATE_STATE_PATH, {
+          status: 'deferred',
+          lastScanAt: new Date().toISOString(),
+          lastError: maintenance.reason,
+          maintenance: maintenance.snapshot,
+        });
+        return { status: 'failed', stdout: '', stderr: maintenance.reason, errorMessage: maintenance.reason };
+      }
+      const installScript = `
+$ErrorActionPreference = 'Stop'
+$session = New-Object -ComObject Microsoft.Update.Session
+$searcher = $session.CreateUpdateSearcher()
+$result = $searcher.Search("IsInstalled=0 and Type='Software'")
+if ($result.Updates.Count -eq 0) {
+  [pscustomobject]@{ installed = 0; rebootRequired = $false; message = 'No updates available'; completedAt = (Get-Date).ToUniversalTime().ToString('o') } | ConvertTo-Json -Compress
+  exit 0
+}
+$updates = New-Object -ComObject Microsoft.Update.UpdateColl
+foreach ($u in $result.Updates) { if (-not $u.EulaAccepted) { $u.AcceptEula() }; [void]$updates.Add($u) }
+$downloader = $session.CreateUpdateDownloader()
+$downloader.Updates = $updates
+[void]$downloader.Download()
+$installer = $session.CreateUpdateInstaller()
+$installer.Updates = $updates
+$installResult = $installer.Install()
+[pscustomobject]@{
+  installed = $updates.Count
+  resultCode = $installResult.ResultCode
+  rebootRequired = [bool]$installResult.RebootRequired
+  completedAt = (Get-Date).ToUniversalTime().ToString('o')
+} | ConvertTo-Json -Compress
+`;
+      const output = runJson(installScript) || {};
+      writeJsonState(OS_UPDATE_STATE_PATH, {
+        status: 'success',
+        lastScanAt: output.completedAt || new Date().toISOString(),
+        availableCount: 0,
+        lastInstall: output,
+        lastError: null,
+        maintenance: maintenance.snapshot,
+      });
+      return { status: 'success', stdout: JSON.stringify(output, null, 2), stderr: '' };
+    }
+
+    throw new Error(`Unsupported Windows Update action: ${action}`);
+  } catch (err) {
+    writeJsonState(OS_UPDATE_STATE_PATH, {
+      ...readJsonState(OS_UPDATE_STATE_PATH),
+      status: 'failed',
+      lastError: err.message,
+      lastScanAt: new Date().toISOString(),
+    });
+    return {
+      status: 'failed',
+      stdout: err.stdout ? String(err.stdout) : '',
+      stderr: err.stderr ? String(err.stderr) : '',
+      errorMessage: err.message,
+    };
+  }
 }
 
 function runJson(command) {
@@ -632,6 +966,8 @@ async function heartbeat() {
       timestamp: new Date().toISOString(),
       status: 'online',
       agentVersion: AGENT_VERSION,
+      patchAgentInstalled: fs.existsSync(PATCH_AGENT_PS1_PATH),
+      patchAgentVersion: AGENT_VERSION,
       hostname: os.hostname(),
       deviceName: os.hostname(),
     };
@@ -642,6 +978,8 @@ async function heartbeat() {
       full.timestamp = baseBody.timestamp;
       full.status = 'online';
       full.agentVersion = AGENT_VERSION;
+      full.patchAgentInstalled = fs.existsSync(PATCH_AGENT_PS1_PATH);
+      full.patchAgentVersion = AGENT_VERSION;
       full.hostname = baseBody.hostname;
       full.deviceName = baseBody.deviceName;
       full.osVersion = full.osVersion || os.release();
@@ -658,6 +996,23 @@ async function heartbeat() {
       body.groupId = creds.groupId;
       body.enrollmentGroupId = creds.groupId;
     }
+    const patchState = readPatchScanState();
+    const osUpdateState = readJsonState(OS_UPDATE_STATE_PATH);
+    body.patchStatus = patchState.status || null;
+    body.patchLastScanAt = patchState.lastScanAt || null;
+    body.patchLastError = patchState.lastError || null;
+    body.patchLastAction = patchState.lastAction || null;
+    body.patchBlockedReason = patchState.blockedReason || null;
+    body.osUpdateStatus = osUpdateState.status || null;
+    body.osUpdateLastScanAt = osUpdateState.lastScanAt || null;
+    body.osUpdateAvailableCount = Number.isFinite(Number(osUpdateState.availableCount))
+      ? Number(osUpdateState.availableCount)
+      : null;
+    body.osUpdateLastError = osUpdateState.lastError || null;
+    body.maintenanceState = {
+      patch: patchState.maintenance || null,
+      osUpdate: osUpdateState.maintenance || null,
+    };
     const res = await fetchImpl(`${creds.appUrl}/api/agent/heartbeat`, {
       method: 'POST',
       headers: buildHeartbeatHeaders(creds.token, creds.groupId),
@@ -673,6 +1028,22 @@ async function heartbeat() {
           const type = String(cmd.type || '').toLowerCase();
           if (type === 'reboot') {
             await handleRebootCommand(cmd);
+          } else if (type === 'patch_scan') {
+            await postCommandResult(creds, cmd.id, {
+              status: 'running',
+              stdout: '',
+              stderr: '',
+            });
+            const result = await runPatchEngine(creds, cmd.payload || {});
+            await postCommandResult(creds, cmd.id, result);
+          } else if (type === 'os_update') {
+            await postCommandResult(creds, cmd.id, {
+              status: 'running',
+              stdout: '',
+              stderr: '',
+            });
+            const result = await runWindowsUpdateAction(cmd.payload || {});
+            await postCommandResult(creds, cmd.id, result);
           } else if (type === 'run_script') {
             await postCommandResult(creds, cmd.id, {
               status: 'running',
@@ -700,6 +1071,15 @@ async function heartbeat() {
             });
           }
         }
+      }
+    }
+    if (shouldSendFull && shouldRunScheduledPatchScan(creds)) {
+      const result = await runPatchEngine(creds, {
+        installMode: 'auto',
+        blockingProcessAction: 'prompt_user',
+      });
+      if (result.status === 'failed') {
+        safeLog(`patch: scheduled scan failed: ${result.errorMessage || result.stderr || 'unknown error'}`);
       }
     }
   } catch (err) {

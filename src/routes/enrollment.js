@@ -1,5 +1,4 @@
 const express = require('express');
-const path = require('path');
 const router = express.Router();
 /** Mounted in server with app.use('/api', …) → GET /api/orgs/me/enrollment */
 const orgsMeApiRouter = express.Router();
@@ -57,7 +56,7 @@ function generateEnrollmentToken(orgId, deviceType, expiresInOrOpts = '30d') {
 
 // ═ Public routes (no user session) — must be registered before admin middleware ═
 
-// GET /api/enrollment/verify-token?token=... — for Chrome extension before saving (org UUID or enrollment JWT)
+// GET /api/enrollment/verify-token?token=... — validate Windows enrollment token
 router.get('/verify-token', async (req, res, next) => {
   try {
     const raw = String(req.query.token || '').trim();
@@ -71,7 +70,7 @@ router.get('/verify-token', async (req, res, next) => {
       if (org.subscription_status === 'canceled') {
         return res.status(402).json({ error: 'Subscription inactive.' });
       }
-      return res.json({ valid: true, orgName: org.name, orgId: org.id, deviceType: 'chromebook' });
+      return res.json({ valid: true, orgName: org.name, orgId: org.id, deviceType: 'windows' });
     }
     let decoded;
     try {
@@ -96,26 +95,12 @@ router.get('/verify-token', async (req, res, next) => {
       valid: true,
       orgName: org.name,
       orgId: org.id,
-      deviceType: decoded.deviceType || 'chromebook',
+      deviceType: 'windows',
       groupId: decoded.groupId,
     });
   } catch (err) {
     return next(err);
   }
-});
-
-// GET /api/enrollment/managed-schema — download managed policy schema for Google Admin
-router.get('/managed-schema', (req, res) => {
-  const file = path.join(__dirname, '../../chrome-extension/managed_schema.json');
-  res.setHeader('Content-Type', 'application/json; charset=utf-8');
-  res.setHeader('Content-Disposition', 'attachment; filename="managed_schema.json"');
-  return res.sendFile(file, (err) => {
-    if (err) {
-      if (!res.headersSent) {
-        return res.status(500).json({ error: 'Schema file not available on this server.' });
-      }
-    }
-  });
 });
 
 // GET /api/enrollment/validate/:token — validate enrollment token
@@ -168,7 +153,7 @@ router.post('/register', async (req, res, next) => {
       if (o.subscription_status === 'canceled') {
         return res.status(402).json({ error: 'Subscription inactive.' });
       }
-      payload = { orgId: o.id, type: 'enrollment', groupId: null, deviceType: deviceType || 'chromebook' };
+      payload = { orgId: o.id, type: 'enrollment', groupId: null, deviceType: 'windows' };
     } else {
       try {
         payload = jwt.verify(raw, getJwtSecret());
@@ -195,9 +180,9 @@ router.post('/register', async (req, res, next) => {
       });
     }
 
-    const declaredPlatform = String(platform || deviceType || '').trim().toLowerCase();
-    const normalizedPlatform = declaredPlatform || 'unknown';
-    const deviceSource = normalizedPlatform === 'android' ? 'android' : 'agent';
+    const declaredPlatform = String(platform || deviceType || 'windows').trim().toLowerCase();
+    const normalizedPlatform = declaredPlatform.includes('windows') ? 'windows' : 'windows';
+    const deviceSource = 'agent';
 
     const deviceId = uuidv4();
     const serial = serialNumber || deviceId;
@@ -246,7 +231,7 @@ router.post('/register', async (req, res, next) => {
       deviceToken,
       orgName: org.name,
       apiUrl: process.env.APP_URL,
-      checkInterval: normalizedPlatform === 'android' ? 360 : 240,
+      checkInterval: 900,
     });
   } catch (err) { next(err); }
 });
@@ -289,12 +274,10 @@ router.get('/install-script', async (req, res, next) => {
     const appUrl = (process.env.APP_URL || 'https://app.fortdefend.com').replace(/\/$/, '');
     const orgId = org || payload.orgId;
     const groupId = (group || payload.groupId) || null;
-    const downloadUrl = buildAgentDownloadUrl(appUrl, String(token), orgId, groupId);
-    const script = generateWindowsInstallScript({ appUrl, token, orgId, groupId, downloadUrl });
-
-    res.setHeader('Content-Type', 'text/plain');
-    res.setHeader('Content-Disposition', 'attachment; filename="fortdefend-install.ps1"');
-    res.send(script);
+    const params = new URLSearchParams();
+    params.set('org', orgId);
+    if (groupId) params.set('group', groupId);
+    return res.redirect(302, `${appUrl}/api/agent/installer?${params.toString()}`);
   } catch (err) { next(err); }
 });
 
@@ -412,18 +395,6 @@ router.get('/links', async (req, res, next) => {
     const baseUrl = process.env.APP_URL || 'https://app.fortdefend.com';
 
     const links = {
-      chromebook: {
-        type: 'chromebook',
-        url: `${baseUrl}/enroll?token=${generateEnrollmentToken(org.id, 'chromebook')}&type=chromebook`,
-        description: 'Send to users or deploy via Google Admin',
-        installMethod: 'Chrome extension auto-installs when user visits link',
-      },
-      android: {
-        type: 'android',
-        url: `${baseUrl}/enroll?token=${generateEnrollmentToken(org.id, 'android')}&type=android`,
-        description: 'Send via SMS, email, or QR code',
-        installMethod: 'Opens Play Store to FortDefend app with org pre-linked',
-      },
       windows: {
         type: 'windows',
         url: `${baseUrl}/enroll?token=${generateEnrollmentToken(org.id, 'windows')}&type=windows`,
@@ -431,10 +402,10 @@ router.get('/links', async (req, res, next) => {
         installMethod: 'Downloads and runs FortDefend agent installer',
       },
       universal: {
-        type: 'universal',
-        url: `${baseUrl}/enroll?token=${generateEnrollmentToken(org.id, 'universal')}&type=universal`,
-        description: 'One link for all device types — auto-detects platform',
-        installMethod: 'Detects device type and shows correct install method',
+        type: 'windows',
+        url: `${baseUrl}/enroll?token=${generateEnrollmentToken(org.id, 'windows')}&type=windows`,
+        description: 'Windows PC enrollment link',
+        installMethod: 'Downloads and runs the combined FortDefend Windows agent installer',
       },
     };
 
@@ -445,11 +416,11 @@ router.get('/links', async (req, res, next) => {
 // POST /api/enrollment/qr — generate QR code for enrollment
 router.post('/qr', async (req, res, next) => {
   try {
-    const { deviceType = 'universal', size = 300 } = req.body;
+    const { size = 300 } = req.body;
     const org = await db('orgs').where({ id: req.user.orgId }).first();
     const baseUrl = process.env.APP_URL || 'https://app.fortdefend.com';
-    const token = generateEnrollmentToken(org.id, deviceType);
-    const url = `${baseUrl}/enroll?token=${token}&type=${deviceType}`;
+    const token = generateEnrollmentToken(org.id, 'windows');
+    const url = `${baseUrl}/enroll?token=${token}&type=windows`;
 
     const qrDataUrl = await QRCode.toDataURL(url, {
       width: size,
@@ -460,7 +431,7 @@ router.post('/qr', async (req, res, next) => {
     res.json({
       qrDataUrl,
       url,
-      deviceType,
+      deviceType: 'windows',
       orgName: org.name,
       expiresIn: '30 days',
     });

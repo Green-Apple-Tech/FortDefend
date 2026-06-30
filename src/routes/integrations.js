@@ -16,21 +16,8 @@ router.get('/status', requireAuth, async (req, res) => {
     if (!row) {
       return res.json({
         intune: { enabled: false, configured: false },
-        google: { enabled: false, configured: false },
         updatedAt: null,
       });
-    }
-
-    const googleConfigured = !!(row.google_admin_email && row.google_service_account_enc);
-    let googleMobileDeviceCount = 0;
-    if (googleConfigured && row.google_enabled) {
-      try {
-        const mgr = new IntegrationManager(req.user.orgId);
-        const { devices } = await mgr.getAllDevices();
-        googleMobileDeviceCount = devices.filter((d) => d.source === 'google_mobile').length;
-      } catch (countErr) {
-        console.error('Integrations status mobile count error:', countErr);
-      }
     }
 
     res.json({
@@ -42,12 +29,6 @@ router.get('/status', requireAuth, async (req, res) => {
           row.intune_client_secret_enc
         ),
       },
-      google: {
-        enabled: !!row.google_enabled,
-        configured: googleConfigured,
-        mobileDeviceCount: googleMobileDeviceCount,
-      },
-      googleCustomerId: row.google_customer_id || null,
       updatedAt: row.updated_at,
     });
   } catch (err) {
@@ -90,59 +71,6 @@ router.post('/intune/connect', requireAuth, requireAdmin, async (req, res) => {
   } catch (err) {
     console.error('Intune connect error:', err);
     res.status(500).json({ error: 'Failed to save Intune credentials.' });
-  }
-});
-
-router.post('/google/connect', requireAuth, requireAdmin, async (req, res) => {
-  try {
-    const schema = z.object({
-      adminEmail: z.string().email(),
-      customerId: z.string().min(1).optional(),
-      serviceAccountJson: z.union([z.record(z.string(), z.any()), z.string()]),
-    });
-    const parsed = schema.safeParse(req.body);
-    if (!parsed.success) {
-      return res.status(400).json({ error: parsed.error.errors[0].message });
-    }
-
-    const { adminEmail, customerId, serviceAccountJson } = parsed.data;
-    const jsonStr =
-      typeof serviceAccountJson === 'string'
-        ? serviceAccountJson
-        : JSON.stringify(serviceAccountJson);
-
-    let parsedJson;
-    try {
-      parsedJson = JSON.parse(jsonStr);
-    } catch {
-      return res.status(400).json({ error: 'serviceAccountJson must be valid JSON.' });
-    }
-    if (!parsedJson.client_email || !parsedJson.private_key) {
-      return res.status(400).json({ error: 'Service account JSON must include client_email and private_key.' });
-    }
-
-    const enc = encrypt(jsonStr);
-    const cid = customerId || 'my_customer';
-
-    const existing = await db('org_integrations').where('org_id', req.user.orgId).first();
-    const payload = {
-      google_enabled: true,
-      google_admin_email: adminEmail.toLowerCase(),
-      google_customer_id: cid,
-      google_service_account_enc: enc,
-      updated_at: new Date(),
-    };
-
-    if (existing) {
-      await db('org_integrations').where('org_id', req.user.orgId).update(payload);
-    } else {
-      await db('org_integrations').insert({ org_id: req.user.orgId, ...payload });
-    }
-
-    res.json({ message: 'Google Admin connected.' });
-  } catch (err) {
-    console.error('Google connect error:', err);
-    res.status(500).json({ error: 'Failed to save Google credentials.' });
   }
 });
 
@@ -216,7 +144,7 @@ router.get('/devices', requireAuth, async (req, res) => {
       if (latest) await evaluateDeviceAlerts(db, { orgId: req.user.orgId, device: latest });
     }
     const agentDevices = await db('devices')
-      .whereIn('source', ['agent', 'android', 'extension', 'intune', 'google_admin', 'google_mobile'])
+      .whereIn('source', ['agent', 'intune'])
       .andWhere({ org_id: req.user.orgId });
 
     res.json({ devices: [...integrationDevices, ...agentDevices], errors });
@@ -242,7 +170,7 @@ router.post('/devices/:id/sync', requireAuth, requireAdmin, async (req, res) => 
   try {
     const { id } = req.params;
     const schema = z.object({
-      source: z.enum(['intune', 'google_admin']).optional(),
+      source: z.enum(['intune']).optional(),
     });
     const parsed = schema.safeParse(req.body || {});
     if (!parsed.success) {
@@ -260,7 +188,7 @@ router.post('/devices/:id/sync', requireAuth, requireAdmin, async (req, res) => 
       .first();
 
     if (device) {
-      if (!source && (device.source === 'intune' || device.source === 'google_admin')) {
+      if (!source && device.source === 'intune') {
         source = device.source;
       }
       externalId = device.external_id || null;
@@ -268,11 +196,11 @@ router.post('/devices/:id/sync', requireAuth, requireAdmin, async (req, res) => 
 
     if (!source) {
       return res.status(400).json({
-        error: 'Could not infer integration source. Pass { "source": "intune" | "google_admin" }.',
+        error: 'Could not infer integration source. Pass { "source": "intune" }.',
       });
     }
 
-    if (device && (source === 'intune' || source === 'google_admin') && !device.external_id) {
+    if (device && source === 'intune' && !device.external_id) {
       return res.status(400).json({ error: 'Device has no external_id for cloud sync.' });
     }
 
@@ -341,7 +269,7 @@ router.post('/devices/:id/reboot', requireAuth, requireAdmin, async (req, res) =
   try {
     const { id } = req.params;
     const schema = z.object({
-      source: z.enum(['intune', 'google_admin']).optional(),
+      source: z.enum(['intune']).optional(),
     });
     const parsed = schema.safeParse(req.body || {});
     if (!parsed.success) {
@@ -359,7 +287,7 @@ router.post('/devices/:id/reboot', requireAuth, requireAdmin, async (req, res) =
       .first();
 
     if (device) {
-      if (!source && (device.source === 'intune' || device.source === 'google_admin')) {
+      if (!source && device.source === 'intune') {
         source = device.source;
       }
       externalId = device.external_id || null;
@@ -432,24 +360,6 @@ router.delete('/intune', requireAuth, requireAdmin, async (req, res) => {
   } catch (err) {
     console.error('Intune disconnect error:', err);
     res.status(500).json({ error: 'Failed to disconnect Intune.' });
-  }
-});
-
-router.delete('/google', requireAuth, requireAdmin, async (req, res) => {
-  try {
-    await db('org_integrations')
-      .where('org_id', req.user.orgId)
-      .update({
-        google_enabled: false,
-        google_admin_email: null,
-        google_customer_id: null,
-        google_service_account_enc: null,
-        updated_at: new Date(),
-      });
-    res.json({ message: 'Google Admin disconnected.' });
-  } catch (err) {
-    console.error('Google disconnect error:', err);
-    res.status(500).json({ error: 'Failed to disconnect Google.' });
   }
 });
 

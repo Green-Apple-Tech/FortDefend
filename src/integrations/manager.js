@@ -1,7 +1,6 @@
 const db = require('../database');
 const { decrypt } = require('../lib/crypto');
 const intune = require('./intune');
-const googleAdmin = require('./google-admin');
 
 class IntegrationManager {
   constructor(orgId) {
@@ -26,17 +25,6 @@ class IntegrationManager {
     };
   }
 
-  _googleCreds() {
-    if (!this._row?.google_enabled) return null;
-    if (!this._row.google_admin_email || !this._row.google_service_account_enc) return null;
-    const json = decrypt(this._row.google_service_account_enc);
-    return {
-      serviceAccountJson: json,
-      adminEmail: this._row.google_admin_email,
-      customerId: this._row.google_customer_id || 'my_customer',
-    };
-  }
-
   async getAllDevices() {
     await this.loadConfig();
     const tasks = [];
@@ -48,31 +36,6 @@ class IntegrationManager {
           .getDevices(intuneCreds.tenantId, intuneCreds.clientId, intuneCreds.clientSecret)
           .then((devices) => ({ source: 'intune', devices }))
           .catch((err) => ({ source: 'intune', devices: [], error: err.message }))
-      );
-    }
-
-    const googleCreds = this._googleCreds();
-    if (googleCreds) {
-      tasks.push(
-        googleAdmin
-          .getChromebookDevices(
-            null,
-            googleCreds.serviceAccountJson,
-            googleCreds.adminEmail,
-            googleCreds.customerId
-          )
-          .then((devices) => ({ source: 'google_admin', devices }))
-          .catch((err) => ({ source: 'google_admin', devices: [], error: err.message }))
-      );
-      tasks.push(
-        googleAdmin
-          .getMobileDevices(
-            googleCreds.customerId,
-            googleCreds.serviceAccountJson,
-            googleCreds.adminEmail
-          )
-          .then((devices) => ({ source: 'google_mobile', devices }))
-          .catch((err) => ({ source: 'google_mobile', devices: [], error: err.message }))
       );
     }
 
@@ -95,7 +58,6 @@ class IntegrationManager {
     await this.loadConfig();
     const summary = {
       intune: { enabled: !!this._row?.intune_enabled, ok: false, message: null, deviceCount: null },
-      google: { enabled: !!this._row?.google_enabled, ok: false, message: null, deviceCount: null },
       checkedAt: new Date().toISOString(),
     };
 
@@ -116,24 +78,6 @@ class IntegrationManager {
       summary.intune.message = 'Intune is enabled but credentials are incomplete.';
     }
 
-    const googleCreds = this._googleCreds();
-    if (googleCreds) {
-      try {
-        const list = await googleAdmin.getChromebookDevices(
-          null,
-          googleCreds.serviceAccountJson,
-          googleCreds.adminEmail,
-          googleCreds.customerId
-        );
-        summary.google.ok = true;
-        summary.google.deviceCount = list.length;
-      } catch (e) {
-        summary.google.message = e.message;
-      }
-    } else if (this._row?.google_enabled) {
-      summary.google.message = 'Google is enabled but credentials are incomplete.';
-    }
-
     return summary;
   }
 
@@ -143,17 +87,6 @@ class IntegrationManager {
       const c = this._intuneCreds();
       if (!c) throw new Error('Intune is not configured.');
       return intune.syncDevice(deviceId, c.tenantId, c.clientId, c.clientSecret);
-    }
-    if (source === 'google_admin') {
-      const c = this._googleCreds();
-      if (!c) throw new Error('Google Admin is not configured.');
-      await googleAdmin.getChromebookDevice(
-        deviceId,
-        c.serviceAccountJson,
-        c.adminEmail,
-        c.customerId
-      );
-      return { ok: true, mode: 'refresh', source: 'google_admin' };
     }
     throw new Error(`Unknown integration source: ${source}`);
   }
@@ -170,7 +103,7 @@ class IntegrationManager {
 
   async testConnections() {
     await this.loadConfig();
-    const results = { intune: null, google: null, checkedAt: new Date().toISOString() };
+    const results = { intune: null, checkedAt: new Date().toISOString() };
 
     const ic = this._intuneCreds();
     if (ic) {
@@ -179,16 +112,6 @@ class IntegrationManager {
         results.intune = { ok: true };
       } catch (e) {
         results.intune = { ok: false, error: e.message };
-      }
-    }
-
-    const gc = this._googleCreds();
-    if (gc) {
-      try {
-        await googleAdmin.getAccessToken(gc.serviceAccountJson, gc.adminEmail);
-        results.google = { ok: true };
-      } catch (e) {
-        results.google = { ok: false, error: e.message };
       }
     }
 

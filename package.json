@@ -1,7 +1,7 @@
 {
   "name": "fortdefend",
   "version": "1.0.0",
-  "description": "PatchPilot - Windows/Chromebook Security SaaS",
+  "description": "FortDefend - Windows patch management SaaS",
   "main": "src/server.js",
   "scripts": {
     "start": "node src/server.js",
@@ -19,8 +19,6 @@
     "dotenv": "^16.4.5",
     "express": "^4.19.2",
     "express-rate-limit": "^7.5.1",
-    "firebase-admin": "^13.8.0",
-    "googleapis": "^171.4.0",
     "helmet": "^7.2.0",
     "isomorphic-fetch": "^3.0.0",
     "jsonwebtoken": "^9.0.2",

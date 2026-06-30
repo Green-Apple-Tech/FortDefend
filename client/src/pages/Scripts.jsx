@@ -6,26 +6,14 @@ import { SectionHeader, EmptyState } from '../components/fds';
 
 const PLATFORM_TYPES = {
   windows: ['powershell', 'cmd', 'python'],
-  mac: ['bash', 'zsh', 'python'],
-  chromebook: ['javascript'],
-  android: [],
-  linux: ['bash', 'python'],
 };
 
 const PLATFORM_LABEL = {
   windows: 'Windows',
-  mac: 'macOS',
-  chromebook: 'Chrome',
-  android: 'Android',
-  linux: 'Linux',
 };
 
 function platformIcon(p) {
-  if (p === 'windows') return '🪟';
-  if (p === 'mac') return '🍎';
-  if (p === 'chromebook') return '🌐';
-  if (p === 'android') return '🤖';
-  if (p === 'linux') return '🐧';
+  if (p === 'windows') return 'PC';
   return '◆';
 }
 

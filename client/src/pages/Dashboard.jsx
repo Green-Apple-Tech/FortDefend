@@ -237,7 +237,7 @@ export default function Dashboard() {
             <EmptyState
               icon="💻"
               title="No devices yet"
-              description="Connect Intune, Google Admin, or install the Windows agent."
+              description="Connect Intune or install the Windows agent."
               action={
                 <Link to="/install">
                   <Button>Get started</Button>

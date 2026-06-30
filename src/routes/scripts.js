@@ -7,10 +7,6 @@ router.use(requireAuth);
 
 const PLATFORM_SCRIPT_TYPES = {
   windows: ['powershell', 'cmd', 'python'],
-  mac: ['bash', 'zsh', 'python'],
-  chromebook: ['javascript'],
-  android: [],
-  linux: ['bash', 'python'],
 };
 
 function normalizePlatforms(platforms) {
@@ -168,12 +164,9 @@ async function queueScriptRun(req, res, next, scriptIdParam) {
     if (!orgDevices.length) {
       return res.status(400).json({ error: 'No valid devices found in your organization.' });
     }
-    const androidTargets = orgDevices.filter((d) => String(d.os || '').toLowerCase() === 'android');
-    if (androidTargets.length > 0) {
-      return res.status(400).json({
-        error:
-          'Android does not support arbitrary scripts. Use predefined safe Android actions only (clear cache, get device info, check Play Protect).',
-      });
+    const nonWindowsTargets = orgDevices.filter((d) => !String(d.os || '').toLowerCase().includes('windows'));
+    if (nonWindowsTargets.length > 0) {
+      return res.status(400).json({ error: 'Scripts can only be queued to Windows PCs.' });
     }
 
     const now = new Date();

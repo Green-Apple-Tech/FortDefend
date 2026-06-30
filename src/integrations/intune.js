@@ -161,8 +161,7 @@ function _normalizeDevice(d) {
   const osRaw = String(d.operatingSystem || '').toLowerCase();
   let normalizedOs = 'windows';
   if (osRaw.includes('ios')) normalizedOs = 'iOS';
-  if (osRaw.includes('ipad')) normalizedOs = 'iPadOS';
-  if (osRaw.includes('android')) normalizedOs = 'android';
+  if (!osRaw.includes('windows')) normalizedOs = os || 'Unknown';
 
   const base = {
     id: d.id,

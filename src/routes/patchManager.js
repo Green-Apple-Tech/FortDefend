@@ -549,6 +549,20 @@ router.get('/devices/:id/apps', async (req, res) => {
       patchAgentInstalled: Boolean(device.patch_agent_installed || device.patch_agent_token),
       patchAgentVersion: device.patch_agent_version || null,
       patchAgentToken: device.patch_agent_token || null,
+      patchStatus: {
+        status: device.patch_status || null,
+        lastScanAt: device.patch_last_scan_at || null,
+        lastError: device.patch_last_error || null,
+        lastAction: device.patch_last_action || null,
+        blockedReason: device.patch_blocked_reason || null,
+      },
+      osUpdateStatus: {
+        status: device.os_update_status || null,
+        lastScanAt: device.os_update_last_scan_at || null,
+        availableCount: device.os_update_available_count ?? null,
+        lastError: device.os_update_last_error || null,
+      },
+      maintenanceState: device.maintenance_state || null,
     });
   } catch (err) {
     console.error('[patch] GET /devices/:id/apps error:', err.message);
@@ -556,36 +570,51 @@ router.get('/devices/:id/apps', async (req, res) => {
   }
 });
 
-function buildPatchRunScript({ label = null, installMode = null } = {}) {
-  const patchScript = 'C:\\ProgramData\\FortDefend\\FortDefendAgent.ps1';
-  const args = [];
-  if (label) args.push(`-Label '${label.replace(/'/g, "''")}'`);
-  if (installMode) args.push(`-InstallMode '${installMode.replace(/'/g, "''")}'`);
-  const argLine = args.length ? ` ${args.join(' ')}` : '';
-  return [
-    `if (-not (Test-Path '${patchScript}')) { throw 'Patch agent not installed. Run the Install Patch Agent command first.' }`,
-    `& '${patchScript}'${argLine}`,
-  ].join('\n');
-}
-
 async function queuePatchAgentRun({ device, orgId, userId, label = null, installMode = null, scriptName = 'FortDefend Patch Scan' }) {
   const hasCommands = await db.schema.hasTable('sm_commands');
   if (!hasCommands) return null;
   const now = new Date();
-  const scriptContent = buildPatchRunScript({ label, installMode });
   const [row] = await db('sm_commands')
     .insert({
       org_id: orgId,
       device_id: device.id,
       winget_id: label ? `patch:${label}` : 'patch:scan',
-      command_type: 'run_script',
+      command_type: 'patch_scan',
       status: 'pending',
       initiated_by: userId || null,
       command_payload: {
-        scriptId: null,
         scriptName,
-        scriptType: 'powershell',
-        scriptContent,
+        label,
+        installMode: installMode || 'auto',
+        blockingProcessAction: 'prompt_user',
+      },
+      created_at: now,
+      updated_at: now,
+    })
+    .returning(['id', 'device_id', 'status', 'created_at']);
+  return row;
+}
+
+async function queueOsUpdateRun({ device, orgId, userId, action = 'scan', scriptName = 'FortDefend Windows Update' }) {
+  const hasCommands = await db.schema.hasTable('sm_commands');
+  if (!hasCommands) return null;
+  const now = new Date();
+  const [row] = await db('sm_commands')
+    .insert({
+      org_id: orgId,
+      device_id: device.id,
+      winget_id: `os_update:${action}`,
+      command_type: 'os_update',
+      status: 'pending',
+      initiated_by: userId || null,
+      command_payload: {
+        scriptName,
+        action,
+        prePatchPolicy: {
+          action: 'prompt_user',
+          allowWhenUnsaved: false,
+          closeProcesses: ['chrome', 'msedge', 'firefox', 'teams', 'zoom'],
+        },
       },
       created_at: now,
       updated_at: now,
@@ -653,6 +682,42 @@ router.post('/devices/:id/scan', async (req, res, next) => {
       message: queued
         ? 'Patch scan queued. The monitoring agent will run it on the next heartbeat.'
         : 'Patch scan requested. Run the patch agent locally if the device is offline.',
+    });
+  } catch (err) {
+    next(err);
+  }
+});
+
+router.post('/devices/:id/os-update', async (req, res, next) => {
+  try {
+    const device = await db('devices')
+      .where({ id: req.params.id, org_id: req.user.orgId })
+      .first();
+
+    if (!device) {
+      return res.status(404).json({ error: 'Device not found' });
+    }
+
+    const action = String(req.body?.action || 'scan').toLowerCase();
+    if (!['scan', 'install'].includes(action)) {
+      return res.status(400).json({ error: 'action must be scan or install' });
+    }
+
+    const queued = await queueOsUpdateRun({
+      device,
+      orgId: req.user.orgId,
+      userId: req.user.id,
+      action,
+      scriptName: action === 'install' ? 'Install Windows Updates' : 'Scan Windows Updates',
+    });
+
+    res.json({
+      ok: true,
+      queued: Boolean(queued),
+      commandId: queued?.id || null,
+      message: queued
+        ? `Windows Update ${action} queued. The agent will run it on the next heartbeat.`
+        : 'Windows Update command requested, but command queue is not available.',
     });
   } catch (err) {
     next(err);

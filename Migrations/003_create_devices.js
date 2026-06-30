@@ -4,10 +4,10 @@ exports.up = function(knex) {
     table.uuid('org_id').notNullable().references('id').inTable('orgs').onDelete('CASCADE');
     table.string('name').notNullable();
     table.string('serial').nullable();
-    table.string('os').nullable();                  // windows, chromeos, android
+    table.string('os').nullable();
     table.string('os_version').nullable();
     table.enum('source', ['intune', 'google_admin', 'agent', 'android']).notNullable();
-    table.string('external_id').nullable();         // ID from Intune or Google Admin
+    table.string('external_id').nullable();         // ID from Intune or FortDefend agent
     table.timestamp('last_seen').nullable();
     table.enum('status', ['online', 'offline', 'warning', 'alert']).defaultTo('offline');
     table.integer('security_score').nullable();     // 0-100

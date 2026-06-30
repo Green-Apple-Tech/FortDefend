@@ -53,7 +53,6 @@ const sections = [
     title: 'Integrations',
     endpoints: [
       { method: 'POST', path: '/api/integrations/intune/connect', description: 'Connect Microsoft Intune.' },
-      { method: 'POST', path: '/api/integrations/google/connect', description: 'Connect Google Admin.' },
       { method: 'GET', path: '/api/agent/download', description: 'Download the Windows agent.' },
     ],
   },

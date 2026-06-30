@@ -3,10 +3,10 @@ import { PLANS } from '../constants/pricing';
 import { Button } from '../components/ui';
 
 const rows = [
-  { label: 'Devices', values: ['5', '50', '100', '1,000'] },
+  { label: 'Windows PCs', values: ['5', '50', '100', '1,000'] },
   { label: 'Patch automation', values: ['Core', 'Priority queue', 'AI-assisted', 'AI + SLA track'] },
-  { label: 'AI security agents', values: ['—', 'Limited', 'Full', 'Full + priority tuning'] },
-  { label: 'Intune & Google Admin', values: ['✓', '✓', '✓', '✓'] },
+  { label: 'Smart maintenance agents', values: ['—', 'Limited', 'Full', 'Full + priority tuning'] },
+  { label: 'Optional Intune integration', values: ['✓', '✓', '✓', '✓'] },
   { label: 'Notifications', values: ['Email', 'Email + Slack/Teams', 'Email + Slack/Teams', 'Email + Slack/Teams'] },
   { label: 'Support', values: ['Community', 'Standard', 'In-app chat', 'Dedicated CSM'] },
 ];

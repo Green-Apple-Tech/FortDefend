@@ -33,9 +33,7 @@ router.get('/summary', async (req, res, next) => {
     const summary = {
       total: devices.length,
       byPlatform: {
-        chromebook: devices.filter(d => d.os === 'chromeos').length,
-        android: devices.filter(d => d.os === 'android').length,
-        windows: devices.filter(d => d.os === 'windows').length,
+        windows: devices.filter((d) => String(d.os || '').toLowerCase().includes('windows')).length,
       },
       byStatus: {
         online: devices.filter(d => d.status === 'online').length,

@@ -45,15 +45,6 @@ app.use('/api/agent/heartbeat', rateLimit({
   legacyHeaders: false,
 }));
 
-// Android heartbeat limit
-app.use('/api/android/heartbeat', rateLimit({
-  windowMs: 60 * 1000,
-  max: 10,
-  message: { error: 'Too many heartbeats' },
-  standardHeaders: true,
-  legacyHeaders: false,
-}));
-
 app.set('trust proxy', 1);
 
 // ── CORS ──────────────────────────────────────────────────────────────────────
@@ -97,13 +88,11 @@ app.use('/api',                 enrollmentModule.orgsMeApiRouter);
 app.use('/api/orgs',            require('./routes/orgs'));
 app.use('/api/billing',         require('./routes/billing'));
 app.use('/api/msp',             require('./routes/msp'));
-app.use('/api/android',         require('./routes/android'));
 app.use('/api/nmap',            require('./routes/nmap'));
 app.use('/api/integrations',    require('./routes/integrations'));
 app.use('/api/reports',         require('./routes/reports'));
 app.use('/api/alerts',          require('./routes/alerts'));
 app.use('/api/enrollment',      require('./routes/enrollment'));
-app.use('/api/extension',       require('./routes/chromebook-extension'));
 app.use('/api/devices',         require('./routes/devices'));
 app.use('/api/remediation',     require('./routes/remediation'));
 app.use('/api/agent',           require('./routes/agent'));
@@ -137,9 +126,6 @@ app.get('/download/fortdefend-agent.exe', (req, res) => {
   return res.download(p, 'fortdefend-agent.exe');
 });
 app.get('/download/fortdefend-setup.msi', (req, res) => downloadIfExists(res, 'fortdefend-setup.msi', 'fortdefend-setup.msi'));
-app.get('/download/fortdefend-extension.crx', (req, res) => downloadIfExists(res, 'fortdefend-extension.crx', 'fortdefend-extension.crx'));
-app.get('/download/fortdefend.apk', (req, res) => downloadIfExists(res, 'fortdefend.apk', 'fortdefend.apk'));
-app.get('/download/fortdefend-mac.pkg', (req, res) => downloadIfExists(res, 'fortdefend-mac.pkg', 'fortdefend-mac.pkg'));
 
 // ── Serve React frontend ──────────────────────────────────────────────────────
 const clientBuild = path.join(__dirname, '..', 'client', 'dist');

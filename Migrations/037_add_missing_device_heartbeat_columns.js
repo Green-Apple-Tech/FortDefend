@@ -1,5 +1,5 @@
 /**
- * Adds device columns required by the Windows/Android agent heartbeat.
+ * Adds device columns required by endpoint agent heartbeats.
  * Safe for production: skips any column that already exists (e.g. partial migration history).
  */
 exports.up = async function up(knex) {

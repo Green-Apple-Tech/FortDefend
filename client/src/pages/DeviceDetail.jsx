@@ -55,8 +55,6 @@ function renderOsIcon(os) {
 function sourceLabel(source) {
   if (source === 'agent') return 'Agent';
   if (source === 'intune') return 'Intune';
-  if (source === 'google_admin') return 'Google Admin';
-  if (source === 'google_mobile') return 'Google Mobile';
   return source || '—';
 }
 
@@ -156,6 +154,9 @@ export default function DeviceDetail() {
   const [patchLoading, setPatchLoading] = useState(false);
   const [patchScanning, setPatchScanning] = useState(false);
   const [patchMessage, setPatchMessage] = useState('');
+  const [patchStatus, setPatchStatus] = useState(null);
+  const [osUpdateStatus, setOsUpdateStatus] = useState(null);
+  const [maintenanceState, setMaintenanceState] = useState(null);
 
   const loadBase = async () => {
     const timeoutMs = 5000;
@@ -192,11 +193,31 @@ export default function DeviceDetail() {
       setPatchApps(Array.isArray(r?.apps) ? r.apps : []);
       setPatchAgentInstalled(Boolean(r?.patchAgentInstalled));
       setPatchAgentVersion(r?.patchAgentVersion || null);
+      setPatchStatus(r?.patchStatus || null);
+      setOsUpdateStatus(r?.osUpdateStatus || null);
+      setMaintenanceState(r?.maintenanceState || null);
     } catch {
       setPatchApps([]);
       setPatchAgentInstalled(Boolean(device?.patch_agent_installed || device?.patch_agent_token));
     } finally {
       setPatchLoading(false);
+    }
+  };
+
+  const runOsUpdateAction = async (action) => {
+    setPatchScanning(true);
+    setPatchMessage('');
+    try {
+      const r = await api(`/api/patch/devices/${encodeURIComponent(deviceId)}/os-update`, {
+        method: 'POST',
+        body: { action },
+      });
+      setPatchMessage(r?.message || `Windows Update ${action} queued.`);
+      await loadPatchData();
+    } catch (err) {
+      setPatchMessage(err?.message || `Failed to queue Windows Update ${action}.`);
+    } finally {
+      setPatchScanning(false);
     }
   };
 
@@ -713,7 +734,7 @@ export default function DeviceDetail() {
               <div className="mb-3 flex flex-wrap items-center justify-between gap-3">
                 <div>
                   <h2 className="text-sm font-semibold text-slate-900">Patching</h2>
-                  <p className="text-xs text-slate-500">Third-party app updates via the FortDefend patch agent</p>
+                  <p className="text-xs text-slate-500">Third-party app updates via the combined FortDefend Windows agent</p>
                 </div>
                 <span
                   className={`rounded-full px-2.5 py-0.5 text-xs font-semibold ${
@@ -721,14 +742,44 @@ export default function DeviceDetail() {
                   }`}
                 >
                   {patchAgentInstalled
-                    ? `Patch Agent: Installed${patchAgentVersion ? ` v${patchAgentVersion}` : ''}`
-                    : 'Patch Agent: Not Installed'}
+                    ? `Patching Ready${patchAgentVersion ? ` v${patchAgentVersion}` : ''}`
+                    : 'Patching Not Ready'}
                 </span>
+              </div>
+
+              <div className="mb-4 grid gap-3 md:grid-cols-3">
+                <div className="rounded-lg border border-fds-border bg-slate-50 p-3">
+                  <p className="text-[11px] font-bold uppercase tracking-wide text-slate-500">Patch status</p>
+                  <p className="mt-1 text-sm font-semibold text-slate-900">{patchStatus?.status || 'No scan yet'}</p>
+                  <p className="mt-1 text-xs text-slate-500">
+                    {patchStatus?.lastScanAt ? `Last scan ${new Date(patchStatus.lastScanAt).toLocaleString()}` : 'Waiting for first patch scan'}
+                  </p>
+                  {patchStatus?.lastError ? <p className="mt-1 text-xs text-red-700">{patchStatus.lastError}</p> : null}
+                </div>
+                <div className="rounded-lg border border-fds-border bg-slate-50 p-3">
+                  <p className="text-[11px] font-bold uppercase tracking-wide text-slate-500">Windows Update</p>
+                  <p className="mt-1 text-sm font-semibold text-slate-900">{osUpdateStatus?.status || 'Not scanned'}</p>
+                  <p className="mt-1 text-xs text-slate-500">
+                    {osUpdateStatus?.availableCount == null ? 'Available updates unknown' : `${osUpdateStatus.availableCount} update(s) available`}
+                  </p>
+                  {osUpdateStatus?.lastError ? <p className="mt-1 text-xs text-red-700">{osUpdateStatus.lastError}</p> : null}
+                </div>
+                <div className="rounded-lg border border-fds-border bg-slate-50 p-3">
+                  <p className="text-[11px] font-bold uppercase tracking-wide text-slate-500">Maintenance safety</p>
+                  <p className="mt-1 text-sm font-semibold text-slate-900">
+                    {maintenanceState?.patch?.anyUnsavedChanges || maintenanceState?.osUpdate?.anyUnsavedChanges
+                      ? 'Unsaved work detected'
+                      : 'No active blocker reported'}
+                  </p>
+                  <p className="mt-1 text-xs text-slate-500">
+                    {patchStatus?.blockedReason || 'Agent checks user activity and unsaved windows before patching.'}
+                  </p>
+                </div>
               </div>
 
               {!patchAgentInstalled && patchBootstrapCommand ? (
                 <div className="mb-4 rounded-lg border border-blue-200 bg-blue-50/50 p-3">
-                  <p className="text-xs font-medium text-slate-800">Install Patch Agent — run in elevated PowerShell:</p>
+                  <p className="text-xs font-medium text-slate-800">Install combined Windows agent — run in elevated PowerShell:</p>
                   <pre className="mt-2 overflow-x-auto rounded bg-slate-900 p-3 text-xs text-slate-100">{patchBootstrapCommand}</pre>
                   <Button
                     type="button"
@@ -751,6 +802,12 @@ export default function DeviceDetail() {
                 <Button type="button" variant="outline" onClick={loadPatchData} disabled={patchLoading}>
                   Refresh patch data
                 </Button>
+                <Button type="button" variant="outline" onClick={() => runOsUpdateAction('scan')} disabled={patchScanning || isViewer}>
+                  Scan Windows Updates
+                </Button>
+                <Button type="button" variant="outline" onClick={() => runOsUpdateAction('install')} disabled={patchScanning || isViewer}>
+                  Install Windows Updates
+                </Button>
               </div>
               {patchMessage ? <p className="mb-3 text-xs text-slate-600">{patchMessage}</p> : null}
 
@@ -758,7 +815,7 @@ export default function DeviceDetail() {
                 <p className="text-sm text-slate-500">Loading patch inventory…</p>
               ) : patchApps.length === 0 ? (
                 <p className="text-sm text-slate-500">
-                  No patch catalog results yet. Install the patch agent and run a scan.
+                  No patch catalog results yet. Install the Windows agent and run a scan.
                 </p>
               ) : (
                 <div className="overflow-x-auto">

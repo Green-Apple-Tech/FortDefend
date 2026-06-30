@@ -58,10 +58,6 @@ function rowKey(d) {
 function normalizeOs(d) {
   const o = String(d.os || '').toLowerCase();
   if (o.includes('windows')) return 'windows';
-  if (o.includes('chrome')) return 'chromeos';
-  if (o.includes('android')) return 'android';
-  if (o.includes('ipados') || o.includes('ipad')) return 'ipados';
-  if (o.includes('ios') || o === 'iphone') return 'ios';
   return o || 'other';
 }
 
@@ -74,9 +70,6 @@ function displayOs(d) {
   if (!raw) return '—';
   const lower = raw.toLowerCase();
   if (lower === 'windows') return 'Microsoft Windows';
-  if (lower === 'android') return 'Android';
-  if (lower === 'chromeos' || lower === 'chrome os') return 'ChromeOS';
-  if (lower === 'ios') return 'iOS';
   return raw;
 }
 
@@ -121,8 +114,6 @@ function statusBadgeClass(status) {
 
 function sourceLabel(source) {
   if (source === 'intune') return 'Intune';
-  if (source === 'google_admin') return 'Google Admin';
-  if (source === 'google_mobile') return 'Google (Mobile)';
   if (source === 'agent') return 'Agent';
   return source || '—';
 }
@@ -253,9 +244,6 @@ function resolveFleetRowToDbId(row, lookup) {
 
 function deviceHeroEmoji(d) {
   const n = normalizeOs(d);
-  if (n === 'android') return '📱';
-  if (n === 'ios' || n === 'ipados') return '📱';
-  if (n === 'chromeos') return '💻';
   const os = String(d.os || '').toLowerCase();
   if (os.includes('mac') || os.includes('darwin')) return '🖥️';
   if (n === 'windows' || os.includes('windows')) return '💻';
@@ -773,11 +761,7 @@ export default function Devices() {
 
       if (sourceFilter !== 'all') {
         if (sourceFilter === 'intune' && d.source !== 'intune') return false;
-        if (sourceFilter === 'google_admin' && d.source !== 'google_admin' && d.source !== 'google_mobile') {
-          return false;
-        }
         if (sourceFilter === 'agent' && d.source !== 'agent') return false;
-        if (sourceFilter === 'android' && normalizeOs(d) !== 'android') return false;
       }
 
       if (statusFilter !== 'all') {
@@ -787,9 +771,6 @@ export default function Devices() {
       if (osFilter !== 'all') {
         const n = normalizeOs(d);
         if (osFilter === 'windows' && n !== 'windows') return false;
-        if (osFilter === 'chromeos' && n !== 'chromeos') return false;
-        if (osFilter === 'android' && n !== 'android') return false;
-        if (osFilter === 'ios' && n !== 'ios' && n !== 'ipados') return false;
       }
       return true;
     });
@@ -1077,13 +1058,13 @@ export default function Devices() {
     URL.revokeObjectURL(url);
   };
 
-  const syncableSource = (d) => (d.source === 'intune' || d.source === 'google_admin' ? d.source : null);
+  const syncableSource = (d) => (d.source === 'intune' ? d.source : null);
 
   const runSync = async (d) => {
     setOpenMenu(null);
     const s = syncableSource(d);
     if (!s) {
-      setToast('Sync is only available for Intune or Google Admin (Chromebook) devices.');
+      setToast('Sync is only available for Intune-managed Windows devices.');
       return;
     }
     try {
@@ -1343,9 +1324,7 @@ export default function Devices() {
             >
               <option value="all">All</option>
               <option value="intune">Intune</option>
-              <option value="google_admin">Google Admin</option>
               <option value="agent">Agent</option>
-              <option value="android">Android</option>
             </select>
           </div>
           <div>
@@ -1371,9 +1350,6 @@ export default function Devices() {
             >
               <option value="all">All</option>
               <option value="windows">Windows</option>
-              <option value="chromeos">ChromeOS</option>
-              <option value="android">Android</option>
-              <option value="ios">iOS</option>
             </select>
           </div>
           <div className="flex items-end">

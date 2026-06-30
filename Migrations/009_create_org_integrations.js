@@ -6,7 +6,7 @@ exports.up = function(knex) {
     table.string('intune_tenant_id').nullable();
     table.string('intune_client_id').nullable();
     table.text('intune_client_secret_enc').nullable();   // AES-256-GCM encrypted
-    // Google Admin
+    // Legacy cloud directory fields retained for existing databases
     table.boolean('google_enabled').defaultTo(false);
     table.string('google_admin_email').nullable();
     table.string('google_customer_id').nullable();

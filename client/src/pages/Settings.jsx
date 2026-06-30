@@ -456,7 +456,7 @@ export default function Settings() {
 
       <Card>
         <h2 className="text-sm font-semibold text-slate-900">Integrations</h2>
-        <p className="mt-1 text-sm text-slate-600">Connect Intune, Google Admin, and webhooks from the Integrations hub.</p>
+        <p className="mt-1 text-sm text-slate-600">Connect Intune and webhooks from the Integrations hub.</p>
         <Link to="/integrations" className="mt-3 inline-block text-sm font-semibold text-brand hover:underline">
           Open integrations →
         </Link>

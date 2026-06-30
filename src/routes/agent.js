@@ -17,6 +17,10 @@ const {
   resolveScriptPayloadForAgent,
   LEGACY_SCRIPT_WINGET_PREFIX,
 } = require('../utils/commandPayload');
+const {
+  pickChangedDeviceFields,
+  recordHeartbeatTelemetry,
+} = require('../utils/heartbeatTelemetry');
 
 const router = express.Router();
 
@@ -1054,10 +1058,11 @@ router.post('/heartbeat', async (req, res) => {
           .returning(['id']);
         deviceId = row.id;
       } else {
+        const deviceUpdates = pickChangedDeviceFields(existing, updateFields);
         await db('devices')
           .where('id', existing.id)
           .update({
-            ...updateFields,
+            ...deviceUpdates,
             ...(shouldSyncExternalId ? { external_id: externalId } : {}),
             updated_at: new Date(),
           });
@@ -1294,33 +1299,14 @@ router.post('/heartbeat', async (req, res) => {
       });
     }
 
-    const isFullInventory = Array.isArray(installedApps);
-    if (isFullInventory) {
-      try {
-        const scanSummary = {
-          agentVersion: updateFields.agent_version || deviceVersion || null,
-          installedAppCount: installedApps.length,
-          heartbeatAt: now.toISOString(),
-          mode: 'full',
-        };
-        await db('scan_results').insert({
-          id: db.raw('gen_random_uuid()'),
-          org_id: orgId,
-          device_id: deviceId,
-          agent_name: 'fortdefend_windows_agent',
-          result: scanSummary,
-          status: 'pass',
-          ai_summary: 'Device check-in received successfully.',
-        });
-      } catch (err) {
-        console.error('[agent/heartbeat] failed writing scan_results', {
-          orgId,
-          deviceId,
-          error: err?.message,
-          stack: err?.stack,
-        });
-      }
-    }
+    await recordHeartbeatTelemetry({
+      orgId,
+      deviceId,
+      existing,
+      updateFields,
+      installedApps,
+      now,
+    });
 
     let pendingCommands = [];
     try {

@@ -1,8 +1,8 @@
 const db = require('../database');
 
 const RETENTION = {
-  scanResultsDays: 3,
-  scanResultsMaxPerDevice: 3,
+  scanResultsDays: 7,
+  scanResultsMaxPerDevice: 100,
   agentLogsDays: 14,
   commandsDays: 14,
   commandResultsDays: 14,

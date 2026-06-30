@@ -664,7 +664,7 @@ router.get('/uninstall.ps1', (req, res) => {
 // POST /api/agent/heartbeat
 router.post('/heartbeat', async (req, res) => {
   const heartbeatStartedAt = new Date().toISOString();
-  const currentAgentVersion = process.env.AGENT_VERSION || '1.0.1';
+  const currentAgentVersion = getAgentPackageVersion();
   const safe200 = (body = {}) => {
     const status = body.ok === false ? 'error' : 'ok';
     const commands = Array.isArray(body.commands) ? body.commands : [];
@@ -1221,7 +1221,7 @@ router.post('/heartbeat', async (req, res) => {
       name: row.command_payload?.scriptName || row.command_type,
     }));
 
-    const serverVersion = process.env.AGENT_VERSION || '1.0.1';
+    const serverVersion = getAgentPackageVersion();
     const normalizedDeviceVersion = String(updateFields.agent_version || '').trim();
     const isOutdated = normalizedDeviceVersion && compareSemver(normalizedDeviceVersion, serverVersion) < 0;
     const forceRequested = existing?.pending_update === true;

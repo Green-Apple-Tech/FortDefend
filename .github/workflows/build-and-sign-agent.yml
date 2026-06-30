@@ -21,6 +21,11 @@ defaults:
 jobs:
   build-and-sign:
     runs-on: windows-latest
+    env:
+      CODE_SIGN_PFX: ${{ secrets.CODE_SIGN_PFX }}
+      CODE_SIGN_PFX_PASSWORD: ${{ secrets.CODE_SIGN_PFX_PASSWORD }}
+      CODE_SIGN_THUMBPRINT: ${{ secrets.CODE_SIGN_THUMBPRINT }}
+      CODE_SIGN_STORE: ${{ secrets.CODE_SIGN_STORE }}
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -39,21 +44,21 @@ jobs:
         run: npm run build
 
       - name: Sign EXE (PFX in secrets)
-        if: ${{ secrets.CODE_SIGN_PFX != '' }}
+        if: ${{ env.CODE_SIGN_PFX != '' }}
         env:
-          CODE_SIGN_PFX: ${{ secrets.CODE_SIGN_PFX }}
-          CODE_SIGN_PFX_PASSWORD: ${{ secrets.CODE_SIGN_PFX_PASSWORD }}
+          CODE_SIGN_PFX: ${{ env.CODE_SIGN_PFX }}
+          CODE_SIGN_PFX_PASSWORD: ${{ env.CODE_SIGN_PFX_PASSWORD }}
         run: .\\sign.ps1 -ExePath dist\\FortDefendAgent.exe
 
       - name: Sign EXE (thumbprint, e.g. self-hosted EV on runner)
-        if: ${{ secrets.CODE_SIGN_PFX == '' && secrets.CODE_SIGN_THUMBPRINT != '' }}
+        if: ${{ env.CODE_SIGN_PFX == '' && env.CODE_SIGN_THUMBPRINT != '' }}
         env:
-          CODE_SIGN_THUMBPRINT: ${{ secrets.CODE_SIGN_THUMBPRINT }}
-          CODE_SIGN_STORE: ${{ secrets.CODE_SIGN_STORE }}
+          CODE_SIGN_THUMBPRINT: ${{ env.CODE_SIGN_THUMBPRINT }}
+          CODE_SIGN_STORE: ${{ env.CODE_SIGN_STORE }}
         run: .\\sign.ps1 -ExePath dist\\FortDefendAgent.exe
 
       - name: No signing (configure secrets to enable)
-        if: ${{ secrets.CODE_SIGN_PFX == '' && secrets.CODE_SIGN_THUMBPRINT == '' }}
+        if: ${{ env.CODE_SIGN_PFX == '' && env.CODE_SIGN_THUMBPRINT == '' }}
         run: |
           Write-Warning "Build is unsigned. Add repository secrets: CODE_SIGN_PFX + CODE_SIGN_PFX_PASSWORD, or CODE_SIGN_THUMBPRINT (EV on runner with cert in store)."
 

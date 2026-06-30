@@ -130,8 +130,13 @@ function normalizeOsName(value, fallback = 'Microsoft Windows') {
   return raw;
 }
 
-function normalizeHostKey(value) {
-  return String(value || '').trim().toLowerCase();
+function preferDeviceName(existingName, incomingName) {
+  const existing = String(existingName || '').trim();
+  const incoming = String(incomingName || '').trim();
+  if (!existing) return incoming || 'Unknown Device';
+  if (!incoming) return existing;
+  if (incoming === incoming.toUpperCase() && existing !== existing.toUpperCase()) return existing;
+  return incoming;
 }
 
 function isUsableSerial(serial) {
@@ -151,38 +156,77 @@ function deviceMatchScore(device = {}) {
 }
 
 async function findExistingAgentDevice(orgId, { externalId, deviceName, hostname, serial }) {
-  const byExternal = await db('devices')
-    .where({ org_id: orgId, source: 'agent', external_id: externalId })
-    .first();
-  if (byExternal) return byExternal;
+  const candidates = new Map();
+  const add = (row) => {
+    if (row?.id) candidates.set(row.id, row);
+  };
+
+  add(
+    await db('devices')
+      .where({ org_id: orgId, source: 'agent', external_id: externalId })
+      .first()
+  );
 
   const normalizedSerial = String(serial || '').trim();
   if (isUsableSerial(normalizedSerial)) {
     const bySerial = await db('devices')
       .where({ org_id: orgId, source: 'agent' })
-      .whereRaw('LOWER(TRIM(serial)) = ?', [normalizedSerial.toLowerCase()])
-      .orderBy('last_seen', 'desc');
-    if (bySerial.length === 1) return bySerial[0];
-    if (bySerial.length > 1) {
-      return bySerial.sort((a, b) => deviceMatchScore(b) - deviceMatchScore(a))[0];
-    }
+      .whereRaw('LOWER(TRIM(serial)) = ?', [normalizedSerial.toLowerCase()]);
+    bySerial.forEach(add);
   }
 
   const hostKeys = [...new Set([deviceName, hostname].map(normalizeHostKey).filter(Boolean))];
-  if (!hostKeys.length) return null;
+  if (hostKeys.length) {
+    const byHost = await db('devices')
+      .where({ org_id: orgId, source: 'agent' })
+      .where((builder) => {
+        for (const key of hostKeys) {
+          builder.orWhereRaw('LOWER(TRIM(hostname)) = ?', [key]).orWhereRaw('LOWER(TRIM(name)) = ?', [key]);
+        }
+      });
+    byHost.forEach(add);
+  }
 
-  const byHost = await db('devices')
-    .where({ org_id: orgId, source: 'agent' })
-    .where((builder) => {
-      for (const key of hostKeys) {
-        builder.orWhereRaw('LOWER(TRIM(hostname)) = ?', [key]).orWhereRaw('LOWER(TRIM(name)) = ?', [key]);
-      }
-    })
-    .orderBy('last_seen', 'desc');
+  const list = [...candidates.values()];
+  if (!list.length) return { device: null, staleIds: [] };
 
-  if (!byHost.length) return null;
-  if (byHost.length === 1) return byHost[0];
-  return byHost.sort((a, b) => deviceMatchScore(b) - deviceMatchScore(a))[0];
+  const sorted = list.sort((a, b) => deviceMatchScore(b) - deviceMatchScore(a));
+  const winner = sorted[0];
+  const staleIds = sorted.slice(1).map((row) => row.id);
+  return { device: winner, staleIds };
+}
+
+async function removeStaleAgentDevices(orgId, keepId, staleIds = []) {
+  const ids = [...new Set(staleIds.filter((id) => id && id !== keepId))];
+  if (!ids.length) return;
+
+  for (const staleId of ids) {
+    try {
+      await db.transaction(async (trx) => {
+        if (await trx.schema.hasTable('command_results')) {
+          await trx('command_results').where({ org_id: orgId, device_id: staleId }).delete();
+        }
+        if (await trx.schema.hasTable('sm_commands')) {
+          await trx('sm_commands').where({ org_id: orgId, device_id: staleId }).delete();
+        }
+        if (await trx.schema.hasTable('scan_results')) {
+          await trx('scan_results').where({ org_id: orgId, device_id: staleId }).delete();
+        }
+        if (await trx.schema.hasTable('alerts')) {
+          await trx('alerts').where({ org_id: orgId, device_id: staleId }).delete();
+        }
+        await trx('devices').where({ org_id: orgId, id: staleId, source: 'agent' }).delete();
+      });
+      console.log('[agent/heartbeat] removed stale duplicate device', { orgId, keepId, staleId });
+    } catch (err) {
+      console.error('[agent/heartbeat] failed removing stale duplicate', {
+        orgId,
+        keepId,
+        staleId,
+        error: err?.message,
+      });
+    }
+  }
 }
 
 async function ensureAlert({ orgId, deviceId, type, severity, message, aiAnalysis = null }) {
@@ -808,13 +852,16 @@ router.post('/heartbeat', async (req, res) => {
           : null;
 
     let existing = null;
+    let staleDeviceIds = [];
     try {
-      existing = await findExistingAgentDevice(orgId, {
+      const match = await findExistingAgentDevice(orgId, {
         externalId,
         deviceName,
         hostname: payload.hostname || deviceName,
         serial: heartbeatSerial,
       });
+      existing = match.device;
+      staleDeviceIds = match.staleIds || [];
     } catch (err) {
       console.error('[agent/heartbeat] failed to fetch existing device', {
         orgId,
@@ -845,7 +892,7 @@ router.post('/heartbeat', async (req, res) => {
     const nextHighCpuSince = cpuUsagePct != null && cpuUsagePct >= 100 ? (priorCpuSince || now) : null;
     const nextHighRamSince = ramUsagePct != null && ramUsagePct >= 100 ? (priorRamSince || now) : null;
     const updateFields = {
-      name: deviceName,
+      name: preferDeviceName(existing?.name, deviceName),
       hostname: payload.hostname || deviceName,
       serial: telemetry.serialNumber || payload.serialNumber || existing?.serial || null,
       os: normalizedOs,
@@ -1016,6 +1063,9 @@ router.post('/heartbeat', async (req, res) => {
         stack: err?.stack,
       });
       return safe200({ ok: false, commands: [], error: 'Device update failed.' });
+    }
+    if (deviceId && staleDeviceIds.length) {
+      await removeStaleAgentDevices(orgId, deviceId, staleDeviceIds);
     }
     if (deviceVersion) {
       await db('devices').where({ id: deviceId }).update({ agent_version: deviceVersion });

@@ -1,9 +1,9 @@
-const { ensureCommandPayloadColumn } = require('../utils/commandPayload');
+const { ensureCommandSchemaReady } = require('../utils/commandPayload');
 
 async function ensureCommandSchema() {
   try {
-    const ok = await ensureCommandPayloadColumn();
-    if (!ok) {
+    const result = await ensureCommandSchemaReady();
+    if (!result.ok) {
       console.warn('[schema] sm_commands table is missing; command queue is unavailable.');
       return { ok: false, reason: 'sm_commands_missing' };
     }

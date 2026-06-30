@@ -5,7 +5,7 @@ const fs = require('fs');
 const db = require('../database');
 const { requireAuth } = require('../middleware/auth');
 const { checkTrialStatus } = require('../middleware/trial');
-const { hasCommandPayloadColumn, encodePayloadFields } = require('../utils/commandPayload');
+const { ensureCommandSchemaReady, encodePayloadFields } = require('../utils/commandPayload');
 
 const router = express.Router();
 
@@ -574,7 +574,8 @@ router.get('/devices/:id/apps', async (req, res) => {
 async function queuePatchAgentRun({ device, orgId, userId, label = null, installMode = null, scriptName = 'FortDefend Patch Scan' }) {
   const hasCommands = await db.schema.hasTable('sm_commands');
   if (!hasCommands) return null;
-  const hasPayload = await hasCommandPayloadColumn();
+  const schema = await ensureCommandSchemaReady();
+  const hasPayload = Boolean(schema.hasPayload);
   const now = new Date();
   const [row] = await db('sm_commands')
     .insert({
@@ -603,7 +604,8 @@ async function queuePatchAgentRun({ device, orgId, userId, label = null, install
 async function queueOsUpdateRun({ device, orgId, userId, action = 'scan', scriptName = 'FortDefend Windows Update' }) {
   const hasCommands = await db.schema.hasTable('sm_commands');
   if (!hasCommands) return null;
-  const hasPayload = await hasCommandPayloadColumn();
+  const schema = await ensureCommandSchemaReady();
+  const hasPayload = Boolean(schema.hasPayload);
   const now = new Date();
   const [row] = await db('sm_commands')
     .insert({

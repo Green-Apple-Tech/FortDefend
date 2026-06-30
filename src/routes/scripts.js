@@ -6,6 +6,9 @@ const {
   ensureCommandSchemaReady,
   queueScriptCommandRows,
   scriptQueueErrorMessage,
+  decodeCommandPayload,
+  formatCommandOutput,
+  LEGACY_SCRIPT_WINGET_PREFIX,
 } = require('../utils/commandPayload');
 
 const router = express.Router();
@@ -265,6 +268,11 @@ router.get('/:id/history', requireAdmin, async (req, res, next) => {
       .join('devices as d', 'd.id', 'c.device_id')
       .where('c.org_id', req.user.orgId)
       .andWhere('d.org_id', req.user.orgId)
+      .where((builder) => {
+        builder
+          .where('c.command_type', 'run_script')
+          .orWhere('c.winget_id', 'like', `${LEGACY_SCRIPT_WINGET_PREFIX}%`);
+      })
       .select(
         'c.id',
         'c.device_id',
@@ -273,24 +281,40 @@ router.get('/:id/history', requireAdmin, async (req, res, next) => {
         'c.output',
         'c.error_message',
         'c.command_payload',
+        'c.winget_id',
         'c.created_at',
         'c.updated_at',
         'c.completed_at'
       )
       .orderBy('c.created_at', 'desc');
 
-    if (isQuick) {
-      rowsQuery.andWhereRaw("c.command_payload->>'scriptId' IS NULL");
+    if (commandIds.length) {
+      rowsQuery.whereIn('c.id', commandIds);
+    } else if (isQuick) {
+      rowsQuery.andWhere((builder) => {
+        builder
+          .whereNull('c.command_payload')
+          .orWhereRaw("c.command_payload->>'scriptId' IS NULL")
+          .orWhere('c.winget_id', 'like', `${LEGACY_SCRIPT_WINGET_PREFIX}script:quick%`);
+      });
     } else {
-      rowsQuery.andWhereRaw("c.command_payload->>'scriptId' = ?", [req.params.id]);
+      rowsQuery.andWhere((builder) => {
+        builder
+          .whereRaw("c.command_payload->>'scriptId' = ?", [req.params.id])
+          .orWhere('c.winget_id', 'like', `${LEGACY_SCRIPT_WINGET_PREFIX}script:${String(req.params.id).replace(/:/g, '-')}%`);
+      });
     }
-    if (commandIds.length) rowsQuery.whereIn('c.id', commandIds);
     const rows = await rowsQuery.limit(200);
 
-    const history = rows.map((r) => ({
-      ...r,
-      status: normalizeStatus(r.status),
-    }));
+    const history = rows.map((r) => {
+      const payload = decodeCommandPayload(r);
+      return {
+        ...r,
+        status: normalizeStatus(r.status),
+        output: formatCommandOutput(r),
+        script_name: payload.scriptName || null,
+      };
+    });
     res.json({ history });
   } catch (err) {
     next(err);

@@ -3,6 +3,22 @@ import { api } from '../lib/api';
 import { Button, Card, Input } from './ui';
 
 const SCRIPT_TYPES = ['powershell', 'cmd', 'python', 'bash', 'zsh', 'javascript'];
+const PAYLOAD_MARKER = '__fortdefend_command_payload';
+
+function formatResultOutput(row) {
+  const status = String(row?.status || '').toLowerCase();
+  const raw = row?.output;
+  if (!raw) return '';
+  try {
+    const parsed = JSON.parse(raw);
+    if (parsed && parsed[PAYLOAD_MARKER]) {
+      return status === 'pending' || status === 'running' ? '' : raw;
+    }
+  } catch {
+    // plain text output
+  }
+  return raw;
+}
 
 export default function ScriptRunnerModal({ open, onClose, selectedDevices = [], scripts = [], title = 'Run Script' }) {
   const [scriptId, setScriptId] = useState('');
@@ -154,7 +170,9 @@ export default function ScriptRunnerModal({ open, onClose, selectedDevices = [],
               {results.map((r) => (
                 <div key={r.id} className="border-b border-gray-100 px-3 py-2 text-xs">
                   <p className="font-medium text-gray-900">{r.device_name || r.device_id} - {r.status}</p>
-                  {r.output && <pre className="mt-1 overflow-x-auto whitespace-pre-wrap text-gray-700">{r.output}</pre>}
+                  {formatResultOutput(r) && (
+                    <pre className="mt-1 overflow-x-auto whitespace-pre-wrap text-gray-700">{formatResultOutput(r)}</pre>
+                  )}
                   {r.error_message && <pre className="mt-1 overflow-x-auto whitespace-pre-wrap text-red-700">{r.error_message}</pre>}
                 </div>
               ))}

@@ -246,10 +246,24 @@ router.get('/devices/:id/script-history', requireAuth, async (req, res) => {
     if (!device) return res.status(404).json({ error: 'Device not found' });
 
     const history = await db('command_results')
-      .where({ device_id: req.params.id })
+      .where({ org_id: req.user.orgId, device_id: req.params.id })
       .orderBy('created_at', 'desc')
       .limit(20);
-    return res.json(history);
+
+    const mapped = history.map((row) => {
+      let payload = null;
+      try {
+        payload = row.command_input ? JSON.parse(row.command_input) : null;
+      } catch {
+        payload = null;
+      }
+      return {
+        ...row,
+        command_payload: payload,
+        script_name: payload?.scriptName || row.command_type,
+      };
+    });
+    return res.json(mapped);
   } catch (err) {
     return res.status(500).json({ error: err.message });
   }

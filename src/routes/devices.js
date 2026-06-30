@@ -119,14 +119,29 @@ router.get('/:id/script-history', async (req, res, next) => {
       .first();
     if (!device) return res.status(404).json({ error: 'Device not found.' });
 
+    const { decodeCommandPayload, formatCommandOutput, LEGACY_SCRIPT_WINGET_PREFIX } = require('../utils/commandPayload');
+
     const history = await db('sm_commands')
       .where({ org_id: req.user.orgId, device_id: device.id })
-      .whereIn('command_type', ['run_script'])
+      .where((builder) => {
+        builder
+          .where('command_type', 'run_script')
+          .orWhere('winget_id', 'like', `${LEGACY_SCRIPT_WINGET_PREFIX}%`);
+      })
       .orderBy('created_at', 'desc')
       .limit(100)
-      .select('id', 'status', 'command_payload', 'output', 'error_message', 'created_at', 'updated_at', 'completed_at');
+      .select('id', 'status', 'command_payload', 'output', 'error_message', 'created_at', 'updated_at', 'completed_at', 'winget_id');
 
-    res.json({ history });
+    res.json({
+      history: history.map((row) => {
+        const payload = decodeCommandPayload(row);
+        return {
+          ...row,
+          command_payload: Object.keys(payload).length ? payload : row.command_payload,
+          output: formatCommandOutput(row),
+        };
+      }),
+    });
   } catch (err) {
     next(err);
   }

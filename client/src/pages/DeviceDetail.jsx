@@ -113,6 +113,20 @@ function appLogoText(app = {}) {
   return (letters || raw.slice(0, 2)).toUpperCase();
 }
 
+function commandActivityLabel(row = {}) {
+  let payload = row.command_payload;
+  if (!payload && row.command_input) {
+    try {
+      payload = JSON.parse(row.command_input);
+    } catch {
+      payload = null;
+    }
+  }
+  const name = payload?.scriptName || row.command_type || 'Command';
+  const status = row.status || 'unknown';
+  return `${name} · ${status}`;
+}
+
 export default function DeviceDetail() {
   const { user, org } = useAuth();
   const isViewer = user?.role === 'viewer';
@@ -122,6 +136,7 @@ export default function DeviceDetail() {
   const [device, setDevice] = useState(null);
   const [alerts, setAlerts] = useState([]);
   const [scanResults, setScanResults] = useState([]);
+  const [commandActivity, setCommandActivity] = useState([]);
   const [apps, setApps] = useState([]);
   const [scriptHistory, setScriptHistory] = useState([]);
   const [scripts, setScripts] = useState([]);
@@ -166,21 +181,23 @@ export default function DeviceDetail() {
         new Promise((_, reject) => setTimeout(() => reject(new Error('Request timed out')), timeoutMs)),
       ]);
     console.log('Fetching device:', deviceId);
-    const [detail, appsRes, histRes] = await Promise.all([
-      withTimeout(api(`/api/integrations/devices/${encodeURIComponent(deviceId)}`)),
+    const [detail, appsRes, histRes, cmdRes] = await Promise.all([
+      withTimeout(api(`/api/devices/${encodeURIComponent(deviceId)}`)),
       withTimeout(api(`/api/integrations/devices/${encodeURIComponent(deviceId)}/apps`)).catch(() => []),
-      withTimeout(api(`/api/integrations/devices/${encodeURIComponent(deviceId)}/script-history`)).catch(() => []),
+      withTimeout(api(`/api/devices/${encodeURIComponent(deviceId)}/script-history`)).catch(() => ({ history: [] })),
+      withTimeout(api(`/api/devices/${encodeURIComponent(deviceId)}/command-results?limit=30`)).catch(() => ({ results: [] })),
     ]);
     const resolvedDevice = detail?.device || detail || null;
     setDevice(resolvedDevice);
     setAlerts(Array.isArray(detail?.alerts) ? detail.alerts : []);
     setScanResults(Array.isArray(detail?.scanResults) ? detail.scanResults : []);
     setApps(Array.isArray(appsRes) ? appsRes : []);
-    setScriptHistory(Array.isArray(histRes) ? histRes : []);
+    setScriptHistory(Array.isArray(histRes?.history) ? histRes.history : []);
+    setCommandActivity(Array.isArray(cmdRes?.results) ? cmdRes.results : []);
   };
 
   const loadLive = async () => {
-    const r = await api(`/api/integrations/devices/${encodeURIComponent(deviceId)}`).catch(() => null);
+    const r = await api(`/api/devices/${encodeURIComponent(deviceId)}`).catch(() => null);
     if (r?.device) setDevice((prev) => ({ ...(prev || {}), ...r.device }));
     if (r?.live) setLive(r.live);
   };
@@ -1034,9 +1051,16 @@ export default function DeviceDetail() {
                 </tr>
               </thead>
               <tbody>
+                {scriptHistory.length === 0 ? (
+                  <tr>
+                    <td colSpan={4} className="px-3 py-6 text-center text-sm text-slate-500">
+                      No scripts have been run on this device yet.
+                    </td>
+                  </tr>
+                ) : null}
                 {scriptHistory.map((row) => (
                   <tr key={row.id} className="border-t border-fds-border cursor-pointer hover:bg-slate-50" onClick={() => setShowOutput(row)}>
-                    <td className="px-3 py-2">{row.command_payload?.scriptName || row.command_payload?.scriptType || 'Script'}</td>
+                    <td className="px-3 py-2">{row.command_payload?.scriptName || row.script_name || 'Script'}</td>
                     <td className="px-3 py-2">{row.status}</td>
                     <td className="px-3 py-2">{row.created_at ? new Date(row.created_at).toLocaleString() : '—'}</td>
                     <td className="max-w-[340px] truncate px-3 py-2 text-slate-600">{row.output || row.error_message || '—'}</td>
@@ -1297,8 +1321,21 @@ export default function DeviceDetail() {
         <Card>
           <h2 className="mb-3 text-sm font-semibold text-slate-900">Activity</h2>
           <ul className="space-y-2">
+            {commandActivity.length === 0 && scanResults.length === 0 ? (
+              <li className="rounded border border-fds-border bg-slate-50 px-3 py-2 text-sm text-slate-500">
+                No activity recorded yet. Script runs, patch scans, and heartbeats will appear here.
+              </li>
+            ) : null}
+            {commandActivity.map((row) => (
+              <li key={`cmd-${row.id || row.command_id}`} className="rounded border border-fds-border bg-slate-50 px-3 py-2 text-sm text-slate-700">
+                {row.created_at ? new Date(row.created_at).toLocaleString() : '—'} · {commandActivityLabel(row)}
+                {row.output ? (
+                  <p className="mt-1 truncate font-mono text-xs text-slate-500">{row.output}</p>
+                ) : null}
+              </li>
+            ))}
             {scanResults.map((s) => (
-              <li key={s.id} className="rounded border border-fds-border bg-slate-50 px-3 py-2 text-sm text-slate-700">
+              <li key={`scan-${s.id}`} className="rounded border border-fds-border bg-slate-50 px-3 py-2 text-sm text-slate-700">
                 {s.created_at ? new Date(s.created_at).toLocaleString() : '—'} · {s.status || 'pass'} · {s.ai_summary || 'Device heartbeat'}
               </li>
             ))}

@@ -205,6 +205,21 @@ function scriptQueueErrorMessage(err) {
   return 'Failed to queue script command. Please try again.';
 }
 
+function formatCommandOutput(row = {}) {
+  const status = String(row.status || '').toLowerCase();
+  const raw = row.output;
+  if (!raw) return '';
+  try {
+    const parsed = JSON.parse(raw);
+    if (parsed && parsed[PAYLOAD_MARKER]) {
+      return status === 'pending' || status === 'running' ? '' : raw;
+    }
+  } catch {
+    // plain text output
+  }
+  return raw;
+}
+
 module.exports = {
   PAYLOAD_MARKER,
   LEGACY_SCRIPT_WINGET_PREFIX,
@@ -218,4 +233,5 @@ module.exports = {
   resolveScriptPayloadForAgent,
   queueScriptCommandRows,
   scriptQueueErrorMessage,
+  formatCommandOutput,
 };

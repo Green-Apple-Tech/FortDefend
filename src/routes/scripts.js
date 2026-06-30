@@ -2,7 +2,11 @@ const express = require('express');
 const db = require('../database');
 const { requireAuth, requireAdmin } = require('../middleware/auth');
 const { getBuiltinScripts, findBuiltinScript } = require('../seed/defaultScripts');
-const { ensureCommandSchema } = require('../seed/ensureCommandSchema');
+const {
+  hasCommandPayloadColumn,
+  ensureCommandPayloadColumn,
+  encodePayloadFields,
+} = require('../utils/commandPayload');
 
 const router = express.Router();
 router.use(requireAuth);
@@ -195,20 +199,21 @@ async function queueScriptRun(req, res, next, scriptIdParam) {
       return res.status(500).json({ error: 'Command queue is not available on this server yet.' });
     }
 
-    let hasPayload = await db.schema.hasColumn('sm_commands', 'command_payload');
+    let hasPayload = await hasCommandPayloadColumn();
     if (!hasPayload) {
       try {
-        await ensureCommandSchema();
-        hasPayload = await db.schema.hasColumn('sm_commands', 'command_payload');
+        hasPayload = await ensureCommandPayloadColumn();
       } catch (err) {
         console.error('[scripts] failed ensuring command_payload column:', err?.message);
       }
     }
-    if (!hasPayload) {
-      return res.status(500).json({
-        error: 'Script command payload storage is not available yet. Run database migrations.',
-      });
-    }
+
+    const payload = {
+      scriptId: resolvedScriptId,
+      scriptName,
+      scriptType,
+      scriptContent: content,
+    };
 
     const wingetKey = resolvedScriptId
       ? `script:${String(resolvedScriptId).replace(/:/g, '-')}`
@@ -222,12 +227,7 @@ async function queueScriptRun(req, res, next, scriptIdParam) {
       command_type: 'run_script',
       status: 'pending',
       initiated_by: req.user.id || null,
-      command_payload: {
-        scriptId: resolvedScriptId,
-        scriptName,
-        scriptType,
-        scriptContent: content,
-      },
+      ...encodePayloadFields(payload, hasPayload),
       created_at: now,
       updated_at: now,
     }));
@@ -240,15 +240,30 @@ async function queueScriptRun(req, res, next, scriptIdParam) {
     } catch (err) {
       const msg = String(err?.message || '');
       console.error('[scripts] queue run failed:', msg);
-      if (msg.includes('sm_commands_command_type_enum') || msg.includes('run_script')) {
+      if (msg.includes('command_payload')) {
+        try {
+          const fallbackRows = orgDevices.map((device) => ({
+            org_id: req.user.orgId,
+            device_id: device.id,
+            winget_id: wingetKey,
+            command_type: 'run_script',
+            status: 'pending',
+            initiated_by: req.user.id || null,
+            ...encodePayloadFields(payload, false),
+            created_at: now,
+            updated_at: now,
+          }));
+          queued = await db('sm_commands')
+            .insert(fallbackRows)
+            .returning(['id', 'device_id', 'status', 'created_at']);
+        } catch (retryErr) {
+          console.error('[scripts] queue run fallback failed:', retryErr?.message);
+          return res.status(500).json({ error: 'Failed to queue script command. Please try again.' });
+        }
+      } else if (msg.includes('sm_commands_command_type_enum') || msg.includes('run_script')) {
         return res.status(500).json({
           error:
             'Script commands are not enabled in this database yet. Run migrations to add run_script support.',
-        });
-      }
-      if (msg.includes('command_payload')) {
-        return res.status(500).json({
-          error: 'Script command payload storage is not available yet. Run database migrations.',
         });
       }
       return res.status(500).json({ error: 'Failed to queue script command. Please try again.' });

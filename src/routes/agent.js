@@ -9,6 +9,7 @@ const db = require('../database');
 const { getJwtSecret } = require('../config/jwtSecret');
 const { requireAuth } = require('../middleware/auth');
 const { normalizeHash, checkHashOnMalwareBazaar } = require('../lib/malwareBazaar');
+const { decodeCommandPayload, hasCommandPayloadColumn } = require('../utils/commandPayload');
 
 const router = express.Router();
 
@@ -1184,6 +1185,9 @@ router.post('/heartbeat', async (req, res) => {
 
     let pendingCommands = [];
     try {
+      const hasPayload = await hasCommandPayloadColumn();
+      const cols = ['id', 'command_type', 'output', 'created_at'];
+      if (hasPayload) cols.push('command_payload');
       pendingCommands = await db('sm_commands')
         .where({
           org_id: orgId,
@@ -1192,7 +1196,7 @@ router.post('/heartbeat', async (req, res) => {
         })
         .whereIn('command_type', ['run_script', 'patch_scan', 'os_update'])
         .orderBy('created_at', 'asc')
-        .select('id', 'command_type', 'command_payload', 'created_at');
+        .select(cols);
     } catch (err) {
       console.error('[agent/heartbeat] failed loading pending commands', {
         orgId,
@@ -1213,13 +1217,16 @@ router.post('/heartbeat', async (req, res) => {
         stack: err?.stack,
       });
     }
-    const commands = pendingCommands.map((row) => ({
-      id: row.id,
-      type: row.command_type,
-      payload: row.command_payload || {},
-      createdAt: row.created_at,
-      name: row.command_payload?.scriptName || row.command_type,
-    }));
+    const commands = pendingCommands.map((row) => {
+      const payload = decodeCommandPayload(row);
+      return {
+        id: row.id,
+        type: row.command_type,
+        payload,
+        createdAt: row.created_at,
+        name: payload.scriptName || row.command_type,
+      };
+    });
 
     const serverVersion = getAgentPackageVersion();
     const normalizedDeviceVersion = String(updateFields.agent_version || '').trim();
@@ -1301,13 +1308,14 @@ router.post('/command-result', async (req, res) => {
     const commandRow = await db('sm_commands')
       .where({ id: commandId, org_id: auth.orgId })
       .first();
+    const decodedPayload = decodeCommandPayload(commandRow || {});
     if (await db.schema.hasTable('command_results')) {
       const resultRow = {
         org_id: auth.orgId,
         device_id: commandRow?.device_id || null,
         command_id: commandId,
         command_type: commandRow?.command_type || 'run_script',
-        command_input: commandRow?.command_payload ? JSON.stringify(commandRow.command_payload) : null,
+        command_input: Object.keys(decodedPayload).length ? JSON.stringify(decodedPayload) : null,
         output: updates.output ?? null,
         status,
         completed_at: updates.completed_at || null,

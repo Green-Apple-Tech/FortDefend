@@ -5,6 +5,7 @@ const fs = require('fs');
 const db = require('../database');
 const { requireAuth } = require('../middleware/auth');
 const { checkTrialStatus } = require('../middleware/trial');
+const { hasCommandPayloadColumn, encodePayloadFields } = require('../utils/commandPayload');
 
 const router = express.Router();
 
@@ -573,6 +574,7 @@ router.get('/devices/:id/apps', async (req, res) => {
 async function queuePatchAgentRun({ device, orgId, userId, label = null, installMode = null, scriptName = 'FortDefend Patch Scan' }) {
   const hasCommands = await db.schema.hasTable('sm_commands');
   if (!hasCommands) return null;
+  const hasPayload = await hasCommandPayloadColumn();
   const now = new Date();
   const [row] = await db('sm_commands')
     .insert({
@@ -582,12 +584,15 @@ async function queuePatchAgentRun({ device, orgId, userId, label = null, install
       command_type: 'patch_scan',
       status: 'pending',
       initiated_by: userId || null,
-      command_payload: {
-        scriptName,
-        label,
-        installMode: installMode || 'auto',
-        blockingProcessAction: 'prompt_user',
-      },
+      ...encodePayloadFields(
+        {
+          scriptName,
+          label,
+          installMode: installMode || 'auto',
+          blockingProcessAction: 'prompt_user',
+        },
+        hasPayload
+      ),
       created_at: now,
       updated_at: now,
     })
@@ -598,6 +603,7 @@ async function queuePatchAgentRun({ device, orgId, userId, label = null, install
 async function queueOsUpdateRun({ device, orgId, userId, action = 'scan', scriptName = 'FortDefend Windows Update' }) {
   const hasCommands = await db.schema.hasTable('sm_commands');
   if (!hasCommands) return null;
+  const hasPayload = await hasCommandPayloadColumn();
   const now = new Date();
   const [row] = await db('sm_commands')
     .insert({
@@ -607,15 +613,18 @@ async function queueOsUpdateRun({ device, orgId, userId, action = 'scan', script
       command_type: 'os_update',
       status: 'pending',
       initiated_by: userId || null,
-      command_payload: {
-        scriptName,
-        action,
-        prePatchPolicy: {
-          action: 'prompt_user',
-          allowWhenUnsaved: false,
-          closeProcesses: ['chrome', 'msedge', 'firefox', 'teams', 'zoom'],
+      ...encodePayloadFields(
+        {
+          scriptName,
+          action,
+          prePatchPolicy: {
+            action: 'prompt_user',
+            allowWhenUnsaved: false,
+            closeProcesses: ['chrome', 'msedge', 'firefox', 'teams', 'zoom'],
+          },
         },
-      },
+        hasPayload
+      ),
       created_at: now,
       updated_at: now,
     })

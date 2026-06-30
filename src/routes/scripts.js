@@ -1,6 +1,7 @@
 const express = require('express');
 const db = require('../database');
 const { requireAuth, requireAdmin } = require('../middleware/auth');
+const { getBuiltinScripts, findBuiltinScript } = require('../seed/defaultScripts');
 
 const router = express.Router();
 router.use(requireAuth);
@@ -54,7 +55,10 @@ router.get('/', requireAdmin, async (req, res, next) => {
         .select('*')
         .orderBy('created_at', 'desc');
     }
-    res.json({ scripts });
+    const customScripts = Array.isArray(scripts) ? scripts : [];
+    const existingNames = new Set(customScripts.map((s) => String(s.name || '').toLowerCase()));
+    const builtinScripts = getBuiltinScripts().filter((s) => !existingNames.has(String(s.name || '').toLowerCase()));
+    res.json({ scripts: [...builtinScripts, ...customScripts] });
   } catch (err) {
     next(err);
   }
@@ -144,8 +148,13 @@ async function queueScriptRun(req, res, next, scriptIdParam) {
     if (!deviceIds.length) return res.status(400).json({ error: 'deviceIds must be a non-empty array.' });
 
     let script = null;
+    let isBuiltin = false;
     if (scriptIdParam !== 'quick') {
-      script = await db('scripts').where({ id: scriptIdParam, org_id: req.user.orgId }).first();
+      script = findBuiltinScript(scriptIdParam);
+      isBuiltin = Boolean(script);
+      if (!script) {
+        script = await db('scripts').where({ id: scriptIdParam, org_id: req.user.orgId }).first();
+      }
       if (!script) return res.status(404).json({ error: 'Script not found.' });
     }
 
@@ -203,7 +212,7 @@ async function queueScriptRun(req, res, next, scriptIdParam) {
       throw err;
     }
 
-    if (script) {
+    if (script && !isBuiltin) {
       await db('scripts').where({ id: script.id, org_id: req.user.orgId }).update({ last_run_at: now, updated_at: now });
     }
 
@@ -223,7 +232,7 @@ router.get('/:id/history', requireAdmin, async (req, res, next) => {
       .map((id) => id.trim())
       .filter(Boolean);
     const isQuick = req.params.id === 'quick';
-    if (!isQuick) {
+    if (!isQuick && !findBuiltinScript(req.params.id)) {
       const exists = await db('scripts').where({ id: req.params.id, org_id: req.user.orgId }).first();
       if (!exists) return res.status(404).json({ error: 'Script not found.' });
     }

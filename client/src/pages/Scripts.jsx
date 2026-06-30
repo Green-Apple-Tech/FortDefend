@@ -235,15 +235,19 @@ export default function Scripts() {
                     <Button type="button" className="flex-1 text-xs sm:flex-none" onClick={() => setShowRunner(true)}>
                       Run
                     </Button>
-                    <Button type="button" variant="outline" className="text-xs" onClick={() => openEdit(r)}>
-                      Edit
-                    </Button>
+                    {!r.built_in && (
+                      <Button type="button" variant="outline" className="text-xs" onClick={() => openEdit(r)}>
+                        Edit
+                      </Button>
+                    )}
                     <Button type="button" variant="outline" className="text-xs" onClick={() => openHistory(r)}>
                       History
                     </Button>
-                    <Button type="button" variant="danger" className="text-xs" onClick={() => deleteScript(r)}>
-                      Delete
-                    </Button>
+                    {!r.built_in && (
+                      <Button type="button" variant="danger" className="text-xs" onClick={() => deleteScript(r)}>
+                        Delete
+                      </Button>
+                    )}
                   </div>
                 </Card>
               ))}

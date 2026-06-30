@@ -45,32 +45,37 @@ exports.up = async function up(knex) {
   const platforms = JSON.stringify(['windows']);
 
   for (const org of orgs) {
-    const existing = await knex('scripts')
-      .where({ org_id: org.id, name: SCRIPT_NAME })
-      .first();
+    try {
+      const existing = await knex('scripts')
+        .where({ org_id: org.id, name: SCRIPT_NAME })
+        .first();
 
-    if (existing) {
-      await knex('scripts')
-        .where({ id: existing.id })
-        .update({
+      if (existing) {
+        await knex('scripts')
+          .where({ id: existing.id })
+          .update({
+            description: SCRIPT_DESCRIPTION,
+            platforms,
+            script_type: 'powershell',
+            content: SCRIPT_CONTENT,
+            updated_at: now,
+          });
+      } else {
+        await knex('scripts').insert({
+          org_id: org.id,
+          name: SCRIPT_NAME,
           description: SCRIPT_DESCRIPTION,
           platforms,
           script_type: 'powershell',
           content: SCRIPT_CONTENT,
+          created_by: null,
+          created_at: now,
           updated_at: now,
         });
-    } else {
-      await knex('scripts').insert({
-        org_id: org.id,
-        name: SCRIPT_NAME,
-        description: SCRIPT_DESCRIPTION,
-        platforms,
-        script_type: 'powershell',
-        content: SCRIPT_CONTENT,
-        created_by: null,
-        created_at: now,
-        updated_at: now,
-      });
+      }
+    } catch (err) {
+      // Seeding is best-effort per org; never abort the migration batch.
+      console.error(`[041] Failed seeding agent update script for org ${org.id}:`, err?.message);
     }
   }
 };

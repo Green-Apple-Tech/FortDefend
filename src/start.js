@@ -1,6 +1,7 @@
 const { runMigrations } = require('./database');
 const { seedDefaultScripts } = require('./seed/defaultScripts');
 const { ensureCommandSchema } = require('./seed/ensureCommandSchema');
+const { runDataRetention } = require('./seed/dataRetention');
 
 (async () => {
   try {
@@ -10,6 +11,11 @@ const { ensureCommandSchema } = require('./seed/ensureCommandSchema');
     // Schema access is guarded with hasColumn/hasTable checks throughout the app.
     console.error('[startup] Migration step failed, starting server anyway:', err?.message);
     console.error(err?.stack);
+  }
+  try {
+    await runDataRetention();
+  } catch (err) {
+    console.error('[startup] Data retention cleanup failed:', err?.message);
   }
   try {
     await ensureCommandSchema();

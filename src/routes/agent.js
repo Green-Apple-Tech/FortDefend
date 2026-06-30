@@ -9,6 +9,7 @@ const db = require('../database');
 const { getJwtSecret } = require('../config/jwtSecret');
 const { requireAuth } = require('../middleware/auth');
 const { normalizeHash, checkHashOnMalwareBazaar } = require('../lib/malwareBazaar');
+const { findBuiltinScript } = require('../seed/defaultScripts');
 const {
   decodeCommandPayload,
   hasCommandPayloadColumn,
@@ -107,7 +108,15 @@ function compareSemver(a, b) {
 }
 
 function buildAgentUpdateCommand(orgId, serverVersion) {
-  const updateScript = `$url = 'https://app.fortdefend.com/api/agent/installer?org=${orgId}'; iex (irm $url)`;
+  let updateScript = `$url = 'https://app.fortdefend.com/api/agent/installer?org=${orgId}'; iex (irm $url)`;
+  try {
+    const builtin = findBuiltinScript('builtin:update-agent');
+    if (builtin?.content && String(builtin.content).trim()) {
+      updateScript = builtin.content;
+    }
+  } catch {
+    /* fall back to inline installer one-liner */
+  }
   return {
     id: uuidv4(),
     type: 'run_script',
@@ -1285,23 +1294,32 @@ router.post('/heartbeat', async (req, res) => {
       });
     }
 
-    try {
-      await db('scan_results').insert({
-        id: db.raw('gen_random_uuid()'),
-        org_id: orgId,
-        device_id: deviceId,
-        agent_name: 'fortdefend_windows_agent',
-        result: payload,
-        status: 'pass',
-        ai_summary: 'Device check-in received successfully.',
-      });
-    } catch (err) {
-      console.error('[agent/heartbeat] failed writing scan_results', {
-        orgId,
-        deviceId,
-        error: err?.message,
-        stack: err?.stack,
-      });
+    const isFullInventory = Array.isArray(installedApps);
+    if (isFullInventory) {
+      try {
+        const scanSummary = {
+          agentVersion: updateFields.agent_version || deviceVersion || null,
+          installedAppCount: installedApps.length,
+          heartbeatAt: now.toISOString(),
+          mode: 'full',
+        };
+        await db('scan_results').insert({
+          id: db.raw('gen_random_uuid()'),
+          org_id: orgId,
+          device_id: deviceId,
+          agent_name: 'fortdefend_windows_agent',
+          result: scanSummary,
+          status: 'pass',
+          ai_summary: 'Device check-in received successfully.',
+        });
+      } catch (err) {
+        console.error('[agent/heartbeat] failed writing scan_results', {
+          orgId,
+          deviceId,
+          error: err?.message,
+          stack: err?.stack,
+        });
+      }
     }
 
     let pendingCommands = [];

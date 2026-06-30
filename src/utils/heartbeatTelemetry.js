@@ -19,7 +19,18 @@ const METRIC_FIELDS = [
   'battery_level',
 ];
 
+const SIGNIFICANT_DELTA_KEYS = new Set([
+  'agent_version',
+  'patch_status',
+  'os_update_status',
+  'os_update_available_count',
+  'reboot_required',
+  'security_score',
+  'logged_in_user',
+]);
+
 const DAILY_FULL_MS = 24 * 60 * 60 * 1000;
+const STORE_DELTAS = process.env.HEARTBEAT_STORE_DELTAS === 'true';
 
 function valuesEqual(a, b) {
   if (a === b) return true;
@@ -53,6 +64,23 @@ function diffSnapshot(prev = {}, next = {}) {
   return changes;
 }
 
+function isSignificantChange(key, change = {}) {
+  if (SIGNIFICANT_DELTA_KEYS.has(key)) return true;
+  if (key.endsWith('_pct') || key.includes('mem_') || key.includes('disk_')) {
+    const from = Number(change.from);
+    const to = Number(change.to);
+    if (Number.isFinite(from) && Number.isFinite(to) && Math.abs(to - from) >= 5) return true;
+    return false;
+  }
+  return false;
+}
+
+function filterSignificantChanges(changes = {}) {
+  return Object.fromEntries(
+    Object.entries(changes).filter(([key, change]) => isSignificantChange(key, change))
+  );
+}
+
 function pickChangedDeviceFields(existing, updateFields, always = ['last_seen', 'status']) {
   if (!existing) return { ...updateFields };
   const out = {};
@@ -84,7 +112,7 @@ async function insertScanResult({ orgId, deviceId, result, status = 'pass', summ
     agent_name: 'fortdefend_windows_agent',
     result,
     status,
-    ai_summary: summary || 'Device check-in received successfully.',
+    ai_summary: summary || null,
   });
 }
 
@@ -101,7 +129,7 @@ async function recordHeartbeatTelemetry({
 
   const prevSnap = buildMetricSnapshot(existing || {}, {});
   const nextSnap = buildMetricSnapshot(existing || {}, updateFields);
-  const metricChanges = diffSnapshot(prevSnap, nextSnap);
+  const metricChanges = filterSignificantChanges(diffSnapshot(prevSnap, nextSnap));
   const isFullInventory = Array.isArray(installedApps);
 
   try {
@@ -119,14 +147,14 @@ async function recordHeartbeatTelemetry({
               installedAppCount: installedApps.length,
             },
           },
-          summary: 'Daily full device snapshot recorded.',
+          summary: 'Daily snapshot',
         });
         return { mode: 'full_daily' };
       }
     }
 
-    if (!Object.keys(metricChanges).length) {
-      return { skipped: true, reason: 'no_changes' };
+    if (!STORE_DELTAS || !Object.keys(metricChanges).length) {
+      return { skipped: true, reason: STORE_DELTAS ? 'no_significant_changes' : 'deltas_disabled' };
     }
 
     await insertScanResult({
@@ -136,9 +164,8 @@ async function recordHeartbeatTelemetry({
         mode: 'delta',
         heartbeatAt: now.toISOString(),
         changes: metricChanges,
-        installedAppCount: isFullInventory ? installedApps.length : undefined,
       },
-      summary: 'Heartbeat metric changes recorded.',
+      summary: null,
     });
     return { mode: 'delta', changeCount: Object.keys(metricChanges).length };
   } catch (err) {
@@ -155,6 +182,7 @@ module.exports = {
   METRIC_FIELDS,
   buildMetricSnapshot,
   diffSnapshot,
+  filterSignificantChanges,
   pickChangedDeviceFields,
   recordHeartbeatTelemetry,
 };

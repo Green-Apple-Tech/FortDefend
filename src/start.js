@@ -13,9 +13,18 @@ const { runDataRetention } = require('./seed/dataRetention');
     console.error(err?.stack);
   }
   try {
-    await runDataRetention();
+    await runDataRetention({ aggressive: process.env.DATA_RETENTION_AGGRESSIVE === 'true' });
   } catch (err) {
     console.error('[startup] Data retention cleanup failed:', err?.message);
+  }
+
+  const retentionHours = Number(process.env.DATA_RETENTION_INTERVAL_HOURS || 6);
+  if (Number.isFinite(retentionHours) && retentionHours > 0) {
+    setInterval(() => {
+      runDataRetention().catch((err) => {
+        console.error('[retention] scheduled cleanup failed:', err?.message);
+      });
+    }, retentionHours * 60 * 60 * 1000);
   }
   try {
     await ensureCommandSchema();

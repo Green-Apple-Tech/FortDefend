@@ -1255,29 +1255,60 @@ export default function Devices() {
       </div>
 
       {mainTab === 'devices' && outdatedDevices.length > 0 && (
-        <div className="flex justify-end">
-          <details className="relative" open={agentUpdatesOpen} onToggle={(e) => setAgentUpdatesOpen(e.currentTarget.open)}>
-            <summary className="list-none cursor-pointer rounded-lg border border-fds-border bg-white px-3 py-2 text-sm font-medium text-slate-800 shadow-sm hover:bg-slate-50">
-              Agent Updates
-              <span className="ml-2 rounded-full bg-amber-100 px-2 py-0.5 text-xs font-semibold text-amber-900">
-                {outdatedDevices.length} devices need update
-              </span>
-            </summary>
-            <div className="absolute right-0 z-20 mt-2 w-80 rounded-lg border border-fds-border bg-white p-3 shadow-lg">
-              <label className="flex items-center justify-between gap-3 rounded-md border border-fds-border px-3 py-2 text-sm">
-                <span className="font-medium text-slate-800">Auto-Update All</span>
-                <input
-                  type="checkbox"
-                  checked={orgAutoUpdateAgent}
-                  onChange={(e) => toggleOrgAutoUpdate(e.target.checked)}
-                />
-              </label>
-              <div className="mt-3 flex flex-col gap-2">
-                <Button type="button" onClick={forceUpdateNow}>Force Update Now</Button>
-                <Button type="button" variant="outline" onClick={forceUpdateSelected}>Force Update Selected</Button>
+        <div className="relative flex justify-end overflow-visible">
+          <button
+            type="button"
+            onClick={() => setAgentUpdatesOpen((open) => !open)}
+            className="rounded-lg border border-fds-border bg-white px-3 py-2 text-sm font-medium text-slate-800 shadow-sm hover:bg-slate-50"
+          >
+            Agent Updates
+            <span className="ml-2 rounded-full bg-amber-100 px-2 py-0.5 text-xs font-semibold text-amber-900">
+              {outdatedDevices.length} devices need update
+            </span>
+          </button>
+          {agentUpdatesOpen && (
+            <>
+              <button
+                type="button"
+                className="fixed inset-0 z-[50] cursor-default"
+                aria-label="Close agent updates menu"
+                onClick={() => setAgentUpdatesOpen(false)}
+              />
+              <div className="absolute right-0 top-full z-[60] mt-2 w-72 min-w-[18rem] rounded-lg border border-fds-border bg-white p-4 shadow-xl">
+                <label className="flex items-center justify-between gap-3 rounded-md border border-fds-border px-3 py-2 text-sm">
+                  <span className="font-medium text-slate-800">Auto-Update All</span>
+                  <input
+                    type="checkbox"
+                    checked={orgAutoUpdateAgent}
+                    onChange={(e) => toggleOrgAutoUpdate(e.target.checked)}
+                  />
+                </label>
+                <div className="mt-3 flex flex-col gap-2">
+                  <Button
+                    type="button"
+                    className="w-full whitespace-nowrap"
+                    onClick={async () => {
+                      await forceUpdateNow();
+                      setAgentUpdatesOpen(false);
+                    }}
+                  >
+                    Force Update Now
+                  </Button>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    className="w-full whitespace-nowrap"
+                    onClick={async () => {
+                      await forceUpdateSelected();
+                      setAgentUpdatesOpen(false);
+                    }}
+                  >
+                    Force Update Selected
+                  </Button>
+                </div>
               </div>
-            </div>
-          </details>
+            </>
+          )}
         </div>
       )}
 

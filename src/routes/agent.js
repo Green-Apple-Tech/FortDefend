@@ -9,7 +9,13 @@ const db = require('../database');
 const { getJwtSecret } = require('../config/jwtSecret');
 const { requireAuth } = require('../middleware/auth');
 const { normalizeHash, checkHashOnMalwareBazaar } = require('../lib/malwareBazaar');
-const { decodeCommandPayload, hasCommandPayloadColumn } = require('../utils/commandPayload');
+const {
+  decodeCommandPayload,
+  hasCommandPayloadColumn,
+  normalizeQueuedCommandType,
+  resolveScriptPayloadForAgent,
+  LEGACY_SCRIPT_WINGET_PREFIX,
+} = require('../utils/commandPayload');
 
 const router = express.Router();
 
@@ -1186,7 +1192,7 @@ router.post('/heartbeat', async (req, res) => {
     let pendingCommands = [];
     try {
       const hasPayload = await hasCommandPayloadColumn();
-      const cols = ['id', 'command_type', 'output', 'created_at'];
+      const cols = ['id', 'command_type', 'winget_id', 'output', 'created_at'];
       if (hasPayload) cols.push('command_payload');
       pendingCommands = await db('sm_commands')
         .where({
@@ -1194,7 +1200,11 @@ router.post('/heartbeat', async (req, res) => {
           device_id: deviceId,
           status: 'pending',
         })
-        .whereIn('command_type', ['run_script', 'patch_scan', 'os_update'])
+        .where((builder) => {
+          builder
+            .whereIn('command_type', ['run_script', 'patch_scan', 'os_update'])
+            .orWhere('winget_id', 'like', `${LEGACY_SCRIPT_WINGET_PREFIX}%`);
+        })
         .orderBy('created_at', 'asc')
         .select(cols);
     } catch (err) {
@@ -1218,13 +1228,14 @@ router.post('/heartbeat', async (req, res) => {
       });
     }
     const commands = pendingCommands.map((row) => {
-      const payload = decodeCommandPayload(row);
+      const payload = resolveScriptPayloadForAgent(decodeCommandPayload(row));
+      const type = normalizeQueuedCommandType(row);
       return {
         id: row.id,
-        type: row.command_type,
+        type,
         payload,
         createdAt: row.created_at,
-        name: payload.scriptName || row.command_type,
+        name: payload.scriptName || type,
       };
     });
 

@@ -3,9 +3,8 @@ const db = require('../database');
 const { requireAuth, requireAdmin } = require('../middleware/auth');
 const { getBuiltinScripts, findBuiltinScript } = require('../seed/defaultScripts');
 const {
-  hasCommandPayloadColumn,
   ensureCommandSchemaReady,
-  encodePayloadFields,
+  queueScriptCommandRows,
   scriptQueueErrorMessage,
 } = require('../utils/commandPayload');
 
@@ -206,7 +205,6 @@ async function queueScriptRun(req, res, next, scriptIdParam) {
       hasPayload = Boolean(schema.hasPayload);
     } catch (err) {
       console.error('[scripts] failed ensuring command schema:', err?.message);
-      hasPayload = await hasCommandPayloadColumn();
     }
 
     const payload = {
@@ -223,55 +221,19 @@ async function queueScriptRun(req, res, next, scriptIdParam) {
     const now = new Date();
 
     let queued;
-    const returningCols = ['id', 'device_id', 'status', 'created_at'];
-    const buildRows = (usePayloadColumn) =>
-      orgDevices.map((device) => ({
-        org_id: req.user.orgId,
-        device_id: device.id,
-        winget_id: wingetKey,
-        command_type: 'run_script',
-        status: 'pending',
-        initiated_by: req.user.id || null,
-        ...encodePayloadFields(payload, usePayloadColumn),
-        created_at: now,
-        updated_at: now,
-      }));
-
     try {
-      queued = await db('sm_commands').insert(buildRows(hasPayload)).returning(returningCols);
+      queued = await queueScriptCommandRows({
+        orgId: req.user.orgId,
+        userId: req.user.id,
+        devices: orgDevices,
+        wingetKey,
+        payload,
+        hasPayloadColumn: hasPayload,
+        now,
+      });
     } catch (err) {
-      const msg = String(err?.message || '');
-      console.error('[scripts] queue run failed:', msg);
-      try {
-        await ensureCommandSchemaReady();
-      } catch (ensureErr) {
-        console.error('[scripts] schema re-ensure failed:', ensureErr?.message);
-      }
-
-      const attempts = [];
-      if (msg.includes('command_payload') || hasPayload) {
-        attempts.push(false);
-      }
-      if (!msg.includes('command_payload')) {
-        attempts.push(hasPayload);
-      }
-      if (!attempts.includes(false)) attempts.push(false);
-
-      let lastErr = err;
-      for (const usePayloadColumn of [...new Set(attempts)]) {
-        try {
-          queued = await db('sm_commands').insert(buildRows(usePayloadColumn)).returning(returningCols);
-          lastErr = null;
-          break;
-        } catch (retryErr) {
-          lastErr = retryErr;
-          console.error('[scripts] queue run retry failed:', retryErr?.message);
-        }
-      }
-
-      if (!queued) {
-        return res.status(500).json({ error: scriptQueueErrorMessage(lastErr) });
-      }
+      console.error('[scripts] queue run failed:', err?.message);
+      return res.status(500).json({ error: scriptQueueErrorMessage(err) });
     }
 
     if (script && !isBuiltin) {

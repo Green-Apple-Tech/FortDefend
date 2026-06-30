@@ -155,6 +155,9 @@ router.get('/:id/command-results', async (req, res, next) => {
       .first();
     if (!device) return res.status(404).json({ error: 'Device not found.' });
 
+    const hasCommandResults = await db.schema.hasTable('command_results');
+    if (!hasCommandResults) return res.json({ results: [] });
+
     const limit = Math.max(1, Math.min(200, Number(req.query.limit || 50)));
     let q = db('command_results')
       .where({ org_id: req.user.orgId, device_id: device.id })
@@ -177,15 +180,29 @@ router.get('/:id', async (req, res, next) => {
       .first();
     if (!device) return res.status(404).json({ error: 'Device not found.' });
 
-    const scanResults = await db('scan_results')
-      .where({ device_id: device.id })
-      .orderBy('created_at', 'desc')
-      .limit(10);
+    let scanResults = [];
+    let alerts = [];
+    try {
+      if (await db.schema.hasTable('scan_results')) {
+        scanResults = await db('scan_results')
+          .where({ org_id: req.user.orgId, device_id: device.id })
+          .orderBy('created_at', 'desc')
+          .limit(10);
+      }
+    } catch (err) {
+      console.error('[devices] failed loading scan results:', err?.message);
+    }
 
-    const alerts = await db('alerts')
-      .where({ org_id: req.user.orgId, device_id: device.id, resolved: false })
-      .orderBy('created_at', 'desc')
-      .limit(50);
+    try {
+      if (await db.schema.hasTable('alerts')) {
+        alerts = await db('alerts')
+          .where({ org_id: req.user.orgId, device_id: device.id, resolved: false })
+          .orderBy('created_at', 'desc')
+          .limit(50);
+      }
+    } catch (err) {
+      console.error('[devices] failed loading alerts:', err?.message);
+    }
 
     res.json({ device, scanResults, alerts });
   } catch (err) { next(err); }

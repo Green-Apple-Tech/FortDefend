@@ -40,6 +40,15 @@ function normalizeStatus(raw) {
   return 'pending';
 }
 
+function isWindowsDevice(device = {}) {
+  const os = String(device.os || '').toLowerCase();
+  if (os.includes('windows')) return true;
+  if (/^ms\s*(10|11|server)\b/.test(os)) return true;
+  // FortDefend is Windows-only now; enrolled agents and Intune imports are valid Windows targets
+  // unless a future non-Windows source is explicitly added.
+  return ['agent', 'intune'].includes(String(device.source || '').toLowerCase());
+}
+
 router.get('/', requireAdmin, async (req, res, next) => {
   try {
     let scripts;
@@ -173,7 +182,7 @@ async function queueScriptRun(req, res, next, scriptIdParam) {
     if (!orgDevices.length) {
       return res.status(400).json({ error: 'No valid devices found in your organization.' });
     }
-    const nonWindowsTargets = orgDevices.filter((d) => !String(d.os || '').toLowerCase().includes('windows'));
+    const nonWindowsTargets = orgDevices.filter((d) => !isWindowsDevice(d));
     if (nonWindowsTargets.length > 0) {
       return res.status(400).json({ error: 'Scripts can only be queued to Windows PCs.' });
     }

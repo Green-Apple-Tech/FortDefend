@@ -2,6 +2,7 @@ const express = require('express');
 const db = require('../database');
 const { requireAuth, requireAdmin } = require('../middleware/auth');
 const { getBuiltinScripts, findBuiltinScript } = require('../seed/defaultScripts');
+const { ensureCommandSchema } = require('../seed/ensureCommandSchema');
 
 const router = express.Router();
 router.use(requireAuth);
@@ -192,6 +193,21 @@ async function queueScriptRun(req, res, next, scriptIdParam) {
     const hasCommands = await db.schema.hasTable('sm_commands');
     if (!hasCommands) {
       return res.status(500).json({ error: 'Command queue is not available on this server yet.' });
+    }
+
+    let hasPayload = await db.schema.hasColumn('sm_commands', 'command_payload');
+    if (!hasPayload) {
+      try {
+        await ensureCommandSchema();
+        hasPayload = await db.schema.hasColumn('sm_commands', 'command_payload');
+      } catch (err) {
+        console.error('[scripts] failed ensuring command_payload column:', err?.message);
+      }
+    }
+    if (!hasPayload) {
+      return res.status(500).json({
+        error: 'Script command payload storage is not available yet. Run database migrations.',
+      });
     }
 
     const wingetKey = resolvedScriptId

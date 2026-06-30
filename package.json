@@ -4,10 +4,10 @@
   "description": "FortDefend - Windows patch management SaaS",
   "main": "src/server.js",
   "scripts": {
-    "start": "node src/server.js",
+    "start": "npm run migrate && node src/server.js",
     "build": "cd client && npm install && npm run build",
     "dev": "nodemon src/server.js",
-    "migrate": "node -e \"require('./src/database').runMigrations()\"",
+    "migrate": "node -e \"require('./src/database').runMigrations().then(() => process.exit(0))\"",
     "audit": "npm audit --audit-level=high"
   },
   "dependencies": {

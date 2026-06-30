@@ -4,6 +4,9 @@
  * report the command as successful before it stops itself to swap the EXE.
  * It always downloads the latest server build, so it stays valid across versions.
  */
+// Run outside a transaction so a single failed per-org seed can't abort the batch.
+exports.config = { transaction: false };
+
 const SCRIPT_NAME = 'Update FortDefend Agent';
 const SCRIPT_DESCRIPTION =
   'Downloads and installs the latest FortDefend Windows agent (detached self-update). Safe to run on online PCs.';
@@ -42,7 +45,8 @@ exports.up = async function up(knex) {
 
   const orgs = await knex('orgs').select('id');
   const now = new Date();
-  const platforms = JSON.stringify(['windows']);
+  // Explicit jsonb cast avoids driver ambiguity when binding a JS array vs JSON text.
+  const platforms = knex.raw('?::jsonb', [JSON.stringify(['windows'])]);
 
   for (const org of orgs) {
     try {

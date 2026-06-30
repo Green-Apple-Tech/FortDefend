@@ -126,7 +126,63 @@ function normalizeOsName(value, fallback = 'Microsoft Windows') {
   if (!raw) return fallback;
   const lower = raw.toLowerCase();
   if (lower === 'windows') return 'Microsoft Windows';
+  if (lower === 'ms') return 'Microsoft Windows';
   return raw;
+}
+
+function normalizeHostKey(value) {
+  return String(value || '').trim().toLowerCase();
+}
+
+function isUsableSerial(serial) {
+  const s = String(serial || '').trim();
+  return Boolean(s) && s !== '_' && s !== '-' && s.toLowerCase() !== 'unknown';
+}
+
+function deviceMatchScore(device = {}) {
+  let score = 0;
+  if (device.agent_version) score += 12;
+  if (isUsableSerial(device.serial)) score += 10;
+  if (Number(device.security_score) > 0) score += 6;
+  if (device.mem_total_gb || device.mem_used_gb) score += 4;
+  if (device.cpu_cores) score += 2;
+  if (device.last_seen) score += 1;
+  return score;
+}
+
+async function findExistingAgentDevice(orgId, { externalId, deviceName, hostname, serial }) {
+  const byExternal = await db('devices')
+    .where({ org_id: orgId, source: 'agent', external_id: externalId })
+    .first();
+  if (byExternal) return byExternal;
+
+  const normalizedSerial = String(serial || '').trim();
+  if (isUsableSerial(normalizedSerial)) {
+    const bySerial = await db('devices')
+      .where({ org_id: orgId, source: 'agent' })
+      .whereRaw('LOWER(TRIM(serial)) = ?', [normalizedSerial.toLowerCase()])
+      .orderBy('last_seen', 'desc');
+    if (bySerial.length === 1) return bySerial[0];
+    if (bySerial.length > 1) {
+      return bySerial.sort((a, b) => deviceMatchScore(b) - deviceMatchScore(a))[0];
+    }
+  }
+
+  const hostKeys = [...new Set([deviceName, hostname].map(normalizeHostKey).filter(Boolean))];
+  if (!hostKeys.length) return null;
+
+  const byHost = await db('devices')
+    .where({ org_id: orgId, source: 'agent' })
+    .where((builder) => {
+      for (const key of hostKeys) {
+        builder.orWhereRaw('LOWER(TRIM(hostname)) = ?', [key]).orWhereRaw('LOWER(TRIM(name)) = ?', [key]);
+      }
+    })
+    .orderBy('last_seen', 'desc');
+
+  if (!byHost.length) return null;
+  if (byHost.length === 1) return byHost[0];
+  return byHost.sort((a, b) => deviceMatchScore(b) - deviceMatchScore(a))[0];
 }
 
 async function ensureAlert({ orgId, deviceId, type, severity, message, aiAnalysis = null }) {
@@ -742,6 +798,7 @@ router.post('/heartbeat', async (req, res) => {
     const externalId = payload.deviceId || payload.machineGuid || payload.hostname || crypto.randomUUID();
     const source = 'agent';
     const orgId = auth.orgId;
+    const heartbeatSerial = telemetry.serialNumber || payload.serialNumber || null;
 
     const groupFromBody =
       (payload.groupId != null && String(payload.groupId).trim() !== '')
@@ -752,9 +809,12 @@ router.post('/heartbeat', async (req, res) => {
 
     let existing = null;
     try {
-      existing = await db('devices')
-        .where({ org_id: orgId, source, external_id: externalId })
-        .first();
+      existing = await findExistingAgentDevice(orgId, {
+        externalId,
+        deviceName,
+        hostname: payload.hostname || deviceName,
+        serial: heartbeatSerial,
+      });
     } catch (err) {
       console.error('[agent/heartbeat] failed to fetch existing device', {
         orgId,
@@ -766,6 +826,7 @@ router.post('/heartbeat', async (req, res) => {
       return safe200({ ok: false, commands: [], error: 'Device lookup failed.' });
     }
     let deviceId = existing?.id;
+    const shouldSyncExternalId = existing && String(existing.external_id || '') !== String(externalId);
     const rebootRequiredReason = ['windows_update', 'patch', 'pending_file_ops'].includes(telemetry.rebootRequiredReason)
       ? telemetry.rebootRequiredReason
       : null;
@@ -939,7 +1000,11 @@ router.post('/heartbeat', async (req, res) => {
       } else {
         await db('devices')
           .where('id', existing.id)
-          .update({ ...updateFields, updated_at: new Date() });
+          .update({
+            ...updateFields,
+            ...(shouldSyncExternalId ? { external_id: externalId } : {}),
+            updated_at: new Date(),
+          });
       }
     } catch (err) {
       console.error('[agent/heartbeat] failed to upsert device', {
